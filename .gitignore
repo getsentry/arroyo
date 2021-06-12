@@ -1,0 +1,7 @@
+*.pyc
+.coverage
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+.venv
+.DS_Store
