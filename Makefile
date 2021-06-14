@@ -1,4 +1,4 @@
-.PHONY: install
+.PHONY: install lint
 
 install:
 	pip install -e .
