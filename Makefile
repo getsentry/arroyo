@@ -1,4 +1,3 @@
-
 .PHONY: install lint setup-git
 
 setup-git:
