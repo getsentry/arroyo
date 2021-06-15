@@ -21,6 +21,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-linter.txt
       - name: Run linter
+        run: |
           black arroyo tests
           flake8 arroyo tests
   typing:
