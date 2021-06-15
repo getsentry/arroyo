@@ -7,6 +7,7 @@ setup-git:
 
 install:
 	pip install -e .
+	pip install -r requirements-test.txt
 
 lint:
 	mypy . --strict
