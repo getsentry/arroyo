@@ -3,8 +3,8 @@ from unittest import mock
 
 import pytest
 
-from arroyo.clock import TestingClock
-from arroyo.retries import BasicRetryPolicy, RetryException, constant_delay
+from arroyo.utils.clock import TestingClock
+from arroyo.utils.retries import BasicRetryPolicy, RetryException, constant_delay
 
 value = object()
 

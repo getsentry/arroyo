@@ -1,6 +1,6 @@
 from typing import MutableSequence, NamedTuple, Optional, Union
 
-from arroyo.metrics import Metrics, Tags
+from arroyo.utils.metrics import Metrics, Tags
 
 
 class Increment(NamedTuple):

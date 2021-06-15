@@ -36,15 +36,15 @@ from confluent_kafka import Producer as ConfluentProducer
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
 from arroyo.backends.abstract import Consumer, Producer
-from arroyo.concurrent import execute
 from arroyo.errors import (
     ConsumerError,
     EndOfPartition,
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.retries import NoRetryPolicy, RetryPolicy
 from arroyo.types import Message, Partition, Topic
+from arroyo.utils.concurrent import execute
+from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
 logger = logging.getLogger(__name__)
 

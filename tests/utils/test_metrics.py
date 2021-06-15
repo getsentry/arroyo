@@ -1,6 +1,6 @@
 import pytest
 
-from arroyo.metrics import Gauge, configure_metrics, get_metrics
+from arroyo.utils.metrics import Gauge, configure_metrics, get_metrics
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
 

@@ -15,12 +15,12 @@ from typing import (
     TypeVar,
 )
 
-from arroyo.metrics import get_metrics
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
 from arroyo.types import Message, Partition, TPayload
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 

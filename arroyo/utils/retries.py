@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import Callable, Optional, Protocol, TypeVar, Union
 
-from arroyo.clock import Clock, SystemClock
+from arroyo.utils.clock import Clock, SystemClock
 
 T = TypeVar("T")
 

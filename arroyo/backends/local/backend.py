@@ -22,9 +22,9 @@ from typing import (
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
-from arroyo.clock import Clock, SystemClock
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.utils.clock import Clock, SystemClock
 
 
 class LocalBroker(Generic[TPayload]):

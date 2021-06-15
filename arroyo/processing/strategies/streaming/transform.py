@@ -21,10 +21,10 @@ from typing import (
     TypeVar,
 )
 
-from arroyo.metrics import Gauge, get_metrics
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, TPayload
+from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
 

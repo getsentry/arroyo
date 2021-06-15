@@ -22,9 +22,9 @@ from arroyo.backends.local.storages.abstract import (
     TopicDoesNotExist,
     TopicExists,
 )
-from arroyo.codecs import Codec
 from arroyo.errors import OffsetOutOfRange
 from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.utils.codecs import Codec
 
 
 class PickleCodec(Codec[bytes, Tuple[TPayload, datetime]]):

@@ -4,9 +4,9 @@ import pytest
 
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.clock import TestingClock
-from arroyo.metrics import configure_metrics
 from arroyo.types import TPayload
+from arroyo.utils.clock import TestingClock
+from arroyo.utils.metrics import configure_metrics
 from tests.metrics import TestingMetricsBackend
 
 

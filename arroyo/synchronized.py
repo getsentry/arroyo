@@ -5,10 +5,10 @@ from typing import Callable, Mapping, MutableMapping, Optional, Sequence, Set
 
 from arroyo.backends.abstract import Consumer
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.codecs import Codec
-from arroyo.concurrent import Synchronized, execute
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.utils.codecs import Codec
+from arroyo.utils.concurrent import Synchronized, execute
 
 logger = logging.getLogger(__name__)
 

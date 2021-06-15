@@ -19,8 +19,8 @@ from arroyo.backends.local.storages.abstract import (
 )
 from arroyo.backends.local.storages.file import FileMessageStorage, InvalidChecksum
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.clock import TestingClock
 from arroyo.types import Partition, Topic
+from arroyo.utils.clock import TestingClock
 from tests.backends.mixins import StreamsTestMixin
 
 

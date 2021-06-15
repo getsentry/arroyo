@@ -4,7 +4,7 @@ from concurrent.futures import TimeoutError
 
 import pytest
 
-from arroyo.concurrent import Synchronized, execute
+from arroyo.utils.concurrent import Synchronized, execute
 
 
 def test_execute() -> None:
