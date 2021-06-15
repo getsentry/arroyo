@@ -5,13 +5,23 @@ from datetime import datetime
 from functools import cached_property
 from pathlib import Path
 from struct import Struct
-from typing import (Any, BinaryIO, Iterator, MutableMapping, MutableSequence,
-                    Optional, Sequence, Tuple)
+from typing import (
+    Any,
+    BinaryIO,
+    Iterator,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
-from arroyo.backends.local.storages.abstract import (MessageStorage,
-                                                     PartitionDoesNotExist,
-                                                     TopicDoesNotExist,
-                                                     TopicExists)
+from arroyo.backends.local.storages.abstract import (
+    MessageStorage,
+    PartitionDoesNotExist,
+    TopicDoesNotExist,
+    TopicExists,
+)
 from arroyo.codecs import Codec
 from arroyo.errors import OffsetOutOfRange
 from arroyo.types import Message, Partition, Topic, TPayload

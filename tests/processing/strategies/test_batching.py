@@ -7,7 +7,9 @@ from arroyo.backends.local.backend import LocalBroker as Broker
 from arroyo.backends.local.backend import LocalConsumer
 from arroyo.processing.processor import StreamProcessor
 from arroyo.processing.strategies.batching import (
-    AbstractBatchWorker, BatchProcessingStrategyFactory)
+    AbstractBatchWorker,
+    BatchProcessingStrategyFactory,
+)
 from arroyo.types import Message, Topic
 
 

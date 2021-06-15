@@ -4,12 +4,22 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import (Callable, Generic, Mapping, MutableMapping,
-                    MutableSequence, Optional, Sequence, TypeVar)
+from typing import (
+    Callable,
+    Generic,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    Sequence,
+    TypeVar,
+)
 
 from arroyo.metrics import get_metrics
-from arroyo.processing.strategies.abstract import (ProcessingStrategy,
-                                                   ProcessingStrategyFactory)
+from arroyo.processing.strategies.abstract import (
+    ProcessingStrategy,
+    ProcessingStrategyFactory,
+)
 from arroyo.types import Message, Partition, TPayload
 
 logger = logging.getLogger(__name__)

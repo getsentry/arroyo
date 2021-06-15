@@ -1,8 +1,7 @@
 import logging
 from typing import Callable, Optional
 
-from arroyo.processing.strategies.abstract import \
-    ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, TPayload
 
 logger = logging.getLogger(__name__)

@@ -11,12 +11,13 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.backend import LocalBroker
-from arroyo.backends.local.storages.abstract import (MessageStorage,
-                                                     PartitionDoesNotExist,
-                                                     TopicDoesNotExist,
-                                                     TopicExists)
-from arroyo.backends.local.storages.file import (FileMessageStorage,
-                                                 InvalidChecksum)
+from arroyo.backends.local.storages.abstract import (
+    MessageStorage,
+    PartitionDoesNotExist,
+    TopicDoesNotExist,
+    TopicExists,
+)
+from arroyo.backends.local.storages.file import FileMessageStorage, InvalidChecksum
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.clock import TestingClock
 from arroyo.types import Partition, Topic

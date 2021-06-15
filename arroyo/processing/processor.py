@@ -7,9 +7,11 @@ from typing import Generic, Mapping, Optional, Sequence
 from arroyo.backends.abstract import Consumer
 from arroyo.errors import RecoverableError
 from arroyo.metrics import get_metrics
-from arroyo.processing.strategies.abstract import (MessageRejected,
-                                                   ProcessingStrategy,
-                                                   ProcessingStrategyFactory)
+from arroyo.processing.strategies.abstract import (
+    MessageRejected,
+    ProcessingStrategy,
+    ProcessingStrategyFactory,
+)
 from arroyo.types import Message, Partition, Topic, TPayload
 
 logger = logging.getLogger(__name__)

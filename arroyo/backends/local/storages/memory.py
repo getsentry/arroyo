@@ -1,11 +1,12 @@
 from datetime import datetime
-from typing import (Iterator, MutableMapping, MutableSequence, Optional,
-                    Sequence, Tuple)
+from typing import Iterator, MutableMapping, MutableSequence, Optional, Sequence, Tuple
 
-from arroyo.backends.local.storages.abstract import (MessageStorage,
-                                                     PartitionDoesNotExist,
-                                                     TopicDoesNotExist,
-                                                     TopicExists)
+from arroyo.backends.local.storages.abstract import (
+    MessageStorage,
+    PartitionDoesNotExist,
+    TopicDoesNotExist,
+    TopicExists,
+)
 from arroyo.errors import OffsetOutOfRange
 from arroyo.types import Message, Partition, Topic, TPayload
 

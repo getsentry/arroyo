@@ -7,11 +7,28 @@ from enum import Enum
 from functools import partial
 from pickle import PickleBuffer
 from threading import Event
-from typing import (Any, Callable, Mapping, MutableMapping, MutableSequence,
-                    NamedTuple, Optional, Sequence, Set, Tuple, Type, Union)
+from typing import (
+    Any,
+    Callable,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 
-from confluent_kafka import (OFFSET_BEGINNING, OFFSET_END, OFFSET_INVALID,
-                             OFFSET_STORED, TIMESTAMP_NOT_AVAILABLE)
+from confluent_kafka import (
+    OFFSET_BEGINNING,
+    OFFSET_END,
+    OFFSET_INVALID,
+    OFFSET_STORED,
+    TIMESTAMP_NOT_AVAILABLE,
+)
 from confluent_kafka import Consumer as ConfluentConsumer
 from confluent_kafka import KafkaError
 from confluent_kafka import Message as ConfluentMessage
@@ -20,8 +37,12 @@ from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.concurrent import execute
-from arroyo.errors import (ConsumerError, EndOfPartition, OffsetOutOfRange,
-                           TransportError)
+from arroyo.errors import (
+    ConsumerError,
+    EndOfPartition,
+    OffsetOutOfRange,
+    TransportError,
+)
 from arroyo.retries import NoRetryPolicy, RetryPolicy
 from arroyo.types import Message, Partition, Topic
 

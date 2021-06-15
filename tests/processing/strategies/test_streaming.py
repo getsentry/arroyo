@@ -11,8 +11,12 @@ from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies.streaming.collect import CollectStep
 from arroyo.processing.strategies.streaming.filter import FilterStep
 from arroyo.processing.strategies.streaming.transform import (
-    MessageBatch, ParallelTransformStep, TransformStep, ValueTooLarge,
-    parallel_transform_worker_apply)
+    MessageBatch,
+    ParallelTransformStep,
+    TransformStep,
+    ValueTooLarge,
+    parallel_transform_worker_apply,
+)
 from arroyo.types import Message, Partition, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall

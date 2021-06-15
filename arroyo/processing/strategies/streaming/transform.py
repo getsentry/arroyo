@@ -8,13 +8,22 @@ from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.pool import AsyncResult, Pool
 from multiprocessing.shared_memory import SharedMemory
 from pickle import PickleBuffer
-from typing import (Any, Callable, Deque, Generic, Iterator, MutableSequence,
-                    Optional, Sequence, Tuple, TypeVar)
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Generic,
+    Iterator,
+    MutableSequence,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 
 from arroyo.metrics import Gauge, get_metrics
 from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.processing.strategies.abstract import \
-    ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, TPayload
 
 logger = logging.getLogger(__name__)

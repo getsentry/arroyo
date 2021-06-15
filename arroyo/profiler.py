@@ -4,8 +4,10 @@ from cProfile import Profile
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
-from arroyo.processing.strategies.abstract import (ProcessingStrategy,
-                                                   ProcessingStrategyFactory)
+from arroyo.processing.strategies.abstract import (
+    ProcessingStrategy,
+    ProcessingStrategyFactory,
+)
 from arroyo.types import Message, Partition, TPayload
 
 logger = logging.getLogger(__name__)

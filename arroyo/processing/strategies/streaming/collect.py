@@ -3,8 +3,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
-from arroyo.processing.strategies.abstract import \
-    ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, Partition, TPayload
 
 logger = logging.getLogger(__name__)

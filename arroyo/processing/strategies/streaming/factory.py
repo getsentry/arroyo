@@ -2,12 +2,13 @@ from abc import abstractmethod
 from typing import Callable, Mapping, Optional, Protocol, TypeVar
 
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.processing.strategies import (ProcessingStrategy,
-                                          ProcessingStrategyFactory)
+from arroyo.processing.strategies import ProcessingStrategy, ProcessingStrategyFactory
 from arroyo.processing.strategies.streaming.collect import CollectStep
 from arroyo.processing.strategies.streaming.filter import FilterStep
 from arroyo.processing.strategies.streaming.transform import (
-    ParallelTransformStep, TransformStep)
+    ParallelTransformStep,
+    TransformStep,
+)
 from arroyo.types import Message, Partition
 
 TPayload = TypeVar("TPayload")

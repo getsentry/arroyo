@@ -2,8 +2,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
-from typing import (ContextManager, Generic, Iterator, Mapping, Optional,
-                    Sequence)
+from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest

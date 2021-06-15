@@ -6,9 +6,19 @@ from concurrent.futures import Future
 from datetime import datetime
 from functools import partial
 from threading import Lock, RLock
-from typing import (Callable, Deque, Generic, Mapping, MutableMapping,
-                    MutableSequence, NamedTuple, Optional, Sequence, Set,
-                    Union)
+from typing import (
+    Callable,
+    Deque,
+    Generic,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Union,
+)
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
