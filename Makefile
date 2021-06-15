@@ -1,4 +1,3 @@
-
 .PHONY: install lint setup-git
 
 setup-git:
@@ -7,6 +6,7 @@ setup-git:
 
 install:
 	pip install -e .
+	pip install -r requirements-test.txt
 
 lint:
 	mypy . --strict
