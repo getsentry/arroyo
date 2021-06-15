@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  linting:
+    name: 'Run linters'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout code
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-linter.txt
+      - name: Run linter
+          black arroyo tests
+          flake8 arroyo tests
   typing:
     name: 'Type checking'
     runs-on: ubuntu-latest
