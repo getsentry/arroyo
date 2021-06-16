@@ -1,12 +1,10 @@
-minVersion: 0.23.1
+minVersion: 0.24.2
 github:
   owner: getsentry
   repo: arroyo
 changelog: CHANGES.rst
 changelogPolicy: auto
 statusProvider:
-  name: github
-artifactProvider:
   name: github
 targets:
   - name: github
