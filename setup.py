@@ -13,7 +13,7 @@ setup(
     version="0.0.1",
     author="Sentry Team and Contributors",
     author_email="hello@sentry.io",
-    license="Apache-2.0",
+    license="Apache Software License",
     url="https://github.com/getsentry/arroyo",
     packages=find_packages(exclude=["tests"]),
     zip_safe=False,
