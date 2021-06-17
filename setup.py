@@ -2,8 +2,6 @@ from typing import Sequence
 
 from setuptools import find_packages, setup
 
-VERSION = "0.0.1"
-
 
 def get_requirements() -> Sequence[str]:
     with open(u"requirements.txt") as fp:
@@ -12,7 +10,13 @@ def get_requirements() -> Sequence[str]:
 
 setup(
     name="arroyo",
+    version="0.0.1",
+    author="Sentry Team and Contributors",
+    author_email="hello@sentry.io",
+    license="Apache Software License",
+    url="https://github.com/getsentry/arroyo",
     packages=find_packages(exclude=["tests"]),
+    package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),
 )
