@@ -16,6 +16,7 @@ setup(
     license="Apache Software License",
     url="https://github.com/getsentry/arroyo",
     packages=find_packages(exclude=["tests"]),
+    package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),
 )
