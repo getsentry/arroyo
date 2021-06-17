@@ -1,0 +1,9 @@
+minVersion: 0.24.2
+github:
+  owner: getsentry
+  repo: arroyo
+changelog: CHANGES.rst
+changelogPolicy: auto
+targets:
+  - name: github
+  - name: pypi
