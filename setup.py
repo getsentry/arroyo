@@ -19,4 +19,11 @@ setup(
     package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+    ],
 )
