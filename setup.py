@@ -13,10 +13,17 @@ setup(
     version="0.0.1",
     author="Sentry Team and Contributors",
     author_email="hello@sentry.io",
-    license="Apache Software License",
+    license="Apache-2.0",
     url="https://github.com/getsentry/arroyo",
     packages=find_packages(exclude=["tests"]),
     package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+    ],
 )
