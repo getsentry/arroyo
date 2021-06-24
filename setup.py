@@ -5,16 +5,19 @@ from setuptools import find_packages, setup
 
 def get_requirements() -> Sequence[str]:
     with open(u"requirements.txt") as fp:
-        return [x.strip() for x in fp.read().split("\n") if not x.startswith("#")]
+        return [x.strip() for x in fp if not x.startswith("#")]
 
 
 setup(
     name="arroyo",
     version="0.0.1",
-    author="Sentry Team and Contributors",
-    author_email="hello@sentry.io",
+    author="Sentry",
+    author_email="oss@sentry.io",
     license="Apache-2.0",
     url="https://github.com/getsentry/arroyo",
+    description="Arroyo is a Python library for working with streaming data.",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
     packages=find_packages(exclude=["tests"]),
     package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
