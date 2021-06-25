@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release/**
+      - build-wheel
 
 jobs:
   dist:
