@@ -9,7 +9,7 @@ def get_requirements() -> Sequence[str]:
 
 
 setup(
-    name="arroyo",
+    name="sentry-arroyo",
     version="0.0.1",
     author="Sentry",
     author_email="oss@sentry.io",
