@@ -54,6 +54,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         processes: Optional[int],
         input_block_size: Optional[int],
         output_block_size: Optional[int],
+        initialize_parallel_transform: Optional[Callable[[], None]] = None,
     ) -> None:
         self.__prefilter = prefilter
         self.__process_message = process_message
@@ -76,6 +77,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__processes = processes
         self.__input_block_size = input_block_size
         self.__output_block_size = output_block_size
+        self.__initialize_parallel_transform = initialize_parallel_transform
 
     def __should_accept(self, message: Message[TPayload]) -> bool:
         assert self.__prefilter is not None
@@ -107,6 +109,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
                 max_batch_time=self.__max_batch_time,
                 input_block_size=self.__input_block_size,
                 output_block_size=self.__output_block_size,
+                initializer=self.__initialize_parallel_transform,
             )
 
         if self.__prefilter is not None:
