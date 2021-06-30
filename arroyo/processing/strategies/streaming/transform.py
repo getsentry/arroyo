@@ -4,6 +4,7 @@ import pickle
 import signal
 import time
 from collections import deque
+from functools import partial
 from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.pool import AsyncResult, Pool
 from multiprocessing.shared_memory import SharedMemory
@@ -213,10 +214,15 @@ class BatchBuilder(Generic[TPayload]):
         return self.__batch
 
 
-def parallel_transform_worker_initializer() -> None:
+def parallel_transform_worker_initializer(
+    custom_initialize_func: Optional[Callable[[], None]] = None
+) -> None:
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    if custom_initialize_func is not None:
+        custom_initialize_func()
 
 
 def parallel_transform_worker_apply(
@@ -276,6 +282,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         max_batch_time: float,
         input_block_size: int,
         output_block_size: int,
+        initializer: Optional[Callable[[], None]] = None,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
@@ -287,7 +294,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
         self.__pool = Pool(
             processes,
-            initializer=parallel_transform_worker_initializer,
+            initializer=partial(parallel_transform_worker_initializer, initializer),
             context=multiprocessing.get_context("spawn"),
         )
 
