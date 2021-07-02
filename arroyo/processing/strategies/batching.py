@@ -113,7 +113,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         self.__batch: Optional[Batch[TResult]] = None
         self.__closed = False
-        self.__flush_done: Optional[float] = None
+        self.__flush_done = time.time()
 
     def poll(self) -> None:
         """
@@ -125,10 +125,10 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             len(self.__batch.results) >= self.__max_batch_size
             or time.time() > self.__batch.created + self.__max_batch_time / 1000.0
         ):
-            if self.__flush_done is not None:
-                self.__metrics.timing(
-                    "processing_phase", time.time() - self.__flush_done
-                )
+
+            self.__metrics.timing(
+                "processing_phase", time.time() - self.__flush_done
+            )
             self.__flush()
             self.__flush_done = time.time()
 
