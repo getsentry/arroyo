@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 from typing import Generic, Mapping, Optional, Sequence
 
@@ -105,7 +106,12 @@ class StreamProcessor(Generic[TPayload]):
         logger.debug("Starting")
         try:
             while not self.__shutdown_requested:
-                self._run_once()
+                try:
+                    self._run_once()
+                except Exception:
+                    # Log 1 in 10 bad events
+                    if random.random() > 0.1:
+                        logger.exception("Event could not be processed", exc_info=True)
 
             self._shutdown()
         except Exception as error:
