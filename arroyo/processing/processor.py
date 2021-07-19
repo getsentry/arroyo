@@ -110,7 +110,7 @@ class StreamProcessor(Generic[TPayload]):
                     self._run_once()
                 except Exception:
                     # Log 1 in 10 bad events
-                    if random.random() > 0.1:
+                    if random.random() < 0.1:
                         logger.exception("Event could not be processed", exc_info=True)
 
             self._shutdown()
