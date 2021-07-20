@@ -195,7 +195,6 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with assert_changes(lambda: revocation_callback.called, False, True):
                 consumer.close()
 
-    @pytest.mark.xfail(reason="Skipping all failed messages")
     def test_consumer_offset_out_of_range(self) -> None:
         payloads = self.get_payloads()
 
