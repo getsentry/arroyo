@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import time
 from typing import Generic, Mapping, Optional, Sequence
 
@@ -37,7 +36,6 @@ class StreamProcessor(Generic[TPayload]):
         consumer: Consumer[TPayload],
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TPayload],
-        drop_failed_messages: bool = False,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -46,8 +44,6 @@ class StreamProcessor(Generic[TPayload]):
         self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
 
         self.__message: Optional[Message[TPayload]] = None
-
-        self.__drop_failed_messages = drop_failed_messages
 
         # If the consumer is in the paused state, this is when the last call to
         # ``pause`` occurred.
@@ -109,17 +105,7 @@ class StreamProcessor(Generic[TPayload]):
         logger.debug("Starting")
         try:
             while not self.__shutdown_requested:
-                if self.__drop_failed_messages is True:
-                    try:
-                        self._run_once()
-                    except Exception:
-                        # Log 1 in 10 bad events
-                        if random.random() < 0.1:
-                            logger.exception(
-                                "Event could not be processed", exc_info=True
-                            )
-                else:
-                    self._run_once()
+                self._run_once()
 
             self._shutdown()
         except Exception as error:
