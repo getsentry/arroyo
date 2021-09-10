@@ -11,7 +11,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import Message, Offset, Partition, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(self, offsets: Mapping[Partition, int]) -> None:
+    def __commit(self, offsets: Mapping[Partition, Offset]) -> None:
         self.__consumer.stage_offsets(offsets)
         start = time.time()
         self.__consumer.commit_offsets()

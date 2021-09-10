@@ -19,7 +19,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Partition, TPayload
+from arroyo.types import Message, Offset, Partition, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -66,8 +66,8 @@ class AbstractBatchWorker(ABC, Generic[TPayload, TResult]):
 class Offsets:
     __slots__ = ["lo", "hi"]
 
-    lo: int  # inclusive
-    hi: int  # exclusive
+    lo: Offset  # inclusive
+    hi: Offset  # exclusive
 
 
 @dataclass
@@ -100,7 +100,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, int]], None],
+        commit: Callable[[Mapping[Partition, Offset]], None],
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -160,10 +160,13 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__metrics.timing("process_message", duration)
 
         if message.partition in self.__batch.offsets:
-            self.__batch.offsets[message.partition].hi = message.next_offset
+            self.__batch.offsets[message.partition].hi = Offset(
+                message.next_offset, message.timestamp
+            )
         else:
             self.__batch.offsets[message.partition] = Offsets(
-                message.offset, message.next_offset
+                Offset(message.offset, message.timestamp),
+                Offset(message.next_offset, message.timestamp),
             )
 
     def close(self) -> None:
@@ -233,7 +236,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_time = max_batch_time
 
     def create(
-        self, commit: Callable[[Mapping[Partition, int]], None]
+        self, commit: Callable[[Mapping[Partition, Offset]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,

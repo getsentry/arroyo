@@ -2,6 +2,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
+from datetime import datetime, timedelta
 from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
@@ -9,7 +10,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import Message, Offset, Partition, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -109,13 +110,21 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             assert consumer.commit_offsets() == {}
 
-            consumer.stage_offsets({message.partition: message.next_offset})
+            consumer.stage_offsets(
+                {message.partition: Offset(message.next_offset, message.timestamp)}
+            )
 
             with pytest.raises(ConsumerError):
-                consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
+                consumer.stage_offsets(
+                    {
+                        Partition(Topic("invalid"), 0): Offset(
+                            0, datetime.now() - timedelta(minutes=1)
+                        )
+                    }
+                )
 
             assert consumer.commit_offsets() == {
-                Partition(topic, 0): message.next_offset
+                Partition(topic, 0): Offset(message.next_offset, message.timestamp)
             }
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}

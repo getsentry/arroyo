@@ -8,7 +8,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Partition, TPayload
+from arroyo.types import Message, Offset, Partition, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class ProcessingStrategyProfilerWrapperFactory(ProcessingStrategyFactory[TPayloa
         assert self.__output_directory.exists() and self.__output_directory.is_dir()
 
     def create(
-        self, commit: Callable[[Mapping[Partition, int]], None]
+        self, commit: Callable[[Mapping[Partition, Offset]], None]
     ) -> ProcessingStrategy[TPayload]:
         profiler = Profile()
         profiler.enable()

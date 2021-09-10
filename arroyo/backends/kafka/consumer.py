@@ -42,7 +42,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Offset, Partition, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -189,7 +189,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, int] = {}
+        self.__staged_offsets: MutableMapping[Partition, Offset] = {}
         self.__paused: Set[Partition] = set()
 
         self.__commit_retry_policy = commit_retry_policy
@@ -526,21 +526,23 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return [*self.__paused]
 
-    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, Offset]) -> None:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
         if offsets.keys() - self.__offsets.keys():
             raise ConsumerError("cannot stage offsets for unassigned partitions")
 
-        self.__validate_offsets(offsets)
+        self.__validate_offsets(
+            {key: offset.offset for (key, offset) in offsets.items()}
+        )
 
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
         self.__staged_offsets.update(offsets)
 
-    def __commit(self) -> Mapping[Partition, int]:
+    def __commit(self) -> Mapping[Partition, Offset]:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
@@ -550,7 +552,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             result = self.__consumer.commit(
                 offsets=[
                     ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
+                        partition.topic.name, partition.index, offset.offset
                     )
                     for partition, offset in self.__staged_offsets.items()
                 ],
@@ -563,7 +565,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__staged_offsets.clear()
 
-        offsets: MutableMapping[Partition, int] = {}
+        offsets: MutableMapping[Partition, Offset] = {}
 
         for value in result:
             # The Confluent Kafka Consumer will include logical offsets in the
@@ -580,7 +582,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return offsets
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_offsets(self) -> Mapping[Partition, Offset]:
         """
         Commit staged offsets for all partitions that this consumer is
         assigned to. The return value of this method is a mapping of

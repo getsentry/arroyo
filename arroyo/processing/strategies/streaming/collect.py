@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, Partition, TPayload
+from arroyo.types import Message, Offset, Partition, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -13,15 +13,15 @@ logger = logging.getLogger(__name__)
 class OffsetRange:
     __slots__ = ["lo", "hi"]
 
-    lo: int  # inclusive
-    hi: int  # exclusive
+    lo: Offset  # inclusive
+    hi: Offset  # exclusive
 
 
 class Batch(Generic[TPayload]):
     def __init__(
         self,
         step: ProcessingStep[TPayload],
-        commit_function: Callable[[Mapping[Partition, int]], None],
+        commit_function: Callable[[Mapping[Partition, Offset]], None],
     ) -> None:
         self.__step = step
         self.__commit_function = commit_function
@@ -50,10 +50,13 @@ class Batch(Generic[TPayload]):
         self.__length += 1
 
         if message.partition in self.__offsets:
-            self.__offsets[message.partition].hi = message.next_offset
+            self.__offsets[message.partition].hi = Offset(
+                message.next_offset, message.timestamp
+            )
         else:
             self.__offsets[message.partition] = OffsetRange(
-                message.offset, message.next_offset
+                Offset(message.offset, message.timestamp),
+                Offset(message.next_offset, message.timestamp),
             )
 
     def close(self) -> None:
@@ -84,7 +87,7 @@ class CollectStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         step_factory: Callable[[], ProcessingStep[TPayload]],
-        commit_function: Callable[[Mapping[Partition, int]], None],
+        commit_function: Callable[[Mapping[Partition, Offset]], None],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:

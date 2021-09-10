@@ -23,7 +23,7 @@ from typing import (
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import Message, Offset, Partition, Topic, TPayload
 from arroyo.utils.clock import Clock, SystemClock
 
 
@@ -141,7 +141,7 @@ class LocalConsumer(Consumer[TPayload]):
         self.__pending_callbacks: Deque[Callable[[], None]] = deque()
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, int] = {}
+        self.__staged_offsets: MutableMapping[Partition, Offset] = {}
 
         self.__paused: Set[Partition] = set()
 
@@ -304,7 +304,7 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__offsets.update(offsets)
 
-    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, Offset]) -> None:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -312,17 +312,21 @@ class LocalConsumer(Consumer[TPayload]):
             if offsets.keys() - self.__offsets.keys():
                 raise ConsumerError("cannot stage offsets for unassigned partitions")
 
-            self.__validate_offsets(offsets)
+            self.__validate_offsets(
+                {key: offset.offset for (key, offset) in offsets.items()}
+            )
 
             self.__staged_offsets.update(offsets)
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_offsets(self) -> Mapping[Partition, Offset]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
             offsets = {**self.__staged_offsets}
-            self.__broker.commit(self, offsets)
+            self.__broker.commit(
+                self, {key: offset.offset for (key, offset) in offsets.items()}
+            )
             self.__staged_offsets.clear()
 
             self.commit_offsets_calls += 1
