@@ -578,7 +578,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 continue
 
             assert value.offset >= 0, "expected non-negative offset"
-            offsets[Partition(Topic(value.topic), value.partition)] = value.offset
+            partition = Partition(Topic(value.topic), value.partition)
+            offsets[partition] = Offset(
+                value.offset, self.__staged_offsets[partition].timestamp
+            )
 
         return offsets
 
