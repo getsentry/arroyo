@@ -563,8 +563,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         assert result is not None  # synchronous commit should return result immediately
 
-        self.__staged_offsets.clear()
-
         offsets: MutableMapping[Partition, Offset] = {}
 
         for value in result:
@@ -582,6 +580,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             offsets[partition] = Offset(
                 value.offset, self.__staged_offsets[partition].timestamp
             )
+
+        self.__staged_offsets.clear()
 
         return offsets
 

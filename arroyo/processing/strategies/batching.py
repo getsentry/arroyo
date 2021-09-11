@@ -4,6 +4,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import (
     Callable,
     Generic,
@@ -64,10 +65,11 @@ class AbstractBatchWorker(ABC, Generic[TPayload, TResult]):
 
 @dataclass
 class Offsets:
-    __slots__ = ["lo", "hi"]
+    __slots__ = ["lo", "hi", "timestamp"]
 
-    lo: Offset  # inclusive
-    hi: Offset  # exclusive
+    lo: int  # inclusive
+    hi: int  # exclusive
+    timestamp: datetime
 
 
 @dataclass
@@ -160,13 +162,13 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__metrics.timing("process_message", duration)
 
         if message.partition in self.__batch.offsets:
-            self.__batch.offsets[message.partition].hi = Offset(
-                message.next_offset, message.timestamp
-            )
+            self.__batch.offsets[message.partition].hi = message.next_offset
+            self.__batch.offsets[message.partition].timestamp = message.timestamp
         else:
             self.__batch.offsets[message.partition] = Offsets(
-                Offset(message.offset, message.timestamp),
-                Offset(message.next_offset, message.timestamp),
+                message.offset,
+                message.next_offset,
+                message.timestamp,
             )
 
     def close(self) -> None:
@@ -214,7 +216,8 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         logger.debug("Committing offsets for batch")
         commit_start = time.time()
         offsets = {
-            partition: offsets.hi for partition, offsets in self.__batch.offsets.items()
+            partition: Offset(offsets.hi, offsets.timestamp)
+            for partition, offsets in self.__batch.offsets.items()
         }
         self.__commit(offsets)
         logger.debug("Committed offsets: %s", offsets)
