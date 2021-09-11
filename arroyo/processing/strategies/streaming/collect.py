@@ -1,6 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
@@ -11,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OffsetRange:
-    __slots__ = ["lo", "hi"]
+    __slots__ = ["lo", "hi", "timestamp"]
 
-    lo: Offset  # inclusive
-    hi: Offset  # exclusive
+    lo: int  # inclusive
+    hi: int  # exclusive
+    timestamp: datetime
 
 
 class Batch(Generic[TPayload]):
@@ -50,13 +52,11 @@ class Batch(Generic[TPayload]):
         self.__length += 1
 
         if message.partition in self.__offsets:
-            self.__offsets[message.partition].hi = Offset(
-                message.next_offset, message.timestamp
-            )
+            self.__offsets[message.partition].hi = message.next_offset
+            self.__offsets[message.partition].timestamp = message.timestamp
         else:
             self.__offsets[message.partition] = OffsetRange(
-                Offset(message.offset, message.timestamp),
-                Offset(message.next_offset, message.timestamp),
+                message.offset, message.next_offset, message.timestamp
             )
 
     def close(self) -> None:
@@ -72,7 +72,8 @@ class Batch(Generic[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         self.__step.join(timeout)
         offsets = {
-            partition: offsets.hi for partition, offsets in self.__offsets.items()
+            partition: Offset(offsets.hi, offsets.timestamp)
+            for partition, offsets in self.__offsets.items()
         }
         logger.debug("Committing offsets: %r", offsets)
         self.__commit_function(offsets)
