@@ -111,7 +111,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             assert consumer.commit_offsets() == {}
 
             consumer.stage_offsets(
-                {message.partition: Offset(message.next_offset, message.timestamp)}
+                {message.partition: Offset(message.next_offset, messages[1].timestamp)}
             )
 
             with pytest.raises(ConsumerError):
