@@ -534,7 +534,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             raise ConsumerError("cannot stage offsets for unassigned partitions")
 
         self.__validate_offsets(
-            {key: offset.offset for (key, offset) in offsets.items()}
+            {partition: offset.kafka_offset for (partition, offset) in offsets.items()}
         )
 
         # TODO: Maybe log a warning if these offsets exceed the current
@@ -552,7 +552,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             result = self.__consumer.commit(
                 offsets=[
                     ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset.offset
+                        partition.topic.name, partition.index, offset.kafka_offset
                     )
                     for partition, offset in self.__staged_offsets.items()
                 ],

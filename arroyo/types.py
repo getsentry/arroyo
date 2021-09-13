@@ -67,5 +67,5 @@ class Message(Generic[TPayload]):
 
 @dataclass
 class Offset:
-    offset: int
+    kafka_offset: int
     timestamp: datetime

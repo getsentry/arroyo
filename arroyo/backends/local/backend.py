@@ -313,7 +313,10 @@ class LocalConsumer(Consumer[TPayload]):
                 raise ConsumerError("cannot stage offsets for unassigned partitions")
 
             self.__validate_offsets(
-                {key: offset.offset for (key, offset) in offsets.items()}
+                {
+                    partition: offset.kafka_offset
+                    for (partition, offset) in offsets.items()
+                }
             )
 
             self.__staged_offsets.update(offsets)
@@ -325,7 +328,11 @@ class LocalConsumer(Consumer[TPayload]):
 
             offsets = {**self.__staged_offsets}
             self.__broker.commit(
-                self, {key: offset.offset for (key, offset) in offsets.items()}
+                self,
+                {
+                    partition: offset.kafka_offset
+                    for (partition, offset) in offsets.items()
+                },
             )
             self.__staged_offsets.clear()
 
