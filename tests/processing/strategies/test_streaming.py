@@ -17,7 +17,7 @@ from arroyo.processing.strategies.streaming.transform import (
     ValueTooLarge,
     parallel_transform_worker_apply,
 )
-from arroyo.types import Message, Offset, Partition, Topic
+from arroyo.types import Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -118,7 +118,7 @@ def test_collect() -> None:
     ), assert_changes(lambda: commit_function.call_count, 0, 1):
         collect_step.poll()
         assert commit_function.call_args == call(
-            {partition: Offset(2, second_message.timestamp)}
+            {partition: Position(2, second_message.timestamp)}
         )
 
     step_factory.return_value = inner_step = Mock()

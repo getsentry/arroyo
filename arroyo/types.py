@@ -65,7 +65,8 @@ class Message(Generic[TPayload]):
         return f"{type(self).__name__}(partition={self.partition!r}, offset={self.offset!r})"
 
 
-@dataclass
-class Offset:
-    kafka_offset: int
+@dataclass(frozen=True)
+class Position:
+    __slots__ = ["offset", "timestamp"]
+    offset: int
     timestamp: datetime

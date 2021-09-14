@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Generic, Mapping, Optional
 
-from arroyo.types import Message, Offset, Partition, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 
 
 class MessageRejected(Exception):
@@ -93,7 +93,7 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
 class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     @abstractmethod
     def create(
-        self, commit: Callable[[Mapping[Partition, Offset]], None]
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.

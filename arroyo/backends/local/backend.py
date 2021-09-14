@@ -23,7 +23,7 @@ from typing import (
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import Message, Offset, Partition, Topic, TPayload
+from arroyo.types import Message, Partition, Position, Topic, TPayload
 from arroyo.utils.clock import Clock, SystemClock
 
 
@@ -141,7 +141,7 @@ class LocalConsumer(Consumer[TPayload]):
         self.__pending_callbacks: Deque[Callable[[], None]] = deque()
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, Offset] = {}
+        self.__staged_offsets: MutableMapping[Partition, Position] = {}
 
         self.__paused: Set[Partition] = set()
 
@@ -304,7 +304,7 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__offsets.update(offsets)
 
-    def stage_offsets(self, offsets: Mapping[Partition, Offset]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, Position]) -> None:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -314,14 +314,14 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__validate_offsets(
                 {
-                    partition: offset.kafka_offset
-                    for (partition, offset) in offsets.items()
+                    partition: position.offset
+                    for (partition, position) in offsets.items()
                 }
             )
 
             self.__staged_offsets.update(offsets)
 
-    def commit_offsets(self) -> Mapping[Partition, Offset]:
+    def commit_offsets(self) -> Mapping[Partition, Position]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -330,8 +330,8 @@ class LocalConsumer(Consumer[TPayload]):
             self.__broker.commit(
                 self,
                 {
-                    partition: offset.kafka_offset
-                    for (partition, offset) in offsets.items()
+                    partition: position.offset
+                    for (partition, position) in offsets.items()
                 },
             )
             self.__staged_offsets.clear()

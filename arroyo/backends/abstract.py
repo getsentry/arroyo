@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
 from typing import Callable, Generic, Mapping, Optional, Sequence, Union
 
-from arroyo.types import Message, Offset, Partition, Topic, TPayload
+from arroyo.types import Message, Partition, Position, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def stage_offsets(self, offsets: Mapping[Partition, Offset]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, Position]) -> None:
         """
         Stage offsets to be committed. If an offset has already been staged
         for a given partition, that offset is overwritten (even if the offset
@@ -148,7 +148,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def commit_offsets(self) -> Mapping[Partition, Offset]:
+    def commit_offsets(self) -> Mapping[Partition, Position]:
         """
         Commit staged offsets. The return value of this method is a mapping
         of streams with their committed offsets as values.

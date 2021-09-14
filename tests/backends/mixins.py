@@ -10,7 +10,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import Message, Offset, Partition, Topic, TPayload
+from arroyo.types import Message, Partition, Position, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -111,20 +111,24 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             assert consumer.commit_offsets() == {}
 
             consumer.stage_offsets(
-                {message.partition: Offset(message.next_offset, messages[1].timestamp)}
+                {
+                    message.partition: Position(
+                        message.next_offset, messages[1].timestamp
+                    )
+                }
             )
 
             with pytest.raises(ConsumerError):
                 consumer.stage_offsets(
                     {
-                        Partition(Topic("invalid"), 0): Offset(
+                        Partition(Topic("invalid"), 0): Position(
                             0, datetime.now() - timedelta(minutes=1)
                         )
                     }
                 )
 
             assert consumer.commit_offsets() == {
-                Partition(topic, 0): Offset(message.next_offset, message.timestamp)
+                Partition(topic, 0): Position(message.next_offset, message.timestamp)
             }
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}

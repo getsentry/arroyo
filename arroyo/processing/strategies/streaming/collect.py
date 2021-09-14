@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, Offset, Partition, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class Batch(Generic[TPayload]):
     def __init__(
         self,
         step: ProcessingStep[TPayload],
-        commit_function: Callable[[Mapping[Partition, Offset]], None],
+        commit_function: Callable[[Mapping[Partition, Position]], None],
     ) -> None:
         self.__step = step
         self.__commit_function = commit_function
@@ -72,7 +72,7 @@ class Batch(Generic[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         self.__step.join(timeout)
         offsets = {
-            partition: Offset(offsets.hi, offsets.timestamp)
+            partition: Position(offsets.hi, offsets.timestamp)
             for partition, offsets in self.__offsets.items()
         }
         logger.debug("Committing offsets: %r", offsets)
@@ -88,7 +88,7 @@ class CollectStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         step_factory: Callable[[], ProcessingStep[TPayload]],
-        commit_function: Callable[[Mapping[Partition, Offset]], None],
+        commit_function: Callable[[Mapping[Partition, Position]], None],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:

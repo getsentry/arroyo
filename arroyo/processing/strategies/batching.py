@@ -20,7 +20,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Offset, Partition, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, Offset]], None],
+        commit: Callable[[Mapping[Partition, Position]], None],
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -216,7 +216,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         logger.debug("Committing offsets for batch")
         commit_start = time.time()
         offsets = {
-            partition: Offset(offsets.hi, offsets.timestamp)
+            partition: Position(offsets.hi, offsets.timestamp)
             for partition, offsets in self.__batch.offsets.items()
         }
         self.__commit(offsets)
@@ -239,7 +239,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_time = max_batch_time
 
     def create(
-        self, commit: Callable[[Mapping[Partition, Offset]], None]
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,
