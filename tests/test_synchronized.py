@@ -1,5 +1,6 @@
 import time
 from contextlib import closing
+from datetime import datetime
 from threading import Event
 from typing import Mapping, Optional, TypeVar
 
@@ -72,7 +73,12 @@ def test_synchronized_consumer(broker: Broker[KafkaPayload]) -> None:
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader-a", Partition(topic, 0), messages[0].next_offset)
+                    Commit(
+                        "leader-a",
+                        Partition(topic, 0),
+                        messages[0].next_offset,
+                        datetime.now(),
+                    ),
                 ),
             ).result(),
         )
@@ -91,7 +97,12 @@ def test_synchronized_consumer(broker: Broker[KafkaPayload]) -> None:
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader-b", Partition(topic, 0), messages[0].next_offset)
+                    Commit(
+                        "leader-b",
+                        Partition(topic, 0),
+                        messages[0].next_offset,
+                        datetime.now(),
+                    )
                 ),
             ).result(),
         )
@@ -122,7 +133,9 @@ def test_synchronized_consumer(broker: Broker[KafkaPayload]) -> None:
         producer.produce(
             commit_log_topic,
             commit_codec.encode(
-                Commit("leader-a", Partition(topic, 0), messages[3].offset)
+                Commit(
+                    "leader-a", Partition(topic, 0), messages[3].offset, datetime.now()
+                )
             ),
         ).result()
 
@@ -131,7 +144,12 @@ def test_synchronized_consumer(broker: Broker[KafkaPayload]) -> None:
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader-b", Partition(topic, 0), messages[5].offset)
+                    Commit(
+                        "leader-b",
+                        Partition(topic, 0),
+                        messages[5].offset,
+                        datetime.now(),
+                    )
                 ),
             ).result(),
         )
@@ -169,7 +187,12 @@ def test_synchronized_consumer(broker: Broker[KafkaPayload]) -> None:
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader-a", Partition(topic, 0), messages[5].offset)
+                    Commit(
+                        "leader-a",
+                        Partition(topic, 0),
+                        messages[5].offset,
+                        datetime.now(),
+                    )
                 ),
             ).result(),
         )
@@ -227,7 +250,12 @@ def test_synchronized_consumer_pause_resume(broker: Broker[KafkaPayload]) -> Non
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader", Partition(topic, 0), messages[0].next_offset)
+                    Commit(
+                        "leader",
+                        Partition(topic, 0),
+                        messages[0].next_offset,
+                        datetime.now(),
+                    )
                 ),
             ).result(),
         )
@@ -301,7 +329,12 @@ def test_synchronized_consumer_handles_end_of_partition(
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader", Partition(topic, 0), messages[0].next_offset),
+                    Commit(
+                        "leader",
+                        Partition(topic, 0),
+                        messages[0].next_offset,
+                        datetime.now(),
+                    ),
                 ),
             ).result(),
         )
@@ -315,7 +348,12 @@ def test_synchronized_consumer_handles_end_of_partition(
             producer.produce(
                 commit_log_topic,
                 commit_codec.encode(
-                    Commit("leader", Partition(topic, 0), messages[1].next_offset),
+                    Commit(
+                        "leader",
+                        Partition(topic, 0),
+                        messages[1].next_offset,
+                        datetime.now(),
+                    ),
                 ),
             ).result(),
         )
