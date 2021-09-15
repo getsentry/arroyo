@@ -89,10 +89,10 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(self, offsets: Mapping[Partition, Position]) -> None:
-        self.__consumer.stage_offsets(offsets)
+    def __commit(self, positions: Mapping[Partition, Position]) -> None:
+        self.__consumer.stage_positions(positions)
         start = time.time()
-        self.__consumer.commit_offsets()
+        self.__consumer.commit_positions()
         logger.debug(
             "Waited %0.4f seconds for offsets to be committed to %r.",
             time.time() - start,

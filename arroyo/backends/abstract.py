@@ -35,9 +35,9 @@ class Consumer(Generic[TPayload], ABC):
     during the subscription process. To ensure that a consumer roughly "picks
     up where it left off" after restarting, or that another consumer in the
     same group doesn't read messages that have been processed by another
-    consumer within the same group during a rebalance operation, offsets must
-    be regularly committed by calling ``commit_offsets`` after they have been
-    staged with ``stage_offsets``. Offsets are not staged or committed
+    consumer within the same group during a rebalance operation, positions must
+    be regularly committed by calling ``commit_positions`` after they have been
+    staged with ``stage_positions``. Offsets are not staged or committed
     automatically!
 
     During rebalance operations, working offsets are rolled back to the
@@ -139,7 +139,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def stage_offsets(self, offsets: Mapping[Partition, Position]) -> None:
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
         """
         Stage offsets to be committed. If an offset has already been staged
         for a given partition, that offset is overwritten (even if the offset
@@ -148,7 +148,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def commit_offsets(self) -> Mapping[Partition, Position]:
+    def commit_positions(self) -> Mapping[Partition, Position]:
         """
         Commit staged offsets. The return value of this method is a mapping
         of streams with their committed offsets as values.

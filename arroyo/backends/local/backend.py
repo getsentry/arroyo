@@ -141,7 +141,7 @@ class LocalConsumer(Consumer[TPayload]):
         self.__pending_callbacks: Deque[Callable[[], None]] = deque()
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, Position] = {}
+        self.__staged_positions: MutableMapping[Partition, Position] = {}
 
         self.__paused: Set[Partition] = set()
 
@@ -196,7 +196,7 @@ class LocalConsumer(Consumer[TPayload]):
                 )
             )
 
-            self.__staged_offsets.clear()
+            self.__staged_positions.clear()
             self.__last_eof_at.clear()
 
     def unsubscribe(self) -> None:
@@ -213,7 +213,7 @@ class LocalConsumer(Consumer[TPayload]):
             )
             self.__subscription = None
 
-            self.__staged_offsets.clear()
+            self.__staged_positions.clear()
             self.__last_eof_at.clear()
 
     def poll(self, timeout: Optional[float] = None) -> Optional[Message[TPayload]]:
@@ -304,29 +304,29 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__offsets.update(offsets)
 
-    def stage_offsets(self, offsets: Mapping[Partition, Position]) -> None:
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            if offsets.keys() - self.__offsets.keys():
+            if positions.keys() - self.__offsets.keys():
                 raise ConsumerError("cannot stage offsets for unassigned partitions")
 
             self.__validate_offsets(
                 {
                     partition: position.offset
-                    for (partition, position) in offsets.items()
+                    for (partition, position) in positions.items()
                 }
             )
 
-            self.__staged_offsets.update(offsets)
+            self.__staged_positions.update(positions)
 
-    def commit_offsets(self) -> Mapping[Partition, Position]:
+    def commit_positions(self) -> Mapping[Partition, Position]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            offsets = {**self.__staged_offsets}
+            offsets = {**self.__staged_positions}
             self.__broker.commit(
                 self,
                 {
@@ -334,7 +334,7 @@ class LocalConsumer(Consumer[TPayload]):
                     for (partition, position) in offsets.items()
                 },
             )
-            self.__staged_offsets.clear()
+            self.__staged_positions.clear()
 
             self.commit_offsets_calls += 1
             return offsets

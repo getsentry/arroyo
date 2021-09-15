@@ -108,9 +108,9 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             assert message.offset == messages[0].offset
             assert message.payload == messages[0].payload
 
-            assert consumer.commit_offsets() == {}
+            assert consumer.commit_positions() == {}
 
-            consumer.stage_offsets(
+            consumer.stage_positions(
                 {
                     message.partition: Position(
                         message.next_offset, messages[1].timestamp
@@ -119,7 +119,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             )
 
             with pytest.raises(ConsumerError):
-                consumer.stage_offsets(
+                consumer.stage_positions(
                     {
                         Partition(Topic("invalid"), 0): Position(
                             0, datetime.now() - timedelta(minutes=1)
@@ -127,7 +127,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                     }
                 )
 
-            assert consumer.commit_offsets() == {
+            assert consumer.commit_positions() == {
                 Partition(topic, 0): Position(message.next_offset, message.timestamp)
             }
 
@@ -178,10 +178,10 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 consumer.paused()
 
             with pytest.raises(RuntimeError):
-                consumer.stage_offsets({})
+                consumer.stage_positions({})
 
             with pytest.raises(RuntimeError):
-                consumer.commit_offsets()
+                consumer.commit_positions()
 
             consumer.close()  # should be safe, even if the consumer is already closed
 

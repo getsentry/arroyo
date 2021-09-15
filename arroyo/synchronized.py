@@ -266,11 +266,11 @@ class SynchronizedConsumer(Consumer[TPayload]):
     def seek(self, offsets: Mapping[Partition, int]) -> None:
         return self.__consumer.seek(offsets)
 
-    def stage_offsets(self, offsets: Mapping[Partition, Position]) -> None:
-        return self.__consumer.stage_offsets(offsets)
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+        return self.__consumer.stage_positions(positions)
 
-    def commit_offsets(self) -> Mapping[Partition, Position]:
-        return self.__consumer.commit_offsets()
+    def commit_positions(self) -> Mapping[Partition, Position]:
+        return self.__consumer.commit_positions()
 
     def close(self, timeout: Optional[float] = None) -> None:
         # TODO: Be careful to ensure there are not any deadlock conditions
