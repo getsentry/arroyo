@@ -1,27 +1,29 @@
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, Partition, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class OffsetRange:
-    __slots__ = ["lo", "hi"]
+    __slots__ = ["lo", "hi", "timestamp"]
 
     lo: int  # inclusive
     hi: int  # exclusive
+    timestamp: datetime
 
 
 class Batch(Generic[TPayload]):
     def __init__(
         self,
         step: ProcessingStep[TPayload],
-        commit_function: Callable[[Mapping[Partition, int]], None],
+        commit_function: Callable[[Mapping[Partition, Position]], None],
     ) -> None:
         self.__step = step
         self.__commit_function = commit_function
@@ -51,9 +53,10 @@ class Batch(Generic[TPayload]):
 
         if message.partition in self.__offsets:
             self.__offsets[message.partition].hi = message.next_offset
+            self.__offsets[message.partition].timestamp = message.timestamp
         else:
             self.__offsets[message.partition] = OffsetRange(
-                message.offset, message.next_offset
+                message.offset, message.next_offset, message.timestamp
             )
 
     def close(self) -> None:
@@ -69,7 +72,8 @@ class Batch(Generic[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         self.__step.join(timeout)
         offsets = {
-            partition: offsets.hi for partition, offsets in self.__offsets.items()
+            partition: Position(offsets.hi, offsets.timestamp)
+            for partition, offsets in self.__offsets.items()
         }
         logger.debug("Committing offsets: %r", offsets)
         self.__commit_function(offsets)
@@ -84,7 +88,7 @@ class CollectStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         step_factory: Callable[[], ProcessingStep[TPayload]],
-        commit_function: Callable[[Mapping[Partition, int]], None],
+        commit_function: Callable[[Mapping[Partition, Position]], None],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:

@@ -9,7 +9,7 @@ from arroyo.processing.strategies.streaming.transform import (
     ParallelTransformStep,
     TransformStep,
 )
-from arroyo.types import Message, Partition
+from arroyo.types import Message, Partition, Position
 
 TPayload = TypeVar("TPayload")
 TProcessed = TypeVar("TProcessed")
@@ -84,7 +84,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         return not self.__prefilter.should_drop(message)
 
     def create(
-        self, commit: Callable[[Mapping[Partition, int]], None]
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         collect = CollectStep(
             self.__collector,

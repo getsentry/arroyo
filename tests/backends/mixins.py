@@ -2,6 +2,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
+from datetime import datetime, timedelta
 from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
@@ -9,7 +10,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import Message, Partition, Position, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -107,15 +108,27 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             assert message.offset == messages[0].offset
             assert message.payload == messages[0].payload
 
-            assert consumer.commit_offsets() == {}
+            assert consumer.commit_positions() == {}
 
-            consumer.stage_offsets({message.partition: message.next_offset})
+            consumer.stage_positions(
+                {
+                    message.partition: Position(
+                        message.next_offset, messages[1].timestamp
+                    )
+                }
+            )
 
             with pytest.raises(ConsumerError):
-                consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
+                consumer.stage_positions(
+                    {
+                        Partition(Topic("invalid"), 0): Position(
+                            0, datetime.now() - timedelta(minutes=1)
+                        )
+                    }
+                )
 
-            assert consumer.commit_offsets() == {
-                Partition(topic, 0): message.next_offset
+            assert consumer.commit_positions() == {
+                Partition(topic, 0): Position(message.next_offset, message.timestamp)
             }
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
@@ -165,10 +178,10 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 consumer.paused()
 
             with pytest.raises(RuntimeError):
-                consumer.stage_offsets({})
+                consumer.stage_positions({})
 
             with pytest.raises(RuntimeError):
-                consumer.commit_offsets()
+                consumer.commit_positions()
 
             consumer.close()  # should be safe, even if the consumer is already closed
 
