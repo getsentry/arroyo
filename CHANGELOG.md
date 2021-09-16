@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 0.0.3
+
+- No documented changes.
+
 ## 0.0.2
 
 - Add optional initializer function to parallel transform step. Supports passing a custom function to be run on multiprocessing pool initialization.
