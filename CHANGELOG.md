@@ -2,7 +2,9 @@
 
 ## 0.0.3
 
-- No documented changes.
+- Replaces Offset in consumer and processing strategy with Position, which contains both offset and timestamp information. `stage_offsets` is now `stage_positions` and `commit_offsets` is now `commit_positions`, and now includes the timestamp.
+
+- Add orig_message_ts field to Commit and commit_codec. This field is included in the Kafka payload as a header.
 
 ## 0.0.2
 
