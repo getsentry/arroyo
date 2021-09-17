@@ -23,11 +23,13 @@ class Commit:
     group: str
     partition: Partition
     offset: int
-    orig_message_ts: datetime
+    orig_message_ts: Optional[datetime]
 
 
 class CommitCodec(Codec[KafkaPayload, Commit]):
     def encode(self, value: Commit) -> KafkaPayload:
+        assert value.orig_message_ts is not None
+
         return KafkaPayload(
             f"{value.partition.topic.name}:{value.partition.index}:{value.group}".encode(
                 "utf-8"
@@ -53,9 +55,12 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
             raise TypeError("payload value must be a bytes object")
 
         headers = {k: v for (k, v) in value.headers}
-        orig_message_ts = datetime.strptime(
-            headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
-        )
+        try:
+            orig_message_ts: Optional[datetime] = datetime.strptime(
+                headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
+            )
+        except KeyError:
+            orig_message_ts = None
 
         topic_name, partition_index, group = key.decode("utf-8").split(":", 3)
         offset = int(val.decode("utf-8"))
