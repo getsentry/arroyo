@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Event
@@ -10,6 +11,7 @@ from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.types import Message, Partition, Position, Topic, TPayload
 from arroyo.utils.codecs import Codec
 from arroyo.utils.concurrent import Synchronized, execute
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +136,8 @@ class SynchronizedConsumer(Consumer[TPayload]):
         # due to offset synchronization.
         self.__paused: Set[Partition] = set()
 
+        self.__metrics = get_metrics()
+
     def __run_commit_log_worker(self) -> None:
         # TODO: This needs to roll back to the initial offset.
 
@@ -209,6 +213,12 @@ class SynchronizedConsumer(Consumer[TPayload]):
         return self.__consumer.unsubscribe()
 
     def poll(self, timeout: Optional[float] = None) -> Optional[Message[TPayload]]:
+        start = time.time()
+        res = self.__poll(timeout)
+        self.__metrics.timing("synchronized.poll", time.time() - start)
+        return res
+
+    def __poll(self, timeout: Optional[float] = None) -> Optional[Message[TPayload]]:
         self.__check_commit_log_worker_running()
 
         # Resume any partitions that can be resumed (where the local
