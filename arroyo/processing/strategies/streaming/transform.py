@@ -320,6 +320,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
         self.__pool_waiting_time: Optional[float] = None
+        self.__metrics.gauge("transform.processes", processes)
 
         self.__closed = False
 
@@ -383,12 +384,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
-                    (
-                        self.__transform_function,
-                        input_batch,
-                        output_batch.block,
-                        i,
-                    ),
+                    (self.__transform_function, input_batch, output_batch.block, i,),
                 ),
             )
             return
@@ -433,9 +429,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             raise MessageRejected("no available input blocks") from e
 
         self.__batch_builder = BatchBuilder(
-            MessageBatch(input_block),
-            self.__max_batch_size,
-            self.__max_batch_time,
+            MessageBatch(input_block), self.__max_batch_size, self.__max_batch_time,
         )
 
     def submit(self, message: Message[TPayload]) -> None:
