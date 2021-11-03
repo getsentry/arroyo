@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## Unreleased
+
+- Number of processes in the multi-process poll metric added.
+
 ## 0.0.4
 
 - Handle missing `orig_message_ts` header. Since all events in the pipeline produced using an older version of arroyo may not have the header yet, temporarily support a None value for `orig_message_ts`.
