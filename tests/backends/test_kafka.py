@@ -4,6 +4,7 @@ import os
 import pickle
 import uuid
 from contextlib import closing
+from datetime import datetime
 from pickle import PickleBuffer
 from typing import Iterator, MutableSequence, Optional
 from unittest import TestCase
@@ -133,7 +134,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
 
 def test_commit_codec() -> None:
-    commit = Commit("group", Partition(Topic("topic"), 0), 0)
+    commit = Commit("group", Partition(Topic("topic"), 0), 0, datetime.now())
     assert commit_codec.decode(commit_codec.encode(commit)) == commit
 
 

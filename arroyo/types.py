@@ -63,3 +63,10 @@ class Message(Generic[TPayload]):
         # ``__slots__`` for performance reasons. The class variable names
         # would conflict with the instance slot names, causing an error.
         return f"{type(self).__name__}(partition={self.partition!r}, offset={self.offset!r})"
+
+
+@dataclass(frozen=True)
+class Position:
+    __slots__ = ["offset", "timestamp"]
+    offset: int
+    timestamp: datetime

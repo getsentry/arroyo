@@ -4,6 +4,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import (
     Callable,
     Generic,
@@ -19,7 +20,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Partition, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -64,10 +65,11 @@ class AbstractBatchWorker(ABC, Generic[TPayload, TResult]):
 
 @dataclass
 class Offsets:
-    __slots__ = ["lo", "hi"]
+    __slots__ = ["lo", "hi", "timestamp"]
 
     lo: int  # inclusive
     hi: int  # exclusive
+    timestamp: datetime
 
 
 @dataclass
@@ -100,7 +102,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, int]], None],
+        commit: Callable[[Mapping[Partition, Position]], None],
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -167,9 +169,12 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         if message.partition in self.__batch.offsets:
             self.__batch.offsets[message.partition].hi = message.next_offset
+            self.__batch.offsets[message.partition].timestamp = message.timestamp
         else:
             self.__batch.offsets[message.partition] = Offsets(
-                message.offset, message.next_offset
+                message.offset,
+                message.next_offset,
+                message.timestamp,
             )
 
     def close(self) -> None:
@@ -218,7 +223,8 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         logger.debug("Committing offsets for batch")
         commit_start = time.time()
         offsets = {
-            partition: offsets.hi for partition, offsets in self.__batch.offsets.items()
+            partition: Position(offsets.hi, offsets.timestamp)
+            for partition, offsets in self.__batch.offsets.items()
         }
         self.__commit(offsets)
         logger.debug("Committed offsets: %s", offsets)
@@ -240,7 +246,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_time = max_batch_time
 
     def create(
-        self, commit: Callable[[Mapping[Partition, int]], None]
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit, self.__worker, self.__max_batch_size, self.__max_batch_time,

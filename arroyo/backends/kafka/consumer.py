@@ -42,7 +42,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Partition, Position, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -189,7 +189,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, int] = {}
+        self.__staged_offsets: MutableMapping[Partition, Position] = {}
         self.__paused: Set[Partition] = set()
 
         self.__commit_retry_policy = commit_retry_policy
@@ -526,21 +526,23 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return [*self.__paused]
 
-    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
-        if offsets.keys() - self.__offsets.keys():
+        if positions.keys() - self.__offsets.keys():
             raise ConsumerError("cannot stage offsets for unassigned partitions")
 
-        self.__validate_offsets(offsets)
+        self.__validate_offsets(
+            {partition: position.offset for (partition, position) in positions.items()}
+        )
 
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
-        self.__staged_offsets.update(offsets)
+        self.__staged_offsets.update(positions)
 
-    def __commit(self) -> Mapping[Partition, int]:
+    def __commit(self) -> Mapping[Partition, Position]:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
@@ -550,9 +552,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             result = self.__consumer.commit(
                 offsets=[
                     ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
+                        partition.topic.name, partition.index, position.offset
                     )
-                    for partition, offset in self.__staged_offsets.items()
+                    for partition, position in self.__staged_offsets.items()
                 ],
                 asynchronous=False,
             )
@@ -561,9 +563,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         assert result is not None  # synchronous commit should return result immediately
 
-        self.__staged_offsets.clear()
-
-        offsets: MutableMapping[Partition, int] = {}
+        offsets: MutableMapping[Partition, Position] = {}
 
         for value in result:
             # The Confluent Kafka Consumer will include logical offsets in the
@@ -576,11 +576,16 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 continue
 
             assert value.offset >= 0, "expected non-negative offset"
-            offsets[Partition(Topic(value.topic), value.partition)] = value.offset
+            partition = Partition(Topic(value.topic), value.partition)
+            offsets[partition] = Position(
+                value.offset, self.__staged_offsets[partition].timestamp
+            )
+
+        self.__staged_offsets.clear()
 
         return offsets
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_positions(self) -> Mapping[Partition, Position]:
         """
         Commit staged offsets for all partitions that this consumer is
         assigned to. The return value of this method is a mapping of

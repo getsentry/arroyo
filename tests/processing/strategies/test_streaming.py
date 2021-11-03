@@ -17,7 +17,7 @@ from arroyo.processing.strategies.streaming.transform import (
     ValueTooLarge,
     parallel_transform_worker_apply,
 )
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -108,15 +108,18 @@ def test_collect() -> None:
 
     # Subsequent messages should reuse the existing batch, ...
     with assert_does_not_change(lambda: step_factory.call_count, 1):
+        second_message = next(messages)
         collect_step.poll()
-        collect_step.submit(next(messages))  # offset 1
+        collect_step.submit(second_message)  # offset 1
 
     # ...until we hit the batch size limit.
     with assert_changes(lambda: int(inner_step.close.call_count), 0, 1), assert_changes(
         lambda: int(inner_step.join.call_count), 0, 1
     ), assert_changes(lambda: commit_function.call_count, 0, 1):
         collect_step.poll()
-        assert commit_function.call_args == call({partition: 2})
+        assert commit_function.call_args == call(
+            {partition: Position(2, second_message.timestamp)}
+        )
 
     step_factory.return_value = inner_step = Mock()
 

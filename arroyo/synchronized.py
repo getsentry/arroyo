@@ -1,35 +1,48 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Event
 from typing import Callable, Mapping, MutableMapping, Optional, Sequence, Set
 
 from arroyo.backends.abstract import Consumer
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import Message, Partition, Position, Topic, TPayload
 from arroyo.utils.codecs import Codec
 from arroyo.utils.concurrent import Synchronized, execute
 
 logger = logging.getLogger(__name__)
 
+DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
 
 @dataclass(frozen=True)
 class Commit:
-    __slots__ = ["group", "partition", "offset"]
+    __slots__ = ["group", "partition", "offset", "orig_message_ts"]
 
     group: str
     partition: Partition
     offset: int
+    orig_message_ts: Optional[datetime]
 
 
 class CommitCodec(Codec[KafkaPayload, Commit]):
     def encode(self, value: Commit) -> KafkaPayload:
+        assert value.orig_message_ts is not None
+
         return KafkaPayload(
             f"{value.partition.topic.name}:{value.partition.index}:{value.group}".encode(
                 "utf-8"
             ),
             f"{value.offset}".encode("utf-8"),
-            [],
+            [
+                (
+                    "orig_message_ts",
+                    datetime.strftime(value.orig_message_ts, DATETIME_FORMAT).encode(
+                        "utf-8"
+                    ),
+                )
+            ],
         )
 
     def decode(self, value: KafkaPayload) -> Commit:
@@ -41,9 +54,22 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
         if not isinstance(val, bytes):
             raise TypeError("payload value must be a bytes object")
 
+        headers = {k: v for (k, v) in value.headers}
+        try:
+            orig_message_ts: Optional[datetime] = datetime.strptime(
+                headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
+            )
+        except KeyError:
+            orig_message_ts = None
+
         topic_name, partition_index, group = key.decode("utf-8").split(":", 3)
         offset = int(val.decode("utf-8"))
-        return Commit(group, Partition(Topic(topic_name), int(partition_index)), offset)
+        return Commit(
+            group,
+            Partition(Topic(topic_name), int(partition_index)),
+            offset,
+            orig_message_ts,
+        )
 
 
 commit_codec = CommitCodec()
@@ -266,11 +292,11 @@ class SynchronizedConsumer(Consumer[TPayload]):
     def seek(self, offsets: Mapping[Partition, int]) -> None:
         return self.__consumer.seek(offsets)
 
-    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
-        return self.__consumer.stage_offsets(offsets)
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+        return self.__consumer.stage_positions(positions)
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
-        return self.__consumer.commit_offsets()
+    def commit_positions(self) -> Mapping[Partition, Position]:
+        return self.__consumer.commit_positions()
 
     def close(self, timeout: Optional[float] = None) -> None:
         # TODO: Be careful to ensure there are not any deadlock conditions
