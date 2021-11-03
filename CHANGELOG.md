@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Number of processes in the multi-process poll metric added.
+- Number of processes in the multi-process poll metric added. Its key is
+  `transform.processes`.
 
 ## 0.0.4
 
