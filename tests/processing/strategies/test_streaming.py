@@ -164,9 +164,7 @@ def test_message_batch() -> None:
 
 def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(
-        message.payload.key,
-        message.payload.value * 2,
-        message.payload.headers,
+        message.payload.key, message.payload.value * 2, message.payload.headers,
     )
 
 
@@ -196,9 +194,7 @@ def test_parallel_transform_worker_apply() -> None:
     assert output_block.size == 4096
 
     index, output_batch = parallel_transform_worker_apply(
-        transform_payload_expand,
-        input_batch,
-        output_block,
+        transform_payload_expand, input_batch, output_block,
     )
 
     # The first batch should be able to fit 2 messages.
@@ -206,10 +202,7 @@ def test_parallel_transform_worker_apply() -> None:
     assert len(output_batch) == 2
 
     index, output_batch = parallel_transform_worker_apply(
-        transform_payload_expand,
-        input_batch,
-        output_block,
-        index,
+        transform_payload_expand, input_batch, output_block, index,
     )
 
     # The second batch should be able to fit one message.
@@ -219,10 +212,7 @@ def test_parallel_transform_worker_apply() -> None:
     # The last message is too large to fit in the batch.
     with pytest.raises(ValueTooLarge):
         parallel_transform_worker_apply(
-            transform_payload_expand,
-            input_batch,
-            output_block,
-            index,
+            transform_payload_expand, input_batch, output_block, index,
         )
     smm.shutdown()
 
@@ -258,6 +248,7 @@ def test_parallel_transform_step() -> None:
         [],
         [
             GaugeCall("batches_in_progress", 0.0, tags=None),
+            GaugeCall("transform.processes", 2.0, tags=None),
             GaugeCall("batches_in_progress", 1.0, tags=None),
             TimingCall("batch.size.msg", 3, None),
             TimingCall("batch.size.bytes", 4000, None),
