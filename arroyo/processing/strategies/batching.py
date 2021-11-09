@@ -115,6 +115,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         self.__batch: Optional[Batch[TResult]] = None
         self.__closed = False
+        self.__flush_done = time.time()
 
     def poll(self) -> None:
         """
@@ -126,7 +127,12 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             len(self.__batch.results) >= self.__max_batch_size
             or time.time() > self.__batch.created + self.__max_batch_time / 1000.0
         ):
+
+            self.__metrics.timing(
+                "processing_phase", time.time() - self.__flush_done
+            )
             self.__flush()
+            self.__flush_done = time.time()
 
     def submit(self, message: Message[TPayload]) -> None:
         """
@@ -208,6 +214,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             self.__worker.flush_batch(self.__batch.results)
             flush_duration = (time.time() - flush_start) * 1000
             logger.info("Worker flush took %dms", flush_duration)
+            self.__metrics.increment("batch.flush.items", batch_results_length)
             self.__metrics.timing("batch.flush", flush_duration)
             self.__metrics.timing(
                 "batch.flush.normalized", flush_duration / batch_results_length
@@ -242,8 +249,5 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
-            commit,
-            self.__worker,
-            self.__max_batch_size,
-            self.__max_batch_time,
+            commit, self.__worker, self.__max_batch_size, self.__max_batch_time,
         )
