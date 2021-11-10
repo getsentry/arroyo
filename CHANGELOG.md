@@ -1,6 +1,6 @@
 # Changelog and versioning
 
-## Unreleased
+## 0.0.5
 
 - Number of processes in the multi-process poll metric added. Its key is
   `transform.processes`.
