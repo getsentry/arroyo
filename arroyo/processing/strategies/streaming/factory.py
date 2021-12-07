@@ -55,6 +55,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         input_block_size: Optional[int],
         output_block_size: Optional[int],
         initialize_parallel_transform: Optional[Callable[[], None]] = None,
+        batch_execute: Optional[bool] = False,
     ) -> None:
         self.__prefilter = prefilter
         self.__process_message = process_message
@@ -62,6 +63,8 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
 
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
+
+        self.__batch_execute = batch_execute
 
         if processes is not None:
             assert input_block_size is not None, "input block size required"
@@ -110,6 +113,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
                 input_block_size=self.__input_block_size,
                 output_block_size=self.__output_block_size,
                 initializer=self.__initialize_parallel_transform,
+                batch_execute=self.__batch_execute,
             )
 
         if self.__prefilter is not None:

@@ -230,44 +230,83 @@ def parallel_transform_worker_apply(
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
+    batch_execute: bool = False,
 ) -> Tuple[int, MessageBatch[TTransformed]]:
     output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
 
     i = start_index
-    while i < len(input_batch):
-        message = input_batch[i]
-
+    if batch_execute:
+        chunk = [input_batch[ind] for ind in range(len(input_batch) - start_index)]
         try:
-            result = function(message)
+            result = function(chunk)
         except Exception:
-            # The remote traceback thrown when retrieving the result from the
-            # pool elides a lot of useful data (and usually includes a
-            # truncated traceback), logging it here allows us to get this
-            # information at the expense of sending duplicate events to Sentry
-            # (one from the child and one from the parent.)
             logger.warning(
-                "Caught exception while applying %r to %r!",
+                "Caught exception while applying %r to %r messages!",
                 function,
-                message,
+                len(chunk),
                 exc_info=True,
             )
             raise
 
-        try:
-            output_batch.append(
-                Message(message.partition, message.offset, result, message.timestamp)
-            )
-        except ValueTooLarge:
-            # If the output batch cannot accept the transformed message when
-            # the batch is empty, we'll never be able to write it and should
-            # error instead of retrying. Otherwise, we need to return the
-            # values we've already accumulated and continue processing later.
-            if len(output_batch) == 0:
-                raise
+        for ind, message in enumerate(chunk):
+            try:
+                output_batch.append(
+                    Message(
+                        message.partition,
+                        message.offset,
+                        result[ind],
+                        message.timestamp,
+                    )
+                )
+            except ValueTooLarge:
+                # If the output batch cannot accept the transformed message when
+                # the batch is empty, we'll never be able to write it and should
+                # error instead of retrying. Otherwise, we need to return the
+                # values we've already accumulated and continue processing later.
+                if len(output_batch) == 0:
+                    raise
+                else:
+                    break
             else:
-                break
-        else:
-            i += 1
+                i += 1
+
+    else:
+        while i < len(input_batch):
+            message = input_batch[i]
+
+            try:
+                result = function(message)
+            except Exception:
+                # The remote traceback thrown when retrieving the result from the
+                # pool elides a lot of useful data (and usually includes a
+                # truncated traceback), logging it here allows us to get this
+                # information at the expense of sending duplicate events to Sentry
+                # (one from the child and one from the parent.)
+                logger.warning(
+                    "Caught exception while applying %r to %r!",
+                    function,
+                    message,
+                    exc_info=True,
+                )
+                raise
+
+            try:
+                output_batch.append(
+                    Message(
+                        message.partition, message.offset, result, message.timestamp
+                    )
+                )
+            except ValueTooLarge:
+                # If the output batch cannot accept the transformed message when
+                # the batch is empty, we'll never be able to write it and should
+                # error instead of retrying. Otherwise, we need to return the
+                # values we've already accumulated and continue processing later.
+                if len(output_batch) == 0:
+                    raise
+                else:
+                    break
+            else:
+                i += 1
 
     return (i, output_batch)
 
@@ -283,6 +322,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         input_block_size: int,
         output_block_size: int,
         initializer: Optional[Callable[[], None]] = None,
+        batch_execute: Optional[bool] = False,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
@@ -291,6 +331,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
+
+        self.__batch_execute = batch_execute
 
         self.__pool = Pool(
             processes,
@@ -344,7 +386,13 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
-                    (self.__transform_function, batch, self.__output_blocks.pop()),
+                    (
+                        self.__transform_function,
+                        batch,
+                        self.__output_blocks.pop(),
+                        0,
+                        self.__batch_execute,
+                    ),
                 ),
             )
         )
@@ -384,7 +432,13 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
-                    (self.__transform_function, input_batch, output_batch.block, i,),
+                    (
+                        self.__transform_function,
+                        input_batch,
+                        output_batch.block,
+                        i,
+                        self.__batch_execute,
+                    ),
                 ),
             )
             return
@@ -429,7 +483,9 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             raise MessageRejected("no available input blocks") from e
 
         self.__batch_builder = BatchBuilder(
-            MessageBatch(input_block), self.__max_batch_size, self.__max_batch_time,
+            MessageBatch(input_block),
+            self.__max_batch_size,
+            self.__max_batch_time,
         )
 
     def submit(self, message: Message[TPayload]) -> None:
