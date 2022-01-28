@@ -182,10 +182,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 "invalid value for 'enable.auto.offset.store' configuration"
             )
 
-        # NOTE: Offsets are explicitly managed as part of the assignment
-        # callback, so preemptively resetting offsets is not enabled.
         self.__consumer = ConfluentConsumer(
-            {**configuration, "auto.offset.reset": "error"}
+            {"auto.offset.reset": "error", **configuration}
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
