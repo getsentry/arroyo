@@ -1,6 +1,7 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
+from time import time
+from dataclasses import dataclass
 from threading import Event
 from typing import Callable, Mapping, MutableMapping, Optional, Sequence, Set
 
@@ -10,6 +11,7 @@ from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.types import Message, Partition, Position, Topic, TPayload
 from arroyo.utils.codecs import Codec
 from arroyo.utils.concurrent import Synchronized, execute
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +136,8 @@ class SynchronizedConsumer(Consumer[TPayload]):
         # due to offset synchronization.
         self.__paused: Set[Partition] = set()
 
+        self.__metrics = get_metrics()
+
     def __run_commit_log_worker(self) -> None:
         # TODO: This needs to roll back to the initial offset.
 
@@ -160,6 +164,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
             if commit.group not in self.__commit_log_groups:
                 continue
 
+            now = time()
             with self.__remote_offsets.get() as remote_offsets:
                 # NOTE: This will store data about partitions that are not
                 # actually part of the subscription or assignment. This
@@ -169,6 +174,24 @@ class SynchronizedConsumer(Consumer[TPayload]):
                 # initial load of the topic and makes the implementation
                 # quite a bit simpler.
                 remote_offsets[commit.group][commit.partition] = commit.offset
+
+            if commit.orig_message_ts is not None:
+                self.__metrics.timing(
+                    "commit_log_msg_latency",
+                    (now - datetime.timestamp(commit.orig_message_ts)) * 1000,
+                    tags={
+                        "partition": str(commit.partition.index),
+                        "group": commit.group,
+                    }
+                )
+            self.__metrics.timing(
+                "commit_log_latency",
+                (now - datetime.timestamp(message.timestamp)) * 1000,
+                tags={
+                    "partition": str(commit.partition.index),
+                    "group": commit.group,
+                }
+            )
 
         self.__commit_log_consumer.close()
 
