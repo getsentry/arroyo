@@ -66,7 +66,7 @@ class Batch(Generic[TPayload]):
     def terminate(self) -> None:
         self.__closed = True
 
-        logger.debug("Terminating %r...", self.__step)
+        logger.info("Terminating %r...", self.__step)
         self.__step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
