@@ -142,7 +142,7 @@ class MessageBatch(Generic[TPayload]):
         return pickle.loads(
             data,
             buffers=[
-                self.block.buf[offset : offset + length].tobytes()
+                self.block.buf[offset: offset + length].tobytes()
                 for offset, length in buffers
             ],
         )
@@ -179,7 +179,7 @@ class MessageBatch(Generic[TPayload]):
                 raise ValueTooLarge(
                     f"value exceeds available space in block, {length} bytes needed but {self.block.size - offset} bytes free"
                 )
-            self.block.buf[offset : offset + length] = value
+            self.block.buf[offset: offset + length] = value
             self.__offset += length
             buffers.append((offset, length))
 
@@ -464,13 +464,13 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
     def terminate(self) -> None:
         self.__closed = True
 
-        logger.debug("Terminating %r...", self.__pool)
+        logger.info("Terminating %r...", self.__pool)
         self.__pool.terminate()
 
-        logger.debug("Shutting down %r...", self.__shared_memory_manager)
+        logger.info("Shutting down %r...", self.__shared_memory_manager)
         self.__shared_memory_manager.shutdown()
 
-        logger.debug("Terminating %r...", self.__next_step)
+        logger.info("Terminating %r...", self.__next_step)
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:

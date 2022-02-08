@@ -116,9 +116,9 @@ class StreamProcessor(Generic[TPayload]):
                 self.__processing_strategy.terminate()
                 self.__processing_strategy = None
 
-            logger.debug("Closing %r...", self.__consumer)
+            logger.info("Closing %r...", self.__consumer)
             self.__consumer.close()
-
+            logger.info("Processor terminated")
             raise
 
     def _run_once(self) -> None:
