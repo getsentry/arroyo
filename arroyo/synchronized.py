@@ -164,6 +164,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
             if commit.group not in self.__commit_log_groups:
                 continue
 
+            now = time()
             with self.__remote_offsets.get() as remote_offsets:
                 # NOTE: This will store data about partitions that are not
                 # actually part of the subscription or assignment. This
@@ -177,18 +178,18 @@ class SynchronizedConsumer(Consumer[TPayload]):
             if commit.orig_message_ts is not None:
                 self.__metrics.timing(
                     "commit_log_msg_latency",
-                    (time() - datetime.timestamp(commit.orig_message_ts)) * 1000,
+                    (now - datetime.timestamp(commit.orig_message_ts)) * 1000,
                     tags={
                         "partition": str(commit.partition.index),
-                        "consumer_group": commit.group,
+                        "group": commit.group,
                     }
                 )
             self.__metrics.timing(
                 "commit_log_latency",
-                (time() - datetime.timestamp(message.timestamp)) * 1000,
+                (now - datetime.timestamp(message.timestamp)) * 1000,
                 tags={
                     "partition": str(commit.partition.index),
-                    "consumer_group": commit.group,
+                    "group": commit.group,
                 }
             )
 
