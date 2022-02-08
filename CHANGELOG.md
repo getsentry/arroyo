@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.0.6
+
+### Various fixes & improvements
+
+- Increase log level (#39) by @fpacifici
+- feat(perf) Add latency metrics to the messages coming from the commit log (#38) by @fpacifici
+
 ## 0.0.5
 
 - Number of processes in the multi-process poll metric added. Its key is
