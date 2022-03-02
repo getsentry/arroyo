@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from multiprocessing.managers import SharedMemoryManager
 from threading import Semaphore
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Mapping, Optional
 from unittest.mock import Mock, call
 
 import pytest
@@ -270,9 +270,6 @@ class ByPassProcessingStep(ProcessingStrategy[int]):
     ProcessingStep implementation that acquires a lock when join is called to mimic a long wait.
     """
 
-    def __init__(self):
-        pass
-
     def submit(self, message: Message[int]) -> None:
         pass
 
@@ -289,13 +286,13 @@ class ByPassProcessingStep(ProcessingStrategy[int]):
         pass
 
 
-def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch():
+def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch() -> None:
     """
     Test that when the commit fails for a previous batch, the exception thrown from
     the future makes the collect step throw an exception.
     """
 
-    def commit_function():
+    def commit_function(commit_map: Mapping[Partition, Position]) -> None:
         raise Exception
 
     def create_step_factory() -> ProcessingStrategy[int]:
