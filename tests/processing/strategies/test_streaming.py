@@ -265,6 +265,58 @@ def test_parallel_collect_fills_new_batch_when_previous_batch_still_running() ->
     assert collect_step.batch != prev_batch
 
 
+class ByPassProcessingStep(ProcessingStrategy[int]):
+    """
+    ProcessingStep implementation that acquires a lock when join is called to mimic a long wait.
+    """
+
+    def __init__(self):
+        pass
+
+    def submit(self, message: Message[int]) -> None:
+        pass
+
+    def poll(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def terminate(self) -> None:
+        pass
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        pass
+
+
+def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch():
+    """
+    Test that when the commit fails for a previous batch, the exception thrown from
+    the future makes the collect step throw an exception.
+    """
+
+    def commit_function():
+        raise Exception
+
+    def create_step_factory() -> ProcessingStrategy[int]:
+        return ByPassProcessingStep()
+
+    partition = Partition(Topic("topic"), 0)
+    messages = message_generator(partition, 0)
+
+    collect_step = ParallelCollectStep(create_step_factory, commit_function, 1, 60)
+    collect_step.submit(next(messages))
+    # This step will close the batch and let threadpool finish it.
+    collect_step.poll()
+
+    collect_step.submit(next(messages))
+    with pytest.raises(Exception):
+        # This step will close the new batch. While doing so it will check the status of the
+        # future. The future should throw an exception since commit_function will raise one.
+        # The exception should be raised now.
+        collect_step.poll()
+
+
 def test_message_batch() -> None:
     partition = Partition(Topic("test"), 0)
 

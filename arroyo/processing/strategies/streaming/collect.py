@@ -154,7 +154,7 @@ class CollectStep(ProcessingStep[TPayload]):
 class ParallelCollectStep(CollectStep[TPayload]):
     """
     ParallelCollectStep is similar to CollectStep except it allows the closing and reset of the
-    batch to happen in a threadpool. What is allows is for the next batch to start getting
+    batch to happen in a threadpool. What this allows for is the next batch to start getting
     filled in while the previous batch is still being processed.
 
     The threadpool will have only 1 worker since we want to perform writes to clickhouse sequentially
@@ -179,7 +179,8 @@ class ParallelCollectStep(CollectStep[TPayload]):
         new batch.
         """
         if self.future:
-            self.future.result()
+            # If any exceptions are raised they should get bubbled up.
+            self.future.result(timeout=5)
 
         self.future = self.__threadpool.submit(self.__finish_batch, batch=self.batch)
         self.batch = None
