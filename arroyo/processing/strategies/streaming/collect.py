@@ -3,22 +3,12 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import (
-    Awaitable,
-    Callable,
-    Generic,
-    Mapping,
-    MutableMapping,
-    Optional,
-    TypeVar,
-)
+from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, Partition, Position, TPayload
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 @dataclass
@@ -180,7 +170,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
     ):
         super().__init__(step_factory, commit_function, max_batch_size, max_batch_time)
         self.__threadpool = ThreadPoolExecutor(max_workers=1)
-        self.future: Optional[Future[Awaitable]] = None
+        self.future: Optional[Future[None]] = None
 
     def close_and_reset_batch(self) -> None:
         """
