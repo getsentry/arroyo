@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
@@ -97,54 +98,106 @@ class CollectStep(ProcessingStep[TPayload]):
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
 
-        self.__batch: Optional[Batch[TPayload]] = None
+        self.batch: Optional[Batch[TPayload]] = None
         self.__closed = False
 
-    def __close_and_reset_batch(self) -> None:
-        assert self.__batch is not None
-        self.__batch.close()
-        self.__batch.join()
-        logger.info("Completed processing %r.", self.__batch)
-        self.__batch = None
+    def close_and_reset_batch(self) -> None:
+        assert self.batch is not None
+        self.batch.close()
+        self.batch.join()
+        logger.info("Completed processing %r.", self.batch)
+        self.batch = None
 
     def poll(self) -> None:
-        if self.__batch is None:
+        if self.batch is None:
             return
 
-        self.__batch.poll()
+        self.batch.poll()
 
         # XXX: This adds a substantially blocking operation to the ``poll``
         # method which is bad.
-        if len(self.__batch) >= self.__max_batch_size:
-            logger.debug("Size limit reached, closing %r...", self.__batch)
-            self.__close_and_reset_batch()
-        elif self.__batch.duration() >= self.__max_batch_time:
-            logger.debug("Time limit reached, closing %r...", self.__batch)
-            self.__close_and_reset_batch()
+        if len(self.batch) >= self.__max_batch_size:
+            logger.debug("Size limit reached, closing %r...", self.batch)
+            self.close_and_reset_batch()
+        elif self.batch.duration() >= self.__max_batch_time:
+            logger.debug("Time limit reached, closing %r...", self.batch)
+            self.close_and_reset_batch()
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
 
-        if self.__batch is None:
-            self.__batch = Batch(self.__step_factory(), self.__commit_function)
+        if self.batch is None:
+            self.batch = Batch(self.__step_factory(), self.__commit_function)
 
-        self.__batch.submit(message)
+        self.batch.submit(message)
 
     def close(self) -> None:
         self.__closed = True
 
-        if self.__batch is not None:
-            logger.debug("Closing %r...", self.__batch)
-            self.__batch.close()
+        if self.batch is not None:
+            logger.debug("Closing %r...", self.batch)
+            self.batch.close()
 
     def terminate(self) -> None:
         self.__closed = True
 
-        if self.__batch is not None:
-            self.__batch.terminate()
+        if self.batch is not None:
+            self.batch.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        if self.__batch is not None:
-            self.__batch.join(timeout)
-            logger.info("Completed processing %r.", self.__batch)
-            self.__batch = None
+        if self.batch is not None:
+            self.batch.join(timeout)
+            logger.info("Completed processing %r.", self.batch)
+            self.batch = None
+
+
+class ParallelCollectStep(CollectStep[TPayload]):
+    """
+    ParallelCollectStep is similar to CollectStep except it allows the closing and reset of the
+    batch to happen in a threadpool. What this allows for is the next batch to start getting
+    filled in while the previous batch is still being processed.
+
+    The threadpool will have only 1 worker since we want to perform writes to clickhouse sequentially
+    so that kafka offsets are written in order.
+    """
+
+    def __init__(
+        self,
+        step_factory: Callable[[], ProcessingStep[TPayload]],
+        commit_function: Callable[[Mapping[Partition, Position]], None],
+        max_batch_size: int,
+        max_batch_time: float,
+    ):
+        super().__init__(step_factory, commit_function, max_batch_size, max_batch_time)
+        self.__threadpool = ThreadPoolExecutor(max_workers=1)
+        self.future: Optional[Future[None]] = None
+
+    def close_and_reset_batch(self) -> None:
+        """
+        Closes the current batch in an asynchronous manner. Waits for previous work to be completed before proceeding
+        the next one. We can provide the existing batch to the threadpool since the collector is going to make a
+        new batch.
+        """
+        if self.future:
+            # If any exceptions are raised they should get bubbled up.
+            self.future.result(timeout=5)
+
+        self.future = self.__threadpool.submit(self.__finish_batch, batch=self.batch)
+        self.batch = None
+
+    @staticmethod
+    def __finish_batch(batch: Batch[TPayload]) -> None:
+        assert batch is not None
+
+        batch.close()
+        batch.join()
+        logger.info("Completed processing %r.", batch)
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        # We should finish the previous batch before proceeding to the finish the existing one.
+        if self.future is not None:
+            self.future.result(timeout)
+
+        self.__threadpool.shutdown()
+
+        super().join(timeout)

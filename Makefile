@@ -1,4 +1,4 @@
-.PHONY: install lint setup-git
+.PHONY: install lint setup-git tests
 
 setup-git:
 	pip install pre-commit==2.13.0
@@ -10,3 +10,6 @@ install:
 
 lint:
 	mypy . --strict
+
+tests:
+	pytest -vv
