@@ -267,7 +267,7 @@ def test_parallel_collect_fills_new_batch_when_previous_batch_still_running() ->
 
 class ByPassProcessingStep(ProcessingStrategy[int]):
     """
-    ProcessingStep implementation that acquires a lock when join is called to mimic a long wait.
+    ProcessingStep implementation that does nothing
     """
 
     def submit(self, message: Message[int]) -> None:
