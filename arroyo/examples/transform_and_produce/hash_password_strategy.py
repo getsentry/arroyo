@@ -38,16 +38,12 @@ class HashPasswordStrategy(ProcessingStrategy[KafkaPayload]):
             "utf-8"
         )
 
-        payload = KafkaPayload(
-            message.payload.key, data, headers=message.payload.headers
-        )
-
         # Build a new message and submit to next step
         self.__next_step.submit(
             Message(
                 message.partition,
                 message.offset,
-                payload,
+                KafkaPayload(key=None, value=data, headers=[]),
                 message.timestamp,
             )
         )

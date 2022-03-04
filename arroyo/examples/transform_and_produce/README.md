@@ -18,7 +18,7 @@ The process is fairly simple:
 
 ---
 
-(Make sure to have `kcat` installed, and read up on usage [here](https://docs.confluent.io/platform/current/app-development/kafkacat-usage.html))
+Install `kcat` and read up on usage [here](https://docs.confluent.io/platform/current/app-development/kafkacat-usage.html)
 
 <strong>To begin, start the following commands in different shells:</strong>
 
@@ -45,9 +45,11 @@ $ python3 arroyo/examples/transform_and_produce/script.py
 <strong>At this point we have all the pieces in place and can start manually producing messages to `raw-topic`:</strong>
 
 Produce a message to the topic by typing in a message in the expected format and hitting `Ctrl-D`.
+
 ```shell
 $ kcat -b localhost:9092 -t raw-topic -X broker.address.family=v4 -P
 {"username": "user1", "password": "Password1!"}
 <Ctrl-D>
 ```
+
 Now the message should appear in the `raw-topic` shell, followed by another message in the `hashed-topic` shell. The password field of the message in `hashed-topic` should be the SHA256 hash of the password field of the message we manually produced to `raw-topic`.

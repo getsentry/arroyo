@@ -11,7 +11,7 @@ from typing import (
     Optional,
 )
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import Message, Partition, Position, Topic
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,10 @@ class MessageToFuture(NamedTuple):
     future: Future[Message[KafkaPayload]]
 
 
-class ProduceStep(ProcessingStep[KafkaPayload]):
+class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
     """
-    Simple step that produces a given message onto a topic.
+    Produces a message onto a topic asynchronously and commits
+    the offset of the original message once producing is complete.
 
     Meant to be used as the last step in a series of processing steps.
 
@@ -57,7 +58,7 @@ class ProduceStep(ProcessingStep[KafkaPayload]):
         Check status of any async tasks, in this case check status of
         messages produced by producer and commit releveant offset.
         """
-        self._commit()
+        self._commit_done_offsets()
 
     def submit(self, message: Message[KafkaPayload]) -> None:
         assert not self.__closed
@@ -75,10 +76,13 @@ class ProduceStep(ProcessingStep[KafkaPayload]):
         self.close()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self._commit()
+        self._commit_done_offsets()
 
-    def _commit(self) -> None:
-
+    def _commit_done_offsets(self) -> None:
+        """
+        Commit the latest offset of any completed message from the original
+        consumer.
+        """
         commitable: Optional[Message[KafkaPayload]] = None
 
         while self.__futures and self.__futures[0].future.done():
