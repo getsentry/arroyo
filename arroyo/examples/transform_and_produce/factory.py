@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+    """
+    A factory which builds the strategy.
+
+    Since this strategy is supposed to simply hash a password and then produce a new message,
+    all it needs is the producer + topic to produce to.
+    """
+
     def __init__(
         self,
         producer: KafkaProducer,

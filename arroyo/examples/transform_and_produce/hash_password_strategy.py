@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 class HashPasswordStrategy(ProcessingStrategy[KafkaPayload]):
     """
     Hash Password Step.
+
+    Given a message, hashes password, submits hashed credentials to next step.
     """
 
     def __init__(self, next_step: ProcessingStep[KafkaPayload]) -> None:
@@ -29,6 +31,7 @@ class HashPasswordStrategy(ProcessingStrategy[KafkaPayload]):
     def submit(self, message: Message[KafkaPayload]) -> None:
         assert not self.__closed
 
+        # Expected format of the message is {"username": "<username>", "password": "<password>"}
         auth = json.loads(message.payload.value)
         hashed = self._hash_password(auth["password"])
         data = json.dumps({"username": auth["username"], "password": hashed}).encode(
@@ -39,6 +42,7 @@ class HashPasswordStrategy(ProcessingStrategy[KafkaPayload]):
             message.payload.key, data, headers=message.payload.headers
         )
 
+        # Build a new message and submit to next step
         self.__next_step.submit(
             Message(
                 message.partition,
