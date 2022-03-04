@@ -3,7 +3,10 @@ from typing import Callable, Mapping, Optional, Protocol, TypeVar
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy, ProcessingStrategyFactory
-from arroyo.processing.strategies.streaming.collect import CollectStep
+from arroyo.processing.strategies.streaming.collect import (
+    CollectStep,
+    ParallelCollectStep,
+)
 from arroyo.processing.strategies.streaming.filter import FilterStep
 from arroyo.processing.strategies.streaming.transform import (
     ParallelTransformStep,
@@ -55,6 +58,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         input_block_size: Optional[int],
         output_block_size: Optional[int],
         initialize_parallel_transform: Optional[Callable[[], None]] = None,
+        parallel_collect: bool = False,
     ) -> None:
         self.__prefilter = prefilter
         self.__process_message = process_message
@@ -78,6 +82,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__input_block_size = input_block_size
         self.__output_block_size = output_block_size
         self.__initialize_parallel_transform = initialize_parallel_transform
+        self.__parallel_collect = parallel_collect
 
     def __should_accept(self, message: Message[TPayload]) -> bool:
         assert self.__prefilter is not None
@@ -86,11 +91,17 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     def create(
         self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
-        collect = CollectStep(
-            self.__collector,
-            commit,
-            self.__max_batch_size,
-            self.__max_batch_time,
+        collect = (
+            ParallelCollectStep(
+                self.__collector, commit, self.__max_batch_size, self.__max_batch_time
+            )
+            if self.__parallel_collect
+            else CollectStep(
+                self.__collector,
+                commit,
+                self.__max_batch_size,
+                self.__max_batch_time,
+            )
         )
 
         transform_function = self.__process_message

@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.7
+
+### Various fixes & improvements
+
+- perf(collect): Add ParallelCollect step (#41) by @nikhars
+
 ## 0.0.6
 
 ### Various fixes & improvements
