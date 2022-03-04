@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections import deque
 from concurrent.futures import Future
 
@@ -11,7 +12,6 @@ from typing import (
 )
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-
 from arroyo.types import Message, Partition, Position, Topic
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class MessageToFuture(NamedTuple):
     message: Message[KafkaPayload]
-    future: Future  # [Message[KafkaPayload]]
+    future: Future[Message[KafkaPayload]]
 
 
 class ProduceStep(ProcessingStep[KafkaPayload]):

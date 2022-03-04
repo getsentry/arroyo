@@ -31,7 +31,7 @@ if __name__ == "__main__":
                 "bootstrap.servers": "localhost:9092",
             },
             auto_offset_reset="latest",
-            group_id="rahul-group",
+            group_id="hash-password-group",
         )
     )
 
