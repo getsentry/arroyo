@@ -194,10 +194,13 @@ class ParallelCollectStep(CollectStep[TPayload]):
         logger.info("Completed processing %r.", batch)
 
     def join(self, timeout: Optional[float] = None) -> None:
+        work_time = 0.0
         # We should finish the previous batch before proceeding to the finish the existing one.
         if self.future is not None:
+            previous_time = time.time()
             self.future.result(timeout)
+            work_time = time.time() - previous_time
 
         self.__threadpool.shutdown()
 
-        super().join(timeout)
+        super().join((timeout - work_time) if timeout else None)
