@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Deque,
     Mapping,
+    MutableMapping,
     NamedTuple,
     Optional,
 )
@@ -83,17 +84,19 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
         Commit the latest offset of any completed message from the original
         consumer.
         """
-        commitable: Optional[Message[KafkaPayload]] = None
+        commitable: MutableMapping[Partition, Message[KafkaPayload]] = {}
 
         while self.__futures and self.__futures[0].future.done():
-            commitable, _ = self.__futures.popleft()
+            message, _ = self.__futures.popleft()
+            # overwrite any existing message as we assume the deque is in order
+            # committing offset x means all offsets up to and including x are processed
+            commitable[message.partition] = message
 
-        # Commit the latest offset that has its corresponding produce finished
+        # Commit the latest offset that has its corresponding produce finished, per partition
         if commitable is not None:
             self.__commit(
                 {
-                    commitable.partition: Position(
-                        commitable.offset, commitable.timestamp
-                    )
+                    partition: Position(message.offset, message.timestamp)
+                    for partition, message in commitable.items()
                 }
             )
