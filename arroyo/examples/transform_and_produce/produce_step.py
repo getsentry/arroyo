@@ -3,6 +3,7 @@ from collections import deque
 from concurrent.futures import Future
 
 import logging
+import time
 from typing import (
     Callable,
     Deque,
@@ -57,9 +58,9 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
     def poll(self) -> None:
         """
         Check status of any async tasks, in this case check status of
-        messages produced by producer and commit releveant offset.
+        messages produced by producer and commit relevant offset.
         """
-        self._commit_done_offsets()
+        self._commit_and_prune_futures()
 
     def submit(self, message: Message[KafkaPayload]) -> None:
         assert not self.__closed
@@ -77,13 +78,15 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
         self.close()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self._commit_done_offsets()
+        self._commit_and_prune_futures(timeout)
 
-    def _commit_done_offsets(self) -> None:
+    def _commit_and_prune_futures(self, timeout: Optional[float] = None) -> None:
         """
         Commit the latest offset of any completed message from the original
         consumer.
         """
+        start = time.perf_counter()
+
         commitable: MutableMapping[Partition, Message[KafkaPayload]] = {}
 
         while self.__futures and self.__futures[0].future.done():
@@ -91,6 +94,9 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
             # overwrite any existing message as we assume the deque is in order
             # committing offset x means all offsets up to and including x are processed
             commitable[message.partition] = message
+
+            if timeout is not None and time.perf_counter() - start > timeout:
+                return
 
         # Commit the latest offset that has its corresponding produce finished, per partition
         if commitable is not None:
