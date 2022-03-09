@@ -21,7 +21,7 @@ RAW_TOPIC = Topic("raw-topic")
 HASHED_TOPIC = Topic("hashed-topic")
 
 # Where the broker is, localhost:9092 when running locally
-BOOTSTRAP_SERVERS = os.environ.get("BOOTSTRAP_SERVERS") or ["localhost:9092"]
+BOOTSTRAP_SERVERS = [os.environ.get("BOOTSTRAP_SERVERS") or "localhost:9092"]
 
 
 if __name__ == "__main__":

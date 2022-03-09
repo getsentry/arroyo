@@ -87,22 +87,23 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
         """
         start = time.perf_counter()
 
-        commitable: MutableMapping[Partition, Message[KafkaPayload]] = {}
+        committable: MutableMapping[Partition, Message[KafkaPayload]] = {}
 
         while self.__futures and self.__futures[0].future.done():
             message, _ = self.__futures.popleft()
             # overwrite any existing message as we assume the deque is in order
             # committing offset x means all offsets up to and including x are processed
-            commitable[message.partition] = message
+            committable[message.partition] = message
 
             if timeout is not None and time.perf_counter() - start > timeout:
-                return
+                break
 
         # Commit the latest offset that has its corresponding produce finished, per partition
-        if commitable is not None:
+
+        if committable:
             self.__commit(
                 {
                     partition: Position(message.offset, message.timestamp)
-                    for partition, message in commitable.items()
+                    for partition, message in committable.items()
                 }
             )
