@@ -7,6 +7,7 @@ from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, Partition, Position, TPayload
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,8 @@ class CollectStep(ProcessingStep[TPayload]):
 
         self.batch: Optional[Batch[TPayload]] = None
         self.__closed = False
+        self._metrics = get_metrics()
+        self._collect_poll_time = 0
 
     def close_and_reset_batch(self) -> None:
         assert self.batch is not None
@@ -107,8 +110,11 @@ class CollectStep(ProcessingStep[TPayload]):
         self.batch.join()
         logger.info("Completed processing %r.", self.batch)
         self.batch = None
+        self._metrics.timing("collect.poll.time", self._collect_poll_time)
+        self._collect_poll_time = 0
 
     def poll(self) -> None:
+        start_time = time.time()
         if self.batch is None:
             return
 
@@ -118,10 +124,20 @@ class CollectStep(ProcessingStep[TPayload]):
         # method which is bad.
         if len(self.batch) >= self.__max_batch_size:
             logger.debug("Size limit reached, closing %r...", self.batch)
+            start_time = time.time()
             self.close_and_reset_batch()
+            self._metrics.timing(
+                "collect.reset_batch", (time.time() - start_time) * 1000
+            )
         elif self.batch.duration() >= self.__max_batch_time:
             logger.debug("Time limit reached, closing %r...", self.batch)
+            start_time = time.time()
             self.close_and_reset_batch()
+            self._metrics.timing(
+                "collect.reset_batch", (time.time() - start_time) * 1000
+            )
+
+        self._collect_poll_time += int(time.time() - start_time) * 1000
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -184,6 +200,8 @@ class ParallelCollectStep(CollectStep[TPayload]):
 
         self.future = self.__threadpool.submit(self.__finish_batch, batch=self.batch)
         self.batch = None
+        self._metrics.timing("collect.poll.time", self._collect_poll_time)
+        self._collect_poll_time = 0
 
     @staticmethod
     def __finish_batch(batch: Batch[TPayload]) -> None:
