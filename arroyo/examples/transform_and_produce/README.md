@@ -18,20 +18,22 @@ The process is fairly simple:
 
 ---
 
-Install `kcat` and read up on usage [here](https://docs.confluent.io/platform/current/app-development/kafkacat-usage.html)
-
 <strong>To begin, start the following commands in different shells:</strong>
 
 _Monitor messages produced to `raw-topic`:_
 
 ```shell
-$ kcat -b localhost:9092 -t raw-topic -X broker.address.family=v4 -C -f '\nValue (%S bytes): %s\nTimestamp: %T\tPartition: %p\tOffset: %o\n--\n'
+$ docker exec -it sentry_kafka kafka-console-consumer \
+                                --bootstrap-server localhost:9092 \
+                                --topic raw-topic
 ```
 
 _Monitor messages produced to `hashed-topic`:_
 
 ```shell
-$ kcat -b localhost:9092 -t hashed-topic -X broker.address.family=v4 -C -f '\nValue (%S bytes): %s\nTimestamp: %T\tPartition: %p\tOffset: %o\n--\n'
+$ docker exec -it sentry_kafka kafka-console-consumer \
+                                --bootstrap-server localhost:9092 \
+                                --topic hashed-topic
 ```
 
 _Start the script itself:_
@@ -44,12 +46,16 @@ $ python3 arroyo/examples/transform_and_produce/script.py
 
 <strong>At this point we have all the pieces in place and can start manually producing messages to `raw-topic`:</strong>
 
-Produce a message to the topic by typing in a message in the expected format and hitting `Ctrl-D`.
+```shell
+$ docker exec -it sentry_kafka kafka-console-producer \
+                                --bootstrap-server localhost:9092 \
+                                --topic raw-topic
+```
+
+Produce a message to the topic by typing in a message in the expected format and hitting enter.
 
 ```shell
-$ kcat -b localhost:9092 -t raw-topic -X broker.address.family=v4 -P
 {"username": "user1", "password": "Password1!"}
-<Ctrl-D>
 ```
 
 Now the message should appear in the `raw-topic` shell, followed by another message in the `hashed-topic` shell. The password field of the message in `hashed-topic` should be the SHA256 hash of the password field of the message we manually produced to `raw-topic`.
