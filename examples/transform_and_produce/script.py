@@ -1,21 +1,14 @@
 import os
+
+from examples.transform_and_produce.factory import HashPasswordAndProduceStrategyFactory
+
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
     build_kafka_consumer_configuration,
 )
-from arroyo.backends.kafka.consumer import (
-    KafkaConsumer,
-    KafkaProducer,
-)
+from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaProducer
 from arroyo.processing.processor import StreamProcessor
-
-
 from arroyo.types import Topic
-
-from arroyo.examples.transform_and_produce.factory import (
-    HashPasswordAndProduceStrategyFactory,
-)
-
 
 RAW_TOPIC = Topic("raw-topic")
 HASHED_TOPIC = Topic("hashed-topic")

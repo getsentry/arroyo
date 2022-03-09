@@ -18,7 +18,7 @@ setup(
     description="Arroyo is a Python library for working with streaming data.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    packages=find_packages(exclude=["tests", "arroyo.examples"]),
+    packages=find_packages(exclude=["tests", "examples"]),
     package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),

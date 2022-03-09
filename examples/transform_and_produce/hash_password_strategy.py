@@ -4,11 +4,8 @@ import logging
 from typing import Optional
 
 from arroyo.backends.kafka.consumer import KafkaPayload
-from arroyo.processing.strategies.abstract import (
-    ProcessingStrategy,
-    ProcessingStrategy as ProcessingStep,
-)
-
+from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message
 
 logger = logging.getLogger(__name__)

@@ -1,18 +1,15 @@
 import logging
-from typing import (
-    Callable,
-    Mapping,
-)
+from typing import Callable, Mapping
+
+from examples.transform_and_produce.hash_password_strategy import HashPasswordStrategy
+from examples.transform_and_produce.produce_step import ProduceStrategy
+
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
 from arroyo.types import Partition, Position, Topic
-from arroyo.examples.transform_and_produce.hash_password_strategy import (
-    HashPasswordStrategy,
-)
-from arroyo.examples.transform_and_produce.produce_step import ProduceStrategy
 
 logger = logging.getLogger(__name__)
 

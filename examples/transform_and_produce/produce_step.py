@@ -1,17 +1,11 @@
 from __future__ import annotations
-from collections import deque
-from concurrent.futures import Future
 
 import logging
 import time
-from typing import (
-    Callable,
-    Deque,
-    Mapping,
-    MutableMapping,
-    NamedTuple,
-    Optional,
-)
+from collections import deque
+from concurrent.futures import Future
+from typing import Callable, Deque, Mapping, MutableMapping, NamedTuple, Optional
+
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import Message, Partition, Position, Topic
