@@ -7,6 +7,7 @@ from arroyo.dead_letter_queue.policies.abstract import (
     InvalidMessage,
 )
 from arroyo.types import Message, TPayload
+from arroyo.utils.metrics import get_metrics
 
 
 class _Bucket(NamedTuple):
@@ -28,6 +29,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
         self.__limit = limit
         self.__size = seconds
         self.__hits: Deque[_Bucket] = deque()
+        self.__metrics = get_metrics()
 
     def handle_invalid_message(
         self, message: Message[TPayload], e: InvalidMessage
@@ -35,6 +37,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
         self._add()
         if self._count() > self.__limit:
             raise e
+        self.__metrics.increment("dlq.dropped_messages")
 
     def _add(self) -> None:
         now = int(time())
