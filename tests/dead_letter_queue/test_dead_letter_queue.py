@@ -1,19 +1,16 @@
 from datetime import datetime
 from typing import Optional
-from arroyo.dead_letter_queue.policies.abstract import (
-    InvalidMessage,
-)
-
-from arroyo.dead_letter_queue.dead_letter_queue import DeadLetterQueue
-
-from arroyo.backends.kafka import KafkaPayload
-from arroyo.dead_letter_queue.policies.raise_e import RaiseInvalidMessagePolicy
-from arroyo.dead_letter_queue.policies.ignore import IgnoreInvalidMessagePolicy
-from arroyo.dead_letter_queue.policies.count import CountInvalidMessagePolicy
-from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message, Partition, Topic
 
 import pytest
+
+from arroyo.backends.kafka import KafkaPayload
+from arroyo.dead_letter_queue.dead_letter_queue import DeadLetterQueue
+from arroyo.dead_letter_queue.policies.abstract import InvalidMessage
+from arroyo.dead_letter_queue.policies.count import CountInvalidMessagePolicy
+from arroyo.dead_letter_queue.policies.ignore import IgnoreInvalidMessagePolicy
+from arroyo.dead_letter_queue.policies.raise_e import RaiseInvalidMessagePolicy
+from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.types import Message, Partition, Topic
 
 
 class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
@@ -42,9 +39,12 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
 
 
 def test_dlq() -> None:
-    dlq_raise = DeadLetterQueue(FakeProcessingStep(), RaiseInvalidMessagePolicy())
-    dlq_ignore = DeadLetterQueue(FakeProcessingStep(), IgnoreInvalidMessagePolicy())
-    dlq_count = DeadLetterQueue(FakeProcessingStep(), CountInvalidMessagePolicy(5))
+
+    processing_step = FakeProcessingStep()
+
+    dlq_raise = DeadLetterQueue(processing_step, RaiseInvalidMessagePolicy())  # type: ignore
+    dlq_ignore = DeadLetterQueue(processing_step, IgnoreInvalidMessagePolicy())  # type: ignore
+    dlq_count = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(5))  # type: ignore
 
     partition = Partition(Topic(""), 0)
     valid_payload = KafkaPayload(b"", b"", [])
