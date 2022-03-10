@@ -1,3 +1,7 @@
+from collections import deque
+from time import time
+from typing import Deque, NamedTuple
+
 from arroyo.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
@@ -5,14 +9,43 @@ from arroyo.dead_letter_queue.policies.abstract import (
 from arroyo.types import Message, TPayload
 
 
+class _Bucket(NamedTuple):
+    """
+    1-second time bucket to count number of hits in this second.
+    """
+
+    timestamp: int
+    hits: int
+
+
 class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
-    def __init__(self, limit: int) -> None:
+    """
+    Ignore invalid messages up to a certain limit per time unit window in seconds.
+    This window is 1 minute by default.
+    """
+
+    def __init__(self, limit: int, seconds: int = 60) -> None:
         self.__limit = limit
-        self.__count = 0
+        self.__size = seconds
+        self.__hits: Deque[_Bucket] = deque()
 
     def handle_invalid_message(
         self, message: Message[TPayload], e: InvalidMessage
     ) -> None:
-        self.__count += 1
-        if self.__count > self.__limit:
+        self._add()
+        if self._count() > self.__limit:
             raise e
+
+    def _add(self) -> None:
+        now = int(time())
+        if len(self.__hits) and self.__hits[-1].timestamp == now:
+            bucket = self.__hits[-1]
+            self.__hits[-1] = _Bucket(bucket.timestamp, bucket.hits + 1)
+        else:
+            self.__hits.append(_Bucket(timestamp=now, hits=1))
+            if len(self.__hits) > self.__size:
+                self.__hits.popleft()
+
+    def _count(self) -> int:
+        start = int(time()) - self.__size
+        return sum(bucket.hits for bucket in self.__hits if bucket.timestamp >= start)

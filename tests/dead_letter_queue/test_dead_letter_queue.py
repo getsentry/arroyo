@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -44,7 +45,8 @@ def test_dlq() -> None:
 
     dlq_raise = DeadLetterQueue(processing_step, RaiseInvalidMessagePolicy())  # type: ignore
     dlq_ignore = DeadLetterQueue(processing_step, IgnoreInvalidMessagePolicy())  # type: ignore
-    dlq_count = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(5))  # type: ignore
+    dlq_count = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(limit=5))  # type: ignore
+    dlq_count_short = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(5, 1))  # type: ignore
 
     partition = Partition(Topic(""), 0)
     valid_payload = KafkaPayload(b"", b"", [])
@@ -67,3 +69,10 @@ def test_dlq() -> None:
         dlq_count.submit(invalid_message)
     with pytest.raises(InvalidMessage):
         dlq_count.submit(invalid_message)
+
+    for _ in range(5):
+        dlq_count_short.submit(invalid_message)
+    with pytest.raises(InvalidMessage):
+        dlq_count_short.submit(invalid_message)
+    time.sleep(1)
+    dlq_count_short.submit(invalid_message)
