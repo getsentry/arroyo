@@ -1,5 +1,17 @@
 # Changelog and versioning
 
+## 0.0.9
+
+### Various fixes & improvements
+
+- ref(metrics): Add metrics for time spent polling and closing batch (#46) by @nikhars
+
+## 0.0.8
+
+### Various fixes & improvements
+
+- chore(parallel_collect): Allow importing ParallelCollectStep (#43) by @nikhars
+
 ## 0.0.7
 
 ### Various fixes & improvements
