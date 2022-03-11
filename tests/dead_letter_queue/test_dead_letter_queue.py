@@ -39,18 +39,18 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
             raise InvalidMessage
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def processing_step() -> ProcessingStrategy[KafkaPayload]:
     return FakeProcessingStep()
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def valid_message() -> Message[KafkaPayload]:
     valid_payload = KafkaPayload(b"", b"", [])
     return Message(Partition(Topic(""), 0), 0, valid_payload, datetime.now())
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def invalid_message() -> Message[KafkaPayload]:
     invalid_payload = KafkaPayload(None, b"", [])
     return Message(Partition(Topic(""), 0), 0, invalid_payload, datetime.now())
