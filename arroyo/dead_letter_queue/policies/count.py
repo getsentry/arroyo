@@ -22,7 +22,8 @@ class _Bucket(NamedTuple):
 class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
     """
     Ignore invalid messages up to a certain limit per time unit window in seconds.
-    This window is 1 minute by default.
+    This window is 1 minute by default. The exception associated with the invalid
+    message is raised for all incoming invalid messages which go past this limit.
 
     If the state of counted hits is to be persisted outside of the DLQ, a callback
     function may be passed accepting a timestamp to add a hit to.
@@ -40,9 +41,12 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
         add_hit_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
         self.__limit = limit
-        self.__size = seconds
+        self.__seconds = seconds
         self.__metrics = get_metrics()
-        self.__hits = deque([_Bucket(hit[0], hit[1]) for hit in load_state])
+        self.__hits = deque(
+            iterable=[_Bucket(hit[0], hit[1]) for hit in load_state],
+            maxlen=self.__seconds,
+        )
         self.__add_hit_callback = add_hit_callback
 
     def handle_invalid_message(
@@ -62,9 +66,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
             self.__hits[-1] = _Bucket(bucket.timestamp, bucket.hits + 1)
         else:
             self.__hits.append(_Bucket(timestamp=now, hits=1))
-            if len(self.__hits) > self.__size:
-                self.__hits.popleft()
 
     def _count(self) -> int:
-        start = int(time()) - self.__size
+        start = int(time()) - self.__seconds
         return sum(bucket.hits for bucket in self.__hits if bucket.timestamp >= start)
