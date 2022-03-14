@@ -38,7 +38,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
         limit: int,
         seconds: int = 60,
         load_state: Sequence[Tuple[int, int]] = [],
-        add_hit_callback: Optional[Callable[[int], None]] = None,
+        invalid_message_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
         self.__limit = limit
         self.__seconds = seconds
@@ -47,7 +47,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
             iterable=[_Bucket(hit[0], hit[1]) for hit in load_state],
             maxlen=self.__seconds,
         )
-        self.__add_hit_callback = add_hit_callback
+        self.__invalid_message_callback = invalid_message_callback
 
     def handle_invalid_message(
         self, message: Message[TPayload], e: InvalidMessage
@@ -59,8 +59,8 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
 
     def _add(self) -> None:
         now = int(time())
-        if self.__add_hit_callback is not None:
-            self.__add_hit_callback(now)
+        if self.__invalid_message_callback is not None:
+            self.__invalid_message_callback(now)
         if len(self.__hits) and self.__hits[-1].timestamp == now:
             bucket = self.__hits[-1]
             self.__hits[-1] = _Bucket(bucket.timestamp, bucket.hits + 1)

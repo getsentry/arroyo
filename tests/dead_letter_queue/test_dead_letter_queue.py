@@ -137,7 +137,9 @@ def test_stateful_count(
     # Stateful count DLQ initialized with empty state
     dlq_stateful_count = DeadLetterQueue(
         processing_step,
-        CountInvalidMessagePolicy(limit=5, load_state=state, add_hit_callback=add_hit),
+        CountInvalidMessagePolicy(
+            limit=5, load_state=state, invalid_message_callback=add_hit
+        ),
     )  # type: ignore
 
     dlq_stateful_count.submit(valid_message)
@@ -158,7 +160,7 @@ def test_stateful_count(
         CountInvalidMessagePolicy(
             limit=5,
             load_state=state,
-            add_hit_callback=add_hit,
+            invalid_message_callback=add_hit,
         ),
     )  # type: ignore
 
