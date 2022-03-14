@@ -1,17 +1,21 @@
 import time
 from datetime import datetime
-from typing import MutableSequence, Optional, Tuple
+from typing import Callable, Mapping, MutableSequence, Optional, Tuple
 
 import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.dead_letter_queue.dead_letter_queue import DeadLetterQueue
+from arroyo.dead_letter_queue.factory import DeadLetterQueueFactory
 from arroyo.dead_letter_queue.policies.abstract import InvalidMessage
 from arroyo.dead_letter_queue.policies.count import CountInvalidMessagePolicy
 from arroyo.dead_letter_queue.policies.ignore import IgnoreInvalidMessagePolicy
 from arroyo.dead_letter_queue.policies.raise_e import RaiseInvalidMessagePolicy
-from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message, Partition, Topic
+from arroyo.processing.strategies.abstract import (
+    ProcessingStrategy,
+    ProcessingStrategyFactory,
+)
+from arroyo.types import Message, Partition, Position, Topic
 
 
 class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
@@ -37,6 +41,13 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         """
         if message.payload.key is None:
             raise InvalidMessage
+
+
+class FakeProcessingStepFactory(ProcessingStrategyFactory[KafkaPayload]):
+    def create(
+        self, commit: Callable[[Mapping[Partition, Position]], None]
+    ) -> ProcessingStrategy[KafkaPayload]:
+        return FakeProcessingStep()
 
 
 @pytest.fixture
@@ -162,3 +173,15 @@ def test_stateful_count(
     # Limit is 5, 5 hits exist, next invalid message should cause exception
     with pytest.raises(InvalidMessage):
         dlq_stateful_count_current_state.submit(invalid_message)
+
+
+def test_dlq_factory(
+    valid_message: Message[KafkaPayload], invalid_message: Message[KafkaPayload]
+) -> None:
+    dlq = DeadLetterQueueFactory(  # type: ignore
+        FakeProcessingStepFactory(),
+        RaiseInvalidMessagePolicy(),
+    ).create(lambda _: None)
+    with pytest.raises(InvalidMessage):
+        dlq.submit(invalid_message)
+    dlq.submit(valid_message)
