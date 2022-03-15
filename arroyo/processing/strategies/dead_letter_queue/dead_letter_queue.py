@@ -1,11 +1,13 @@
 import logging
 from typing import Optional
-from arroyo.dead_letter_queue.policies.abstract import (
+
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
 )
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, TPayload
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         self.__next_step = next_step
         self.__policy = policy
         self.__closed = False
+        self.__metrics = get_metrics()
 
     def poll(self) -> None:
         self.__next_step.poll()
@@ -35,10 +38,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         try:
             self.__next_step.submit(message)
         except InvalidMessage as e:
-            logger.warning(
-                f"Invalid Message caught by Dead Letter Queue: {message}",
-                exc_info=True,
-            )
+            self.__metrics.increment("dlq.received_message")
             self.__policy.handle_invalid_message(message, e)
 
     def close(self) -> None:

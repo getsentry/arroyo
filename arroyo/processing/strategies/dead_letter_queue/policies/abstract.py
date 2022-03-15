@@ -5,7 +5,11 @@ from arroyo.types import Message, TPayload
 
 
 class InvalidMessage(Exception):
-    pass
+    def __init__(self, message: Message[TPayload]):
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return f"Invalid Message: {super().__str__()}"
 
 
 class DeadLetterQueuePolicy(ABC, Generic[TPayload]):

@@ -5,15 +5,27 @@ from typing import Callable, Mapping, MutableSequence, Optional, Tuple
 import pytest
 
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.dead_letter_queue.dead_letter_queue import DeadLetterQueue
-from arroyo.dead_letter_queue.factory import DeadLetterQueueFactory
-from arroyo.dead_letter_queue.policies.abstract import InvalidMessage
-from arroyo.dead_letter_queue.policies.count import CountInvalidMessagePolicy
-from arroyo.dead_letter_queue.policies.ignore import IgnoreInvalidMessagePolicy
-from arroyo.dead_letter_queue.policies.raise_e import RaiseInvalidMessagePolicy
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
+)
+from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
+    DeadLetterQueue,
+)
+from arroyo.processing.strategies.dead_letter_queue.factory import (
+    DeadLetterQueueFactory,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidMessage,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.count import (
+    CountInvalidMessagePolicy,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.ignore import (
+    IgnoreInvalidMessagePolicy,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
+    RaiseInvalidMessagePolicy,
 )
 from arroyo.types import Message, Partition, Position, Topic
 
@@ -40,7 +52,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         Valid message is one with a key.
         """
         if message.payload.key is None:
-            raise InvalidMessage
+            raise InvalidMessage(message)
 
 
 class FakeProcessingStepFactory(ProcessingStrategyFactory[KafkaPayload]):

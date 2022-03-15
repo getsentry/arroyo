@@ -2,7 +2,7 @@ from collections import deque
 from time import time
 from typing import Callable, NamedTuple, Optional, Sequence, Tuple
 
-from arroyo.dead_letter_queue.policies.abstract import (
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
 )
@@ -55,7 +55,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
         self._add()
         if self._count() > self.__limit:
             raise e
-        self.__metrics.increment("dlq.dropped_messages")
+        self.__metrics.increment("dlq.dropped_message")
 
     def _add(self) -> None:
         now = int(time())

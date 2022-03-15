@@ -1,4 +1,4 @@
-from arroyo.dead_letter_queue.policies.abstract import (
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
 )
@@ -13,4 +13,4 @@ class IgnoreInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
     def handle_invalid_message(
         self, message: Message[TPayload], e: InvalidMessage
     ) -> None:
-        self.__metrics.increment("dlq.dropped_messages")
+        self.__metrics.increment("dlq.dropped_message")
