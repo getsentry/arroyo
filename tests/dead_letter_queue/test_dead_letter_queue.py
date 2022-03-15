@@ -134,59 +134,26 @@ def test_stateful_count(
     processing_step: FakeProcessingStep,
 ) -> None:
 
-    state: MutableSequence[Tuple[int, int]] = []
-
-    def add_hit(timestamp: int) -> None:
-        """
-        Callback func for stateful count policy.
-        """
-        for i, hit in enumerate(state):
-            if hit[0] == timestamp:
-                state[i] = (timestamp, hit[1] + 1)
-                return
-        state.append((timestamp, 1))
-
-    # Stateful count DLQ initialized with empty state
-    dlq_stateful_count = DeadLetterQueue(
-        processing_step,
-        CountInvalidMessagePolicy(
-            limit=5, load_state=state, invalid_message_callback=add_hit
-        ),
-    )  # type: ignore
-
-    dlq_stateful_count.submit(valid_message)
-
-    # Limit is 5, should raise on 6th invalid message
-    for i in range(5):
-        dlq_stateful_count.submit(invalid_message)
-        assert state == [(int(datetime.now().timestamp()), i + 1)]
-    with pytest.raises(InvalidMessage):
-        dlq_stateful_count.submit(invalid_message)
-
     now = int(datetime.now().timestamp())
-    state = [(now - 1, 2), (now, 2)]
+    state: MutableSequence[Tuple[int, int]] = [(now - 1, 2), (now, 2)]
 
     # Stateful count DLQ intialized with 4 hits in the state
-    dlq_stateful_count_current_state = DeadLetterQueue(
+    dlq_count_load_state = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(
             limit=5,
             load_state=state,
-            invalid_message_callback=add_hit,
         ),
     )  # type: ignore
 
-    dlq_stateful_count_current_state.submit(valid_message)
+    dlq_count_load_state.submit(valid_message)
 
     # Limit is 5, 4 hits exist, 1 more should be added without exception raised
-    dlq_stateful_count_current_state.submit(invalid_message)
-
-    # test callback worked
-    assert state == [(now - 1, 2), (now, 3)]
+    dlq_count_load_state.submit(invalid_message)
 
     # Limit is 5, 5 hits exist, next invalid message should cause exception
     with pytest.raises(InvalidMessage):
-        dlq_stateful_count_current_state.submit(invalid_message)
+        dlq_count_load_state.submit(invalid_message)
 
 
 def test_dlq_factory(

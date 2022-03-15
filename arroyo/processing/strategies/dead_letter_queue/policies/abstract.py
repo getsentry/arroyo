@@ -6,10 +6,10 @@ from arroyo.types import Message, TPayload
 
 class InvalidMessage(Exception):
     def __init__(self, message: Message[TPayload]):
-        super().__init__(message)
+        self.message = message
 
     def __str__(self) -> str:
-        return f"Invalid Message: {super().__str__()}"
+        return f"Invalid Message: {self.message}"
 
 
 class DeadLetterQueuePolicy(ABC, Generic[TPayload]):

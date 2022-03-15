@@ -1,6 +1,6 @@
 from collections import deque
 from time import time
-from typing import Callable, NamedTuple, Optional, Sequence, Tuple
+from typing import NamedTuple, Sequence, Tuple
 
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
@@ -25,20 +25,13 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
     This window is 1 minute by default. The exception associated with the invalid
     message is raised for all incoming invalid messages which go past this limit.
 
-    If the state of counted hits is to be persisted outside of the DLQ, a callback
-    function may be passed accepting a timestamp to add a hit to.
-
     A saved state in the form `[(<timestamp: int>, <hits: int>), ...]` can be passed
     on init to load the previously saved state. This state should be aggregated to
     1 second buckets.
     """
 
     def __init__(
-        self,
-        limit: int,
-        seconds: int = 60,
-        load_state: Sequence[Tuple[int, int]] = [],
-        invalid_message_callback: Optional[Callable[[int], None]] = None,
+        self, limit: int, seconds: int = 60, load_state: Sequence[Tuple[int, int]] = []
     ) -> None:
         self.__limit = limit
         self.__seconds = seconds
@@ -47,7 +40,6 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
             iterable=[_Bucket(hit[0], hit[1]) for hit in load_state],
             maxlen=self.__seconds,
         )
-        self.__invalid_message_callback = invalid_message_callback
 
     def handle_invalid_message(
         self, message: Message[TPayload], e: InvalidMessage
@@ -59,8 +51,6 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
 
     def _add(self) -> None:
         now = int(time())
-        if self.__invalid_message_callback is not None:
-            self.__invalid_message_callback(now)
         if len(self.__hits) and self.__hits[-1].timestamp == now:
             bucket = self.__hits[-1]
             self.__hits[-1] = _Bucket(bucket.timestamp, bucket.hits + 1)
