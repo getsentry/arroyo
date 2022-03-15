@@ -6,7 +6,7 @@ from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
 )
-from arroyo.types import Message, TPayload
+from arroyo.types import TPayload
 from arroyo.utils.metrics import get_metrics
 
 
@@ -41,9 +41,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
             maxlen=self.__seconds,
         )
 
-    def handle_invalid_message(
-        self, message: Message[TPayload], e: InvalidMessage
-    ) -> None:
+    def handle_invalid_message(self, e: InvalidMessage) -> None:
         self._add()
         if self._count() > self.__limit:
             raise e

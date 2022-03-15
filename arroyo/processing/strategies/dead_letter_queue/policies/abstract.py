@@ -18,9 +18,7 @@ class DeadLetterQueuePolicy(ABC, Generic[TPayload]):
     """
 
     @abstractmethod
-    def handle_invalid_message(
-        self, message: Message[TPayload], e: InvalidMessage
-    ) -> None:
+    def handle_invalid_message(self, e: InvalidMessage) -> None:
         """
         Decide what to do with an invalid message.
         """
