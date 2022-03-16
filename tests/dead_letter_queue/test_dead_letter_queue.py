@@ -12,9 +12,6 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
-from arroyo.processing.strategies.dead_letter_queue.factory import (
-    DeadLetterQueueFactory,
-)
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     InvalidMessage,
 )
@@ -154,15 +151,3 @@ def test_stateful_count(
     # Limit is 5, 5 hits exist, next invalid message should cause exception
     with pytest.raises(InvalidMessage):
         dlq_count_load_state.submit(invalid_message)
-
-
-def test_dlq_factory(
-    valid_message: Message[KafkaPayload], invalid_message: Message[KafkaPayload]
-) -> None:
-    dlq = DeadLetterQueueFactory(  # type: ignore
-        FakeProcessingStepFactory(),
-        RaiseInvalidMessagePolicy(),
-    ).create(lambda _: None)
-    with pytest.raises(InvalidMessage):
-        dlq.submit(invalid_message)
-    dlq.submit(valid_message)
