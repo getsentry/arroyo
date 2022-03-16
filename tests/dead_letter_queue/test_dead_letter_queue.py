@@ -81,7 +81,9 @@ def test_raise(
     invalid_message: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_raise = DeadLetterQueue(processing_step, RaiseInvalidMessagePolicy())  # type: ignore
+    dlq_raise: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+        processing_step, RaiseInvalidMessagePolicy()
+    )
     with pytest.raises(InvalidMessage):
         dlq_raise.submit(invalid_message)
     dlq_raise.submit(valid_message)
@@ -92,7 +94,9 @@ def test_ignore(
     invalid_message: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_ignore = DeadLetterQueue(processing_step, IgnoreInvalidMessagePolicy())  # type: ignore
+    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+        processing_step, IgnoreInvalidMessagePolicy()
+    )
     dlq_ignore.submit(valid_message)
     dlq_ignore.submit(invalid_message)
 
@@ -102,7 +106,9 @@ def test_count(
     invalid_message: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_count = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(5))  # type: ignore
+    dlq_count: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+        processing_step, CountInvalidMessagePolicy(5)
+    )
     dlq_count.submit(valid_message)
     for _ in range(5):
         dlq_count.submit(invalid_message)
@@ -115,7 +121,9 @@ def test_count_short(
     invalid_message: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_count_short = DeadLetterQueue(processing_step, CountInvalidMessagePolicy(5, 1))  # type: ignore
+    dlq_count_short: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+        processing_step, CountInvalidMessagePolicy(5, 1)
+    )
     dlq_count_short.submit(valid_message)
     for _ in range(5):
         dlq_count_short.submit(invalid_message)
@@ -135,13 +143,13 @@ def test_stateful_count(
     state: MutableSequence[Tuple[int, int]] = [(now - 1, 2), (now, 2)]
 
     # Stateful count DLQ intialized with 4 hits in the state
-    dlq_count_load_state = DeadLetterQueue(
+    dlq_count_load_state: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(
             limit=5,
             load_state=state,
         ),
-    )  # type: ignore
+    )
 
     dlq_count_load_state.submit(valid_message)
 
