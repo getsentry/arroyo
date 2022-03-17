@@ -1,6 +1,6 @@
 from collections import deque
 from time import time
-from typing import NamedTuple, Sequence, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
@@ -31,11 +31,16 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
     """
 
     def __init__(
-        self, limit: int, seconds: int = 60, load_state: Sequence[Tuple[int, int]] = []
+        self,
+        limit: int,
+        seconds: int = 60,
+        load_state: Optional[Sequence[Tuple[int, int]]] = None,
     ) -> None:
         self.__limit = limit
         self.__seconds = seconds
         self.__metrics = get_metrics()
+        if load_state is None:
+            load_state = []
         self.__hits = deque(
             iterable=[_Bucket(hit[0], hit[1]) for hit in load_state],
             maxlen=self.__seconds,
