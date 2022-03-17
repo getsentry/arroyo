@@ -31,7 +31,11 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         self.__metrics = get_metrics()
 
     def poll(self) -> None:
-        self.__next_step.poll()
+        try:
+            self.__next_step.poll()
+        except InvalidMessage as e:
+            self.__metrics.increment("dlq.received_message")
+            self.__policy.handle_invalid_message(e)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed

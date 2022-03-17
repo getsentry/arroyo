@@ -33,7 +33,11 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
 
     def poll(self) -> None:
-        pass
+        raise InvalidMessage(
+            Message(
+                Partition(Topic(""), 0), 0, KafkaPayload(None, b"", []), datetime.now()
+            )
+        )
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -84,9 +88,11 @@ def test_raise(
     dlq_raise: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
         processing_step, RaiseInvalidMessagePolicy()
     )
+    dlq_raise.submit(valid_message)
     with pytest.raises(InvalidMessage):
         dlq_raise.submit(invalid_message)
-    dlq_raise.submit(valid_message)
+    with pytest.raises(InvalidMessage):
+        dlq_raise.poll()
 
 
 def test_ignore(
