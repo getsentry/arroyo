@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.0.10
+
+### Various fixes & improvements
+
+- Dead Letter Queue (#47) by @rahul-kumar-saini
+- Added an example for Arroyo usage. (#44) by @rahul-kumar-saini
+
 ## 0.0.9
 
 ### Various fixes & improvements
