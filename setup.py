@@ -10,7 +10,7 @@ def get_requirements() -> Sequence[str]:
 
 setup(
     name="sentry-arroyo",
-    version="0.0.8",
+    version="0.0.9",
     author="Sentry",
     author_email="oss@sentry.io",
     license="Apache-2.0",
@@ -18,7 +18,7 @@ setup(
     description="Arroyo is a Python library for working with streaming data.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    packages=find_packages(exclude=["tests"]),
+    packages=find_packages(exclude=["tests", "examples"]),
     package_data={"arroyo": ["py.typed"]},
     zip_safe=False,
     install_requires=get_requirements(),
