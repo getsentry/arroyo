@@ -6,7 +6,6 @@ from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
 )
-from arroyo.types import TPayload
 from arroyo.utils.metrics import get_metrics
 
 
@@ -19,7 +18,7 @@ class _Bucket(NamedTuple):
     hits: int
 
 
-class CountInvalidMessagePolicy(DeadLetterQueuePolicy[TPayload]):
+class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
     """
     Ignore invalid messages up to a certain limit per time unit window in seconds.
     This window is 1 minute by default. The exception associated with the invalid

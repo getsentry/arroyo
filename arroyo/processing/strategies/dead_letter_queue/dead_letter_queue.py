@@ -23,7 +23,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
     def __init__(
         self,
         next_step: ProcessingStep[TPayload],
-        policy: DeadLetterQueuePolicy[TPayload],
+        policy: DeadLetterQueuePolicy,
     ) -> None:
         self.__next_step = next_step
         self.__policy = policy
