@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.0.11
+
+### Various fixes & improvements
+
+- Removed Generic payload from DLQ Policy (#49) by @rahul-kumar-saini
+- export InvalidMessage from DLQ (#48) by @rahul-kumar-saini
+
 ## 0.0.10
 
 ### Various fixes & improvements
