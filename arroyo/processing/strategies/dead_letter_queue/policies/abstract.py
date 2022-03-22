@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Generic
 
 from arroyo.types import Message, TPayload
 
@@ -12,7 +11,7 @@ class InvalidMessage(Exception):
         return f"Invalid Message: {self.message}"
 
 
-class DeadLetterQueuePolicy(ABC, Generic[TPayload]):
+class DeadLetterQueuePolicy(ABC):
     """
     A DLQ Policy defines how to handle an invalid message.
     """
