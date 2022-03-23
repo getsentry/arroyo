@@ -58,34 +58,13 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
             raise InvalidMessages([message])
 
 
-class FakeBatchingProcessingStep(ProcessingStrategy[KafkaPayload]):
+class FakeBatchingProcessingStep(FakeProcessingStep):
     """
     Batches up to 5 messages.
     """
 
     def __init__(self) -> None:
         self._batch: MutableSequence[Message[KafkaPayload]] = []
-
-    def poll(self) -> None:
-        raise InvalidMessages(
-            [
-                Message(
-                    Partition(Topic(""), 0),
-                    0,
-                    KafkaPayload(None, b"", []),
-                    datetime.now(),
-                )
-            ]
-        )
-
-    def join(self, timeout: Optional[float] = None) -> None:
-        pass
-
-    def terminate(self) -> None:
-        pass
-
-    def close(self) -> None:
-        pass
 
     def submit(self, message: Message[KafkaPayload]) -> None:
         self._batch.append(message)
