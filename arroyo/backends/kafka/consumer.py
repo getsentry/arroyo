@@ -388,7 +388,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 )
             elif code == KafkaError._TRANSPORT:
                 raise TransportError(str(error))
-            elif code == KafkaError.OFFSET_OUT_OF_RANGE:
+            elif code in (
+                KafkaError.OFFSET_OUT_OF_RANGE,
+                KafkaError._AUTO_OFFSET_RESET,
+            ):
                 raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
