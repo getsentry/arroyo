@@ -143,9 +143,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
     def __init__(
         self,
-        configuration: Mapping[str, Any],
+        configuration: MutableMapping[str, Any],
         *,
         commit_retry_policy: Optional[RetryPolicy] = None,
+        incremental: bool = False,
     ) -> None:
         if commit_retry_policy is None:
             commit_retry_policy = NoRetryPolicy()
@@ -181,6 +182,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             raise ValueError(
                 "invalid value for 'enable.auto.offset.store' configuration"
             )
+
+        self.__incremental = incremental
+
+        if self.__incremental is True:
+            configuration["partition.assignment.strategy"] = "cooperative-sticky"
 
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled.
@@ -262,7 +268,30 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 offsets: MutableMapping[Partition, int] = {
                     Partition(Topic(i.topic), i.partition): i.offset for i in assignment
                 }
-                self.__seek(offsets)
+
+                if self.__incremental is True:
+                    incremental_assignment: MutableSequence[
+                        ConfluentTopicPartition
+                    ] = []
+
+                    for partition in partitions:
+                        if partition.offset >= 0:
+                            incremental_assignment.append(partition)
+                        elif partition.offset == OFFSET_INVALID:
+                            incremental_assignment.append(
+                                self.__resolve_partition_starting_offset(partition)
+                            )
+                        else:
+                            raise ValueError("received unexpected offset")
+
+                    self.__incremental_assign(
+                        {
+                            Partition(Topic(i.topic), i.partition): i.offset
+                            for i in assignment
+                        }
+                    )
+                else:
+                    self.__assign(offsets)
 
                 # Ensure that all partitions are resumed on assignment to avoid
                 # carrying over state from a previous assignment.
@@ -431,29 +460,33 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if invalid_offsets:
             raise ConsumerError(f"invalid offsets: {invalid_offsets!r}")
 
+    def __assign(self, offsets: Mapping[Partition, int]) -> None:
+        self.__validate_offsets(offsets)
+        self.__consumer.assign(
+            [
+                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
+                for partition, offset in offsets.items()
+            ]
+        )
+        self.__offsets.update(offsets)
+
+    def __incremental_assign(self, offsets: Mapping[Partition, int]) -> None:
+        self.__validate_offsets(offsets)
+        self.__consumer.incremental_assign(
+            [
+                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
+                for partition, offset in offsets.items()
+            ]
+        )
+        self.__offsets.update(offsets)
+
     def __seek(self, offsets: Mapping[Partition, int]) -> None:
         self.__validate_offsets(offsets)
 
-        if self.__state is KafkaConsumerState.ASSIGNING:
-            # Calling ``seek`` on the Confluent consumer from an assignment
-            # callback will throw an "Erroneous state" error. Instead,
-            # partition offsets have to be initialized by calling ``assign``.
-            self.__consumer.assign(
-                [
-                    ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
-                    )
-                    for partition, offset in offsets.items()
-                ]
+        for partition, offset in offsets.items():
+            self.__consumer.seek(
+                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
             )
-        else:
-            for partition, offset in offsets.items():
-                self.__consumer.seek(
-                    ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
-                    )
-                )
-
         self.__offsets.update(offsets)
 
     def seek(self, offsets: Mapping[Partition, int]) -> None:
