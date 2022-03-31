@@ -252,63 +252,63 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         ) -> None:
             self.__state = KafkaConsumerState.ASSIGNING
 
-            try:
-                assignment: MutableSequence[ConfluentTopicPartition] = []
+            if self.__incremental is True:
+                incremental_assignment: MutableSequence[ConfluentTopicPartition] = []
 
-                for partition in self.__consumer.committed(partitions):
+                for partition in partitions:
                     if partition.offset >= 0:
-                        assignment.append(partition)
+                        incremental_assignment.append(partition)
                     elif partition.offset == OFFSET_INVALID:
-                        assignment.append(
+                        incremental_assignment.append(
                             self.__resolve_partition_starting_offset(partition)
                         )
                     else:
                         raise ValueError("received unexpected offset")
 
-                offsets: MutableMapping[Partition, int] = {
-                    Partition(Topic(i.topic), i.partition): i.offset for i in assignment
-                }
+                self.__incremental_assign(
+                    {
+                        Partition(Topic(i.topic), i.partition): i.offset
+                        for i in incremental_assignment
+                    }
+                )
 
-                if self.__incremental is True:
-                    incremental_assignment: MutableSequence[
-                        ConfluentTopicPartition
-                    ] = []
+            else:
+                try:
+                    assignment: MutableSequence[ConfluentTopicPartition] = []
 
-                    for partition in partitions:
+                    for partition in self.__consumer.committed(partitions):
                         if partition.offset >= 0:
-                            incremental_assignment.append(partition)
+                            assignment.append(partition)
                         elif partition.offset == OFFSET_INVALID:
-                            incremental_assignment.append(
+                            assignment.append(
                                 self.__resolve_partition_starting_offset(partition)
                             )
                         else:
                             raise ValueError("received unexpected offset")
 
-                    self.__incremental_assign(
-                        {
-                            Partition(Topic(i.topic), i.partition): i.offset
-                            for i in assignment
-                        }
-                    )
-                else:
+                    offsets: MutableMapping[Partition, int] = {
+                        Partition(Topic(i.topic), i.partition): i.offset
+                        for i in assignment
+                    }
+
                     self.__assign(offsets)
 
-                # Ensure that all partitions are resumed on assignment to avoid
-                # carrying over state from a previous assignment.
-                self.__consumer.resume(
-                    [
-                        ConfluentTopicPartition(
-                            partition.topic.name, partition.index, offset
-                        )
-                        for partition, offset in offsets.items()
-                    ]
-                )
+                    # Ensure that all partitions are resumed on assignment to avoid
+                    # carrying over state from a previous assignment.
+                    self.__consumer.resume(
+                        [
+                            ConfluentTopicPartition(
+                                partition.topic.name, partition.index, offset
+                            )
+                            for partition, offset in offsets.items()
+                        ]
+                    )
 
-                for partition in offsets:
-                    self.__paused.discard(partition)
-            except Exception:
-                self.__state = KafkaConsumerState.ERROR
-                raise
+                    for partition in offsets:
+                        self.__paused.discard(partition)
+                except Exception:
+                    self.__state = KafkaConsumerState.ERROR
+                    raise
 
             try:
                 if on_assign is not None:

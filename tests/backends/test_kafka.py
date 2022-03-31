@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 from pickle import PickleBuffer
-from typing import Iterator, MutableSequence, Optional
+from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import TestCase
 
 import pytest
@@ -46,6 +46,25 @@ def test_payload_pickle_out_of_band() -> None:
     assert pickle.loads(data, buffers=[b.raw() for b in buffers]) == payload
 
 
+@contextlib.contextmanager
+def get_topic(
+    configuration: Mapping[str, Any], partitions_count: int
+) -> Iterator[Topic]:
+    name = f"test-{uuid.uuid1().hex}"
+    client = AdminClient(configuration)
+    [[key, future]] = client.create_topics(
+        [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
+    ).items()
+    assert key == name
+    assert future.result() is None
+    try:
+        yield Topic(name)
+    finally:
+        [[key, future]] = client.delete_topics([name]).items()
+        assert key == name
+        assert future.result() is None
+
+
 class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
     configuration = build_kafka_configuration(
@@ -54,19 +73,11 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
     @contextlib.contextmanager
     def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
-        name = f"test-{uuid.uuid1().hex}"
-        client = AdminClient(self.configuration)
-        [[key, future]] = client.create_topics(
-            [NewTopic(name, num_partitions=partitions, replication_factor=1)]
-        ).items()
-        assert key == name
-        assert future.result() is None
-        try:
-            yield Topic(name)
-        finally:
-            [[key, future]] = client.delete_topics([name]).items()
-            assert key == name
-            assert future.result() is None
+        with get_topic(self.configuration, partitions) as topic:
+            try:
+                yield topic
+            finally:
+                pass
 
     def get_consumer(
         self,
@@ -133,91 +144,68 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                     consumer.poll(10.0)  # XXX: getting the subcription is slow
 
 
-class KafkaStreamsCooperativeStickyTestCase(StreamsTestMixin[KafkaPayload], TestCase):
+def test_cooperative_rebalancing() -> None:
     configuration = build_kafka_configuration(
         {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
     )
 
-    @contextlib.contextmanager
-    def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
-        name = f"test-{uuid.uuid1().hex}"
-        client = AdminClient(self.configuration)
-        [[key, future]] = client.create_topics(
-            [NewTopic(name, num_partitions=partitions, replication_factor=1)]
-        ).items()
-        assert key == name
-        assert future.result() is None
-        try:
-            yield Topic(name)
-        finally:
-            [[key, future]] = client.delete_topics([name]).items()
-            assert key == name
-            assert future.result() is None
+    partitions_count = 2
 
-    def get_consumer(
-        self,
-        group: Optional[str] = None,
-        enable_end_of_partition: bool = True,
-        auto_offset_reset: str = "earliest",
-    ) -> KafkaConsumer:
-        return KafkaConsumer(
-            {
-                **self.configuration,
-                "auto.offset.reset": auto_offset_reset,
-                "enable.auto.commit": "false",
-                "enable.auto.offset.store": "false",
-                "enable.partition.eof": enable_end_of_partition,
-                "group.id": group if group is not None else uuid.uuid1().hex,
-                "session.timeout.ms": 10000,
-            },
-            incremental=True,
-        )
+    group_id = uuid.uuid1().hex
+    producer = KafkaProducer(configuration)
 
-    def get_producer(self) -> KafkaProducer:
-        return KafkaProducer(self.configuration)
+    consumer_a = KafkaConsumer(
+        {
+            **configuration,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "group.id": group_id,
+            "session.timeout.ms": 10000,
+        },
+        incremental=True,
+    )
+    consumer_b = KafkaConsumer(
+        {
+            **configuration,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "group.id": group_id,
+            "session.timeout.ms": 10000,
+        },
+        incremental=True,
+    )
 
-    def get_payloads(self) -> Iterator[KafkaPayload]:
-        for i in itertools.count():
-            yield KafkaPayload(None, f"{i}".encode("utf8"), [])
+    with get_topic(configuration, partitions_count) as topic, closing(
+        producer
+    ), closing(consumer_a), closing(consumer_b):
+        for i in range(10):
+            for j in range(partitions_count):
+                producer.produce(
+                    Partition(topic, 1),
+                    KafkaPayload(None, f"{j}-{i}".encode("utf8"), []),
+                )
 
-    def test_auto_offset_reset_earliest(self) -> None:
-        with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer:
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
+        consumer_a.subscribe([topic])
 
-            with closing(self.get_consumer(auto_offset_reset="earliest")) as consumer:
-                consumer.subscribe([topic])
+        assert consumer_a.poll(10.0) is not None
 
-                message = consumer.poll(10.0)
-                assert isinstance(message, Message)
-                assert message.offset == 0
+        # Consumer A has 2 partitions assigned, B has none
+        assert len(consumer_a.tell()) == 2
+        assert len(consumer_b.tell()) == 0
 
-    def test_auto_offset_reset_latest(self) -> None:
-        with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer:
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
+        consumer_b.subscribe([topic])
+        consumer_a.pause([Partition(topic, 0), Partition(topic, 1)])
 
-            with closing(self.get_consumer(auto_offset_reset="latest")) as consumer:
-                consumer.subscribe([topic])
+        # At some point, 1 partition will move to consumer B
+        for i in range(10):
+            assert consumer_a.poll(0) is None  # attempt to force session timeout
+            if consumer_b.poll(1.0) is not None:
+                break
 
-                try:
-                    consumer.poll(10.0)  # XXX: getting the subcription is slow
-                except EndOfPartition as error:
-                    assert error.partition == Partition(topic, 0)
-                    assert error.offset == 1
-                else:
-                    raise AssertionError("expected EndOfPartition error")
-
-    def test_auto_offset_reset_error(self) -> None:
-        with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer:
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
-
-            with closing(self.get_consumer(auto_offset_reset="error")) as consumer:
-                consumer.subscribe([topic])
-
-                with pytest.raises(ConsumerError):
-                    consumer.poll(10.0)  # XXX: getting the subcription is slow
+        assert len(consumer_a.tell()) == 1
+        assert len(consumer_b.tell()) == 1
 
 
 def test_commit_codec() -> None:
