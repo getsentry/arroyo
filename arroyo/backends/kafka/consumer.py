@@ -306,17 +306,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
                     # Ensure that all partitions are resumed on assignment to avoid
                     # carrying over state from a previous assignment.
-                    self.__consumer.resume(
-                        [
-                            ConfluentTopicPartition(
-                                partition.topic.name, partition.index, offset
-                            )
-                            for partition, offset in offsets.items()
-                        ]
-                    )
+                    self.resume([p for p in offsets])
 
-                    for partition in offsets:
-                        self.__paused.discard(partition)
                 except Exception:
                     self.__state = KafkaConsumerState.ERROR
                     raise
