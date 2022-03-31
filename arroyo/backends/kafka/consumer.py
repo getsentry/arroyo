@@ -253,24 +253,35 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             self.__state = KafkaConsumerState.ASSIGNING
 
             if self.__incremental_cooperative is True:
-                incremental_assignment: MutableSequence[ConfluentTopicPartition] = []
+                try:
+                    incremental_assignment: MutableSequence[
+                        ConfluentTopicPartition
+                    ] = []
 
-                for partition in partitions:
-                    if partition.offset >= 0:
-                        incremental_assignment.append(partition)
-                    elif partition.offset == OFFSET_INVALID:
-                        incremental_assignment.append(
-                            self.__resolve_partition_starting_offset(partition)
-                        )
-                    else:
-                        raise ValueError("received unexpected offset")
+                    for partition in partitions:
+                        if partition.offset >= 0:
+                            incremental_assignment.append(partition)
+                        elif partition.offset == OFFSET_INVALID:
+                            incremental_assignment.append(
+                                self.__resolve_partition_starting_offset(partition)
+                            )
+                        else:
+                            raise ValueError("received unexpected offset")
 
-                self.__incremental_assign(
-                    {
+                    offsets = {
                         Partition(Topic(i.topic), i.partition): i.offset
                         for i in incremental_assignment
                     }
-                )
+
+                    self.__incremental_assign(offsets)
+
+                    # Ensure that all partitions are resumed on assignment to avoid
+                    # carrying over state from a previous assignment.
+                    self.resume([p for p in offsets])
+
+                except Exception:
+                    self.__state = KafkaConsumerState.ERROR
+                    raise
 
             else:
                 try:
@@ -286,7 +297,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                         else:
                             raise ValueError("received unexpected offset")
 
-                    offsets: MutableMapping[Partition, int] = {
+                    offsets = {
                         Partition(Topic(i.topic), i.partition): i.offset
                         for i in assignment
                     }
