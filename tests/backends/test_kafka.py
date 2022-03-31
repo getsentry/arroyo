@@ -157,24 +157,24 @@ def test_cooperative_rebalancing() -> None:
     consumer_a = KafkaConsumer(
         {
             **configuration,
+            "partition.assignment.strategy": "cooperative-sticky",
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
             "enable.auto.offset.store": False,
             "group.id": group_id,
             "session.timeout.ms": 10000,
         },
-        incremental_cooperative=True,
     )
     consumer_b = KafkaConsumer(
         {
             **configuration,
+            "partition.assignment.strategy": "cooperative-sticky",
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
             "enable.auto.offset.store": False,
             "group.id": group_id,
             "session.timeout.ms": 10000,
         },
-        incremental_cooperative=True,
     )
 
     with get_topic(configuration, partitions_count) as topic, closing(

@@ -143,10 +143,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
     def __init__(
         self,
-        configuration: MutableMapping[str, Any],
+        configuration: Mapping[str, Any],
         *,
         commit_retry_policy: Optional[RetryPolicy] = None,
-        incremental_cooperative: bool = False,
     ) -> None:
         if commit_retry_policy is None:
             commit_retry_policy = NoRetryPolicy()
@@ -183,10 +182,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 "invalid value for 'enable.auto.offset.store' configuration"
             )
 
-        self.__incremental_cooperative = incremental_cooperative
-
-        if self.__incremental_cooperative is True:
-            configuration["partition.assignment.strategy"] = "cooperative-sticky"
+        self.__incremental_cooperative = (
+            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
+        )
 
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled.
