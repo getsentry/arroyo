@@ -163,7 +163,7 @@ def test_cooperative_rebalancing() -> None:
             "group.id": group_id,
             "session.timeout.ms": 10000,
         },
-        incremental=True,
+        incremental_cooperative=True,
     )
     consumer_b = KafkaConsumer(
         {
@@ -174,7 +174,7 @@ def test_cooperative_rebalancing() -> None:
             "group.id": group_id,
             "session.timeout.ms": 10000,
         },
-        incremental=True,
+        incremental_cooperative=True,
     )
 
     with get_topic(configuration, partitions_count) as topic, closing(
