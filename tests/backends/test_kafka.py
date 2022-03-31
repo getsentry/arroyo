@@ -183,7 +183,7 @@ def test_cooperative_rebalancing() -> None:
         for i in range(10):
             for j in range(partitions_count):
                 producer.produce(
-                    Partition(topic, 1),
+                    Partition(topic, j),
                     KafkaPayload(None, f"{j}-{i}".encode("utf8"), []),
                 )
 
