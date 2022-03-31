@@ -151,7 +151,7 @@ def test_cooperative_rebalancing() -> None:
 
     partitions_count = 2
 
-    group_id = uuid.uuid1().hex
+    group_id = uuid.uuid4().hex
     producer = KafkaProducer(configuration)
 
     consumer_a = KafkaConsumer(
@@ -196,9 +196,9 @@ def test_cooperative_rebalancing() -> None:
         assert len(consumer_b.tell()) == 0
 
         consumer_b.subscribe([topic])
-        consumer_a.pause([Partition(topic, 0), Partition(topic, 1)])
 
         # At some point, 1 partition will move to consumer B
+        consumer_a.pause([p for p in consumer_a.tell()])
         for i in range(10):
             assert consumer_a.poll(0) is None  # attempt to force session timeout
             if consumer_b.poll(1.0) is not None:
@@ -206,6 +206,11 @@ def test_cooperative_rebalancing() -> None:
 
         assert len(consumer_a.tell()) == 1
         assert len(consumer_b.tell()) == 1
+
+        # Resume A and assert that both consumer_a and consumer_b are getting messages
+        consumer_a.resume([p for p in consumer_a.tell()])
+        assert consumer_a.poll(1.0) is not None
+        assert consumer_b.poll(1.0) is not None
 
 
 def test_commit_codec() -> None:
