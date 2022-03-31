@@ -491,15 +491,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
         self.__offsets.update(offsets)
 
-    def __seek(self, offsets: Mapping[Partition, int]) -> None:
-        self.__validate_offsets(offsets)
-
-        for partition, offset in offsets.items():
-            self.__consumer.seek(
-                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
-            )
-        self.__offsets.update(offsets)
-
     def seek(self, offsets: Mapping[Partition, int]) -> None:
         """
         Change the read offsets for the provided partitions.
@@ -512,7 +503,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if offsets.keys() - self.__offsets.keys():
             raise ConsumerError("cannot seek on unassigned partitions")
 
-        self.__seek(offsets)
+        self.__validate_offsets(offsets)
+
+        for partition, offset in offsets.items():
+            self.__consumer.seek(
+                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
+            )
+        self.__offsets.update(offsets)
 
     def pause(self, partitions: Sequence[Partition]) -> None:
         """
