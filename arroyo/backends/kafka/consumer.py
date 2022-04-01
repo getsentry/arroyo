@@ -158,6 +158,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if commit_retry_policy is None:
             commit_retry_policy = NoRetryPolicy()
 
+        configuration = dict(configuration)
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
         self.__force_offset_reset = configuration.pop("force.offset.reset", False)
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
@@ -431,7 +432,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError._AUTO_OFFSET_RESET,
             ):
                 if self.__force_offset_reset:
-                    return
+                    return None
                 raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
