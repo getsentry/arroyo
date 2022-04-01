@@ -106,7 +106,8 @@ def as_kafka_configuration_bool(value: Any) -> bool:
 
 class KafkaConsumer(Consumer[KafkaPayload]):
     """
-    The behavior of this consumer differs slightly from the Confluent
+    If a non-cooperative partition assignment strategy is selected,
+    the behavior of this consumer differs slightly from the Confluent
     consumer during rebalancing operations. Whenever a partition is assigned
     to this consumer, offsets are *always* automatically reset to the
     committed offset for that partition (or if no offsets have been committed
@@ -116,6 +117,12 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     behavior as a partition that is moved from one consumer to another. To
     prevent uncommitted messages from being consumed multiple times,
     ``commit`` should be called in the partition revocation callback.
+
+    If the `cooperative-sticky` strategy is used, this won't happen as
+    only the incremental partitions are passed to the callback during
+    rebalancing, and any previously assigned partitions will continue
+    from their previous position without being reset to the last committed
+    position.
 
     The behavior of ``auto.offset.reset`` also differs slightly from the
     Confluent consumer as well: offsets are only reset during initial
