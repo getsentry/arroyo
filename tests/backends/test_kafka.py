@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 from pickle import PickleBuffer
-from typing import Iterator, MutableSequence, Optional
+from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import TestCase
 
 import pytest
@@ -46,6 +46,25 @@ def test_payload_pickle_out_of_band() -> None:
     assert pickle.loads(data, buffers=[b.raw() for b in buffers]) == payload
 
 
+@contextlib.contextmanager
+def get_topic(
+    configuration: Mapping[str, Any], partitions_count: int
+) -> Iterator[Topic]:
+    name = f"test-{uuid.uuid1().hex}"
+    client = AdminClient(configuration)
+    [[key, future]] = client.create_topics(
+        [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
+    ).items()
+    assert key == name
+    assert future.result() is None
+    try:
+        yield Topic(name)
+    finally:
+        [[key, future]] = client.delete_topics([name]).items()
+        assert key == name
+        assert future.result() is None
+
+
 class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
     configuration = build_kafka_configuration(
@@ -54,19 +73,11 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
     @contextlib.contextmanager
     def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
-        name = f"test-{uuid.uuid1().hex}"
-        client = AdminClient(self.configuration)
-        [[key, future]] = client.create_topics(
-            [NewTopic(name, num_partitions=partitions, replication_factor=1)]
-        ).items()
-        assert key == name
-        assert future.result() is None
-        try:
-            yield Topic(name)
-        finally:
-            [[key, future]] = client.delete_topics([name]).items()
-            assert key == name
-            assert future.result() is None
+        with get_topic(self.configuration, partitions) as topic:
+            try:
+                yield topic
+            finally:
+                pass
 
     def get_consumer(
         self,
@@ -131,6 +142,75 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
                 with pytest.raises(ConsumerError):
                     consumer.poll(10.0)  # XXX: getting the subcription is slow
+
+
+def test_cooperative_rebalancing() -> None:
+    configuration = build_kafka_configuration(
+        {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
+    )
+
+    partitions_count = 2
+
+    group_id = uuid.uuid4().hex
+    producer = KafkaProducer(configuration)
+
+    consumer_a = KafkaConsumer(
+        {
+            **configuration,
+            "partition.assignment.strategy": "cooperative-sticky",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "group.id": group_id,
+            "session.timeout.ms": 10000,
+        },
+    )
+    consumer_b = KafkaConsumer(
+        {
+            **configuration,
+            "partition.assignment.strategy": "cooperative-sticky",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "group.id": group_id,
+            "session.timeout.ms": 10000,
+        },
+    )
+
+    with get_topic(configuration, partitions_count) as topic, closing(
+        producer
+    ), closing(consumer_a), closing(consumer_b):
+        for i in range(10):
+            for j in range(partitions_count):
+                producer.produce(
+                    Partition(topic, j),
+                    KafkaPayload(None, f"{j}-{i}".encode("utf8"), []),
+                )
+
+        consumer_a.subscribe([topic])
+
+        assert consumer_a.poll(10.0) is not None
+
+        # Consumer A has 2 partitions assigned, B has none
+        assert len(consumer_a.tell()) == 2
+        assert len(consumer_b.tell()) == 0
+
+        consumer_b.subscribe([topic])
+
+        # At some point, 1 partition will move to consumer B
+        consumer_a.pause([p for p in consumer_a.tell()])
+        for i in range(10):
+            assert consumer_a.poll(0) is None  # attempt to force session timeout
+            if consumer_b.poll(1.0) is not None:
+                break
+
+        assert len(consumer_a.tell()) == 1
+        assert len(consumer_b.tell()) == 1
+
+        # Resume A and assert that both consumer_a and consumer_b are getting messages
+        consumer_a.resume([p for p in consumer_a.tell()])
+        assert consumer_a.poll(1.0) is not None
+        assert consumer_b.poll(1.0) is not None
 
 
 def test_commit_codec() -> None:
