@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.13
+
+### Various fixes & improvements
+
+- feat(consumer): Support incremental cooperative rebalancing (#53) by @lynnagara
+
 ## 0.0.12
 
 ### Various fixes & improvements
