@@ -137,7 +137,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     those messages expire, or reading newer messages from the log and the
     leader crashes and partition ownership fails over to an out-of-date
     replica), the consumer will fail-stop rather than reset to the value of
-    ``auto.offset.reset``.
+    ``auto.offset.reset``.  This behavior can be disabled by setting
+    ``force.offset.reset`` to `True`.
     """
 
     # Set of logical offsets that do not correspond to actual log positions.
@@ -158,6 +159,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             commit_retry_policy = NoRetryPolicy()
 
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
+        self.__force_offset_reset = configuration.pop("force.offset.reset", False)
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
             self.__resolve_partition_starting_offset = (
                 self.__resolve_partition_offset_earliest
@@ -428,6 +430,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.OFFSET_OUT_OF_RANGE,
                 KafkaError._AUTO_OFFSET_RESET,
             ):
+                if self.__force_offset_reset:
+                    return
                 raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
