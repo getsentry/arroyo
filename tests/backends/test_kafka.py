@@ -156,10 +156,10 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
             with closing(self.get_consumer(force_offset_reset="latest")) as consumer:
                 consumer.subscribe([topic])
-                message = consumer.poll(10.0)
-                assert message is not None
-                assert message.payload.key == b"a"
-                assert message.payload.value == b"0"
+                result_message = consumer.poll(10.0)
+                assert result_message is not None
+                assert result_message.payload.key == b"a"
+                assert result_message.payload.value == b"0"
 
     def test_auto_offset_reset_error(self) -> None:
         with self.get_topic() as topic:
