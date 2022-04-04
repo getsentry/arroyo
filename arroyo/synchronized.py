@@ -182,7 +182,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
                     tags={
                         "partition": str(commit.partition.index),
                         "group": commit.group,
-                    }
+                    },
                 )
             self.__metrics.timing(
                 "commit_log_latency",
@@ -190,7 +190,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
                 tags={
                     "partition": str(commit.partition.index),
                     "group": commit.group,
-                }
+                },
             )
 
         self.__commit_log_consumer.close()
