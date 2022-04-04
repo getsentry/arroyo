@@ -10,7 +10,6 @@ from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import TestCase
 
 import pytest
-import confluent_kafka
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
