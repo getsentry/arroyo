@@ -161,6 +161,9 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 assert result_message.payload.key == b"a"
                 assert result_message.payload.value == b"0"
 
+                # make sure we reset our offset now
+                consumer.commit_positions()
+
     def test_auto_offset_reset_error(self) -> None:
         with self.get_topic() as topic:
             with closing(self.get_producer()) as producer:
