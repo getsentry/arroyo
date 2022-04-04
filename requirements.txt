@@ -1,2 +1,2 @@
-confluent-kafka==1.6.1
+confluent-kafka==1.7.0
 mypy==0.812
