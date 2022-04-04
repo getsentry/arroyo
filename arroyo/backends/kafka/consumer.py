@@ -197,9 +197,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         # NOTE: Offsets are explicitly managed as part of the assignment
-        # callback, so preemptively resetting offsets is not enabled.
+        # callback, so preemptively resetting offsets is not enabled unless
+        # force_offset_reset.
+        real_auto_offset_reset = self.__force_offset_reset or "error"
         self.__consumer = ConfluentConsumer(
-            {**configuration, "auto.offset.reset": "error"}
+            {**configuration, "auto.offset.reset": real_auto_offset_reset}
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
@@ -431,6 +433,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.OFFSET_OUT_OF_RANGE,
                 KafkaError._AUTO_OFFSET_RESET,
             ):
+                # In theory this should not happen under auto offset reset.
+                # However just in case it comes around, be explicit about it.
                 if self.__force_offset_reset:
                     return None
                 raise OffsetOutOfRange(str(error))
