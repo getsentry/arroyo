@@ -10,6 +10,7 @@ from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import TestCase
 
 import pytest
+import confluent_kafka
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
@@ -17,7 +18,7 @@ from arroyo.backends.kafka.configuration import build_kafka_configuration
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.synchronized import Commit, commit_codec
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Partition, Topic, Position
 from tests.backends.mixins import StreamsTestMixin
 
 
@@ -84,11 +85,13 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
         group: Optional[str] = None,
         enable_end_of_partition: bool = True,
         auto_offset_reset: str = "earliest",
+        force_offset_reset: Optional[str] = None,
     ) -> KafkaConsumer:
         return KafkaConsumer(
             {
                 **self.configuration,
                 "auto.offset.reset": auto_offset_reset,
+                "force.offset.reset": force_offset_reset,
                 "enable.auto.commit": "false",
                 "enable.auto.offset.store": "false",
                 "enable.partition.eof": enable_end_of_partition,
@@ -131,6 +134,32 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                     assert error.offset == 1
                 else:
                     raise AssertionError("expected EndOfPartition error")
+
+    def test_force_offset_reset_latest(self) -> None:
+        payload = KafkaPayload(b"a", b"0", [])
+        with self.get_topic() as topic:
+            with closing(self.get_producer()) as producer:
+                message = producer.produce(topic, payload).result(5.0)
+
+            # write a nonsense offset
+            with closing(self.get_consumer(auto_offset_reset="error")) as consumer:
+                consumer.subscribe([topic])
+                consumer.stage_positions(
+                    {
+                        message.partition: Position(
+                            offset=message.offset + 1000, timestamp=message.timestamp
+                        )
+                    },
+                    force=True,
+                )
+                consumer.commit_positions()
+
+            with closing(self.get_consumer(force_offset_reset="latest")) as consumer:
+                consumer.subscribe([topic])
+                message = consumer.poll(10.0)
+                assert message is not None
+                assert message.payload.key == b"a"
+                assert message.payload.value == b"0"
 
     def test_auto_offset_reset_error(self) -> None:
         with self.get_topic() as topic:
