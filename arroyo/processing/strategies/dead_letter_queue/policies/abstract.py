@@ -4,11 +4,17 @@ from arroyo.types import Message, TPayload
 
 
 class InvalidMessage(Exception):
-    def __init__(self, message: Message[TPayload]):
+    def __init__(self, message: Message[TPayload], topic: str, timestamp: str):
         self.message = message
+        self.topic = topic
+        self.timestamp = timestamp
 
     def __str__(self) -> str:
-        return f"Invalid Message: {self.message}"
+        return (
+            f"Invalid Message originally produced to: {self.topic}\n"
+            f"Exception thrown at: {self.timestamp}\n"
+            f"Message: {self.message}"
+        )
 
 
 class DeadLetterQueuePolicy(ABC):

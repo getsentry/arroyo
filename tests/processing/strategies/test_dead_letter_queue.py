@@ -34,9 +34,14 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
 
     def poll(self) -> None:
         raise InvalidMessage(
-            Message(
-                Partition(Topic(""), 0), 0, KafkaPayload(None, b"", []), datetime.now()
-            )
+            message=Message(
+                Partition(Topic("topic"), 0),
+                0,
+                KafkaPayload(None, b"", []),
+                datetime.now(),
+            ),
+            topic="topic",
+            timestamp=str(datetime.now()),
         )
 
     def join(self, timeout: Optional[float] = None) -> None:
@@ -53,7 +58,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         Valid message is one with a key.
         """
         if message.payload.key is None:
-            raise InvalidMessage(message)
+            raise InvalidMessage(message, "topic", str(datetime.now()))
 
 
 class FakeProcessingStepFactory(ProcessingStrategyFactory[KafkaPayload]):
