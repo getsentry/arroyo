@@ -37,8 +37,12 @@ class StreamMessageFilter(Protocol[TPayload]):
 
 class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     """
-    Builds a three step consumer strategy consisting of filter, transform
-    and collect phases.
+    Builds a four step consumer strategy consisting of dead letter queue,
+    filter, transform, and collect phases.
+
+    The `dead_letter_queue_policy` defines what to do when an bad message
+    is encountered throughout the next processing step(s). A DLQ wraps the
+    entire strategy and handles a specific exception to handle bad messages.
 
     The `prefilter` supports passing a test function to determine whether a
     message should proceed to the next processing steps or be dropped. If no
