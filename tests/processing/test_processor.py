@@ -84,13 +84,14 @@ def test_stream_processor_lifecycle() -> None:
     assert isinstance(metric, Timing)
     assert metric.name == "pause_duration_ms"
 
-    # Assignment should fail if one already exists.
-    with pytest.raises(InvalidStateError):
+    # Strategy should be closed and recreated if it already exists and
+    # we got another partition assigned.
+    with assert_changes(lambda: int(strategy.close.call_count), 0, 1):
         assignment_callback({Partition(topic, 0): 0})
 
     # Revocation should succeed with an active assignment, and cause the
     # strategy instance to be closed.
-    with assert_changes(lambda: int(strategy.close.call_count), 0, 1):
+    with assert_changes(lambda: int(strategy.close.call_count), 1, 2):
         revocation_callback([Partition(topic, 0)])
 
     # Revocation should fail without an active assignment.

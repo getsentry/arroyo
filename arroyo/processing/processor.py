@@ -52,25 +52,11 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__shutdown_requested = False
 
-        def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
-            if self.__processing_strategy is not None:
-                raise InvalidStateError(
-                    "received unexpected assignment with existing active processing strategy"
-                )
-
-            logger.info("New partitions assigned: %r", partitions)
-            self.__processing_strategy = self.__processor_factory.create(self.__commit)
-            logger.debug(
-                "Initialized processing strategy: %r", self.__processing_strategy
-            )
-
-        def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
+        def _close_strategy() -> None:
             if self.__processing_strategy is None:
                 raise InvalidStateError(
                     "received unexpected revocation without active processing strategy"
                 )
-
-            logger.info("Partitions revoked: %r", partitions)
 
             logger.debug("Closing %r...", self.__processing_strategy)
             self.__processing_strategy.close()
@@ -84,6 +70,20 @@ class StreamProcessor(Generic[TPayload]):
             )
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
+
+        def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
+            if self.__processing_strategy is not None:
+                _close_strategy()
+
+            logger.info("New partitions assigned: %r", partitions)
+            self.__processing_strategy = self.__processor_factory.create(self.__commit)
+            logger.debug(
+                "Initialized processing strategy: %r", self.__processing_strategy
+            )
+
+        def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
+            logger.info("Partitions revoked: %r", partitions)
+            _close_strategy()
 
         self.__consumer.subscribe(
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
