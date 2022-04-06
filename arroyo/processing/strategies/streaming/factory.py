@@ -3,6 +3,12 @@ from typing import Callable, Mapping, Optional, Protocol, TypeVar
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy, ProcessingStrategyFactory
+from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
+    DeadLetterQueue,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    DeadLetterQueuePolicy,
+)
 from arroyo.processing.strategies.streaming.collect import (
     CollectStep,
     ParallelCollectStep,
@@ -58,9 +64,11 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         input_block_size: Optional[int],
         output_block_size: Optional[int],
         initialize_parallel_transform: Optional[Callable[[], None]] = None,
+        dead_letter_queue_policy: Optional[DeadLetterQueuePolicy] = None,
         parallel_collect: bool = False,
     ) -> None:
         self.__prefilter = prefilter
+        self.__dead_letter_queue_policy = dead_letter_queue_policy
         self.__process_message = process_message
         self.__collector = collector
 
@@ -125,6 +133,9 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
 
         if self.__prefilter is not None:
             strategy = FilterStep(self.__should_accept, strategy)
+
+        if self.__dead_letter_queue_policy is not None:
+            strategy = DeadLetterQueue(strategy, self.__dead_letter_queue_policy)
 
         return strategy
 
