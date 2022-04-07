@@ -160,7 +160,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         configuration = dict(configuration)
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
-        self.__force_offset_reset = configuration.pop("force.offset.reset")
+        self.__force_offset_reset = configuration.pop("force.offset.reset", None)
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
             self.__resolve_partition_starting_offset = (
                 self.__resolve_partition_offset_earliest
