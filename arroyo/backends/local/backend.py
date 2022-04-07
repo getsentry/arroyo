@@ -173,9 +173,9 @@ class LocalConsumer(Consumer[TPayload]):
     def __revoke(
         self, subscription: Subscription, partitions: Sequence[Partition]
     ) -> None:
+        self.__offsets = {}
         if subscription.revocation_callback is not None:
             subscription.revocation_callback(partitions)
-        self.__offsets = {}
 
     def subscribe(
         self,
