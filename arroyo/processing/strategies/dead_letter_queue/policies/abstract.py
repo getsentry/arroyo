@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Sequence
-
-from arroyo.types import Message, TPayload
+from typing import Any, Sequence
 
 
 class InvalidMessages(Exception):
@@ -10,7 +8,7 @@ class InvalidMessages(Exception):
     so they are handled correctly.
     """
 
-    def __init__(self, messages: Sequence[Message[TPayload]]):
+    def __init__(self, messages: Sequence[Any]):
         self.messages = messages
 
     def __str__(self) -> str:
