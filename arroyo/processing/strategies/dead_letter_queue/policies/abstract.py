@@ -1,13 +1,15 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Optional
 
 from arroyo.types import Message, TPayload
 
 
 class InvalidMessage(Exception):
-    def __init__(self, message: Message[TPayload], topic: str, timestamp: str):
+    def __init__(self, message: Message[TPayload], topic: Optional[str] = None):
         self.message = message
-        self.topic = topic
-        self.timestamp = timestamp
+        self.topic = topic or "unknown"
+        self.timestamp = str(datetime.now())
 
     def __str__(self) -> str:
         return (
