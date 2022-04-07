@@ -141,7 +141,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 message = producer.produce(topic, payload).result(5.0)
 
             # write a nonsense offset
-            with closing(self.get_consumer(auto_offset_reset="error")) as consumer:
+            with closing(self.get_consumer(auto_offset_reset="latest")) as consumer:
                 consumer.subscribe([topic])
                 consumer.stage_positions(
                     {
