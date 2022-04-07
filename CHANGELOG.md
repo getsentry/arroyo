@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.14
+
+### Various fixes & improvements
+
+- feat: Bump confluent-kafka-python to 1.7.0 (#55) by @lynnagara
+
 ## 0.0.13
 
 ### Various fixes & improvements
