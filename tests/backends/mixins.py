@@ -102,7 +102,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with assert_changes(consumer.paused, [Partition(topic, 0)], []):
                 consumer.resume([Partition(topic, 0)])
 
-            message = consumer.poll(1.0)
+            message = consumer.poll(5.0)
             assert isinstance(message, Message)
             assert message.partition == Partition(topic, 0)
             assert message.offset == messages[0].offset
