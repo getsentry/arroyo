@@ -22,7 +22,7 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         self.__dead_letter_topic = dead_letter_topic
         self.__producer = producer
 
-    def handle_invalid_message(self, e: InvalidMessages) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
         Produces a message to the given dead letter topic in the form:
 

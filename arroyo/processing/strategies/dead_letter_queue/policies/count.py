@@ -2,10 +2,14 @@ from collections import deque
 from time import time
 from typing import NamedTuple, Optional, Sequence, Tuple
 
+from arroyo.backends.kafka.consumer import KafkaProducer
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    DeadLetterQueuePolicy,
     InvalidMessages,
 )
+from arroyo.processing.strategies.dead_letter_queue.policies.produce import (
+    ProduceInvalidMessagePolicy,
+)
+from arroyo.types import Topic
 from arroyo.utils.metrics import get_metrics
 
 
@@ -18,7 +22,7 @@ class _Bucket(NamedTuple):
     hits: int
 
 
-class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
+class CountInvalidMessagePolicy(ProduceInvalidMessagePolicy):
     """
     Ignore invalid messages up to a certain limit per time unit window in seconds.
     This window is 1 minute by default. The exception associated with the invalid
@@ -27,6 +31,10 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
     A saved state in the form `[(<timestamp: int>, <hits: int>), ...]` can be passed
     on init to load a previously saved state. This state should be aggregated to
     1 second buckets.
+
+    If a `KafkaProducer` and a `Topic` are passed to this policy, invalid messages
+    will not be ignored but will be produced to the topic using the producer instead.
+    Useful for storing bad messages in a dead letter topic.
     """
 
     def __init__(
@@ -34,7 +42,11 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
         limit: int,
         seconds: int = 60,
         load_state: Optional[Sequence[Tuple[int, int]]] = None,
+        producer: Optional[KafkaProducer] = None,
+        dead_letter_topic: Optional[Topic] = None,
     ) -> None:
+        if producer is not None and dead_letter_topic is not None:
+            super().__init__(producer, dead_letter_topic)
         self.__limit = limit
         self.__seconds = seconds
         self.__metrics = get_metrics()
@@ -49,7 +61,13 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
         self._add(e)
         if self._count() > self.__limit:
             raise e
-        self.__metrics.increment("dlq.dropped_messages", len(e.messages))
+        self._produce_or_ignore(e)
+
+    def _produce_or_ignore(self, e: InvalidMessages) -> None:
+        if self.__producer is not None and self.__dead_letter_topic is not None:
+            super().handle_invalid_messages(e)
+        else:
+            self.__metrics.increment("dlq.dropped_messages", len(e.messages))
 
     def _add(self, e: InvalidMessages) -> None:
         now = int(time())
