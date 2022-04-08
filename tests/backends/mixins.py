@@ -60,7 +60,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             def _revocation_callback(partitions: Sequence[Partition]) -> None:
                 assert partitions == [Partition(topic, 0)]
-                assert consumer.tell() == {}
+                assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
 
             revocation_callback = mock.Mock(side_effect=_revocation_callback)
 
