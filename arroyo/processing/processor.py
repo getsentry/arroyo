@@ -87,10 +87,10 @@ class StreamProcessor(Generic[TPayload]):
             logger.info("Partitions revoked: %r", partitions)
             _close_strategy()
 
-            # Recreate the strategy if the consumer still has partitions assigned
-            # and is not closed or errored
+            # Recreate the strategy if the consumer still has other partitions
+            # assigned and is not closed or errored
             try:
-                if self.__consumer.tell():
+                if self.__consumer.tell().keys() - set(partitions):
                     _create_strategy()
             except Exception:
                 pass
