@@ -91,6 +91,8 @@ def test_stream_processor_lifecycle() -> None:
 
     # Revocation should succeed with an active assignment, and cause the
     # strategy instance to be closed.
+    consumer.tell.return_value = {}
+
     with assert_changes(lambda: int(strategy.close.call_count), 1, 2):
         revocation_callback([Partition(topic, 0)])
 
