@@ -1,5 +1,24 @@
 # Changelog and versioning
 
+## 0.0.14
+
+### Various fixes & improvements
+
+- feat: Bump confluent-kafka-python to 1.7.0 (#55) by @lynnagara
+
+## 0.0.13
+
+### Various fixes & improvements
+
+- feat(consumer): Support incremental cooperative rebalancing (#53) by @lynnagara
+
+## 0.0.12
+
+### Various fixes & improvements
+
+- feat: Bump confluent kafka to 1.6.1 (#51) by @lynnagara
+- ci: Upgrade black version to 22.3.0 (#52) by @lynnagara
+
 ## 0.0.11
 
 ### Various fixes & improvements
