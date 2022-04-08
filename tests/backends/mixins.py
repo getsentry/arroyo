@@ -62,6 +62,9 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 assert partitions == [Partition(topic, 0)]
                 assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
 
+                # Not sure why you'd want to do this, but it shouldn't error.
+                consumer.seek({Partition(topic, 0): messages[0].offset})
+
             revocation_callback = mock.Mock(side_effect=_revocation_callback)
 
             # TODO: It'd be much nicer if ``subscribe`` returned a future that we could
