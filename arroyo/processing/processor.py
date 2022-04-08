@@ -92,7 +92,7 @@ class StreamProcessor(Generic[TPayload]):
             try:
                 if self.__consumer.tell().keys() - set(partitions):
                     _create_strategy()
-            except Exception:
+            except RuntimeError:
                 pass
 
         self.__consumer.subscribe(
