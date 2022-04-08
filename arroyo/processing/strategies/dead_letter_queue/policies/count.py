@@ -34,7 +34,6 @@ class CountInvalidMessagePolicy(ProduceInvalidMessagePolicy):
 
     If a `KafkaProducer` and a `Topic` are passed to this policy, invalid messages
     will not be ignored but will be produced to the topic using the producer instead.
-    Useful for storing bad messages in a dead letter topic.
     """
 
     def __init__(
@@ -45,6 +44,7 @@ class CountInvalidMessagePolicy(ProduceInvalidMessagePolicy):
         producer: Optional[KafkaProducer] = None,
         dead_letter_topic: Optional[Topic] = None,
     ) -> None:
+        self.__produce = producer is not None and dead_letter_topic is not None
         if producer is not None and dead_letter_topic is not None:
             super().__init__(producer, dead_letter_topic)
         self.__limit = limit
@@ -64,7 +64,7 @@ class CountInvalidMessagePolicy(ProduceInvalidMessagePolicy):
         self._produce_or_ignore(e)
 
     def _produce_or_ignore(self, e: InvalidMessages) -> None:
-        if self.__producer is not None and self.__dead_letter_topic is not None:
+        if self.__produce:
             super().handle_invalid_messages(e)
         else:
             self.__metrics.increment("dlq.dropped_messages", len(e.messages))
