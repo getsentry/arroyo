@@ -3,7 +3,7 @@ import json
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.types import Topic
 from arroyo.utils.metrics import get_metrics
@@ -11,7 +11,7 @@ from arroyo.utils.metrics import get_metrics
 
 class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
     """
-    Produces given InvalidMessage to a dead letter topic.
+    Produces given InvalidMessages to a dead letter topic.
 
     Meant to be used as a baseclass for policies needing to produce
     invalid messages to a dead letter topic.
@@ -22,20 +22,20 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         self.__dead_letter_topic = dead_letter_topic
         self.__producer = producer
 
-    def handle_invalid_message(self, e: InvalidMessage) -> None:
+    def handle_invalid_message(self, e: InvalidMessages) -> None:
         """
         Produces a message to the given dead letter topic in the form:
 
         {
             "topic": <original topic the bad message was produced to>,
             "timestamp": <time at which exception was thrown>,
-            "message": <original bad KafkaMessage>
+            "messages": <original bad Message(s)>
         }
 
         """
         data = json.dumps(
-            {"topic": e.topic, "timestamp": e.timestamp, "message": e.message}
+            {"topic": e.topic, "timestamp": e.timestamp, "messages": e.messages}
         ).encode("utf-8")
         payload = KafkaPayload(key=None, value=data, headers=[])
         self.__producer.produce(destination=self.__dead_letter_topic, payload=payload)
-        self.__metrics.increment("dlq.produced_message")
+        self.__metrics.increment("dlq.produced_messages")
