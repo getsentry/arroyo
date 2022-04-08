@@ -1,13 +1,16 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
-
-from arroyo.types import Message, TPayload
+from typing import Any, Optional, Sequence
 
 
-class InvalidMessage(Exception):
-    def __init__(self, message: Message[TPayload], topic: Optional[str] = None):
-        self.message = message
+class InvalidMessages(Exception):
+    """
+    An exception to be thrown to pass bad messages to the DLQ
+    so they are handled correctly.
+    """
+
+    def __init__(self, messages: Sequence[Any], topic: Optional[str] = None):
+        self.messages = messages
         self.topic = topic or "unknown"
         self.timestamp = str(datetime.now())
 
@@ -15,18 +18,18 @@ class InvalidMessage(Exception):
         return (
             f"Invalid Message originally produced to: {self.topic}\n"
             f"Exception thrown at: {self.timestamp}\n"
-            f"Message: {self.message}"
+            f"Message(s): {self.messages}"
         )
 
 
 class DeadLetterQueuePolicy(ABC):
     """
-    A DLQ Policy defines how to handle an invalid message.
+    A DLQ Policy defines how to handle invalid messages.
     """
 
     @abstractmethod
-    def handle_invalid_message(self, e: InvalidMessage) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
-        Decide what to do with an invalid message.
+        Decide what to do with invalid messages.
         """
         pass
