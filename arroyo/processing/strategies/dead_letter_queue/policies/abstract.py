@@ -1,24 +1,28 @@
 from abc import ABC, abstractmethod
+from typing import Any, Sequence
 
-from arroyo.types import Message, TPayload
 
+class InvalidMessages(Exception):
+    """
+    An exception to be thrown to pass bad messages to the DLQ
+    so they are handled correctly.
+    """
 
-class InvalidMessage(Exception):
-    def __init__(self, message: Message[TPayload]):
-        self.message = message
+    def __init__(self, messages: Sequence[Any]):
+        self.messages = messages
 
     def __str__(self) -> str:
-        return f"Invalid Message: {self.message}"
+        return f"Invalid Message(s): {self.messages}"
 
 
 class DeadLetterQueuePolicy(ABC):
     """
-    A DLQ Policy defines how to handle an invalid message.
+    A DLQ Policy defines how to handle invalid messages.
     """
 
     @abstractmethod
-    def handle_invalid_message(self, e: InvalidMessage) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
-        Decide what to do with an invalid message.
+        Decide what to do with invalid messages.
         """
         pass
