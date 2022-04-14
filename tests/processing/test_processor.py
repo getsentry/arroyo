@@ -30,14 +30,13 @@ def test_stream_processor_lifecycle() -> None:
 
     message = Message(Partition(topic, 0), 0, 0, datetime.now())
 
-    # XXX: ``call().args``, ``call().kwargs`` are not available until 3.8
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
 
     assignment_callback = subscribe_kwargs["on_assign"]
     revocation_callback = subscribe_kwargs["on_revoke"]
 
-    # Assignment should succeed if no assignment already exxists.
+    # Assignment should succeed if no assignment already exists.
     offsets = {Partition(topic, 0): 0}
     assignment_callback(offsets)
 
@@ -84,13 +83,16 @@ def test_stream_processor_lifecycle() -> None:
     assert isinstance(metric, Timing)
     assert metric.name == "pause_duration_ms"
 
-    # Assignment should fail if one already exists.
-    with pytest.raises(InvalidStateError):
+    # Strategy should be closed and recreated if it already exists and
+    # we got another partition assigned.
+    with assert_changes(lambda: int(strategy.close.call_count), 0, 1):
         assignment_callback({Partition(topic, 0): 0})
 
     # Revocation should succeed with an active assignment, and cause the
     # strategy instance to be closed.
-    with assert_changes(lambda: int(strategy.close.call_count), 0, 1):
+    consumer.tell.return_value = {}
+
+    with assert_changes(lambda: int(strategy.close.call_count), 1, 2):
         revocation_callback([Partition(topic, 0)])
 
     # Revocation should fail without an active assignment.
@@ -136,3 +138,52 @@ def test_stream_processor_termination_on_error() -> None:
         processor.run()
 
     assert e.value == exception
+
+
+def test_stream_processor_incremental_assignment_revocation() -> None:
+    topic = Topic("topic")
+
+    consumer = mock.Mock()
+    strategy = mock.Mock()
+    factory = mock.Mock()
+    factory.create.return_value = strategy
+
+    with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
+        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
+
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+
+    assignment_callback = subscribe_kwargs["on_assign"]
+    revocation_callback = subscribe_kwargs["on_revoke"]
+
+    # First partition assigned
+    offsets_p0 = {Partition(topic, 0): 0}
+    assignment_callback(offsets_p0)
+
+    # Second partition assigned
+    offsets_p1 = {Partition(topic, 1): 0}
+    assignment_callback(offsets_p1)
+
+    processor._run_once()
+
+    # First partition revoked
+    consumer.tell.return_value = {**offsets_p0, **offsets_p1}
+    revocation_callback([Partition(topic, 0)])
+
+    # Second partition revoked
+    consumer.tell.return_value = {**offsets_p1}
+    revocation_callback([Partition(topic, 1)])
+
+    # Attempting to re-revoke a partition fails
+    consumer.tell.return_value = {}
+    with pytest.raises(InvalidStateError):
+        revocation_callback([Partition(topic, 1)])
+
+    # No assigned partitions, processor won't run
+    with pytest.raises(InvalidStateError):
+        processor._run_once()
+
+    # Shutdown
+    with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
+        processor._shutdown()

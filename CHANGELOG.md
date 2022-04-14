@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.16
+
+### Various fixes & improvements
+
+- feat: Support incremental assignments in stream processor (#58) by @lynnagara
+
 ## 0.0.15
 
 ### Various fixes & improvements
