@@ -7,11 +7,14 @@ class InvalidMessages(Exception):
     """
     An exception to be thrown to pass bad messages to the DLQ
     so they are handled correctly.
+
+    If the original topic the message(s) were produced to is known,
+    that should be passed along via this exception.
     """
 
-    def __init__(self, messages: Sequence[Any], topic: Optional[str] = None):
+    def __init__(self, messages: Sequence[Any], original_topic: Optional[str] = None):
         self.messages = messages
-        self.topic = topic or "unknown"
+        self.topic = original_topic or "unknown"
         self.timestamp = str(datetime.now())
 
     def __str__(self) -> str:

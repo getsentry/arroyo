@@ -24,18 +24,20 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
-        Produces a message to the given dead letter topic in the form:
-
+        Produces a message to the given dead letter topic for each
+        invalid message in the form:
         {
             "topic": <original topic the bad message was produced to>,
             "timestamp": <time at which exception was thrown>,
-            "messages": <original bad Message(s)>
+            "message": <original bad message>
         }
-
         """
-        data = json.dumps(
-            {"topic": e.topic, "timestamp": e.timestamp, "messages": e.messages}
-        ).encode("utf-8")
-        payload = KafkaPayload(key=None, value=data, headers=[])
-        self.__producer.produce(destination=self.__dead_letter_topic, payload=payload)
-        self.__metrics.increment("dlq.produced_messages")
+        for message in e.messages:
+            data = json.dumps(
+                {"topic": e.topic, "timestamp": e.timestamp, "message": message}
+            ).encode("utf-8")
+            payload = KafkaPayload(key=None, value=data, headers=[])
+            self.__producer.produce(
+                destination=self.__dead_letter_topic, payload=payload
+            )
+            self.__metrics.increment("dlq.produced_messages")
