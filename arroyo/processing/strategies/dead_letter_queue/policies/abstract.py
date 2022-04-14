@@ -12,14 +12,21 @@ class InvalidMessages(Exception):
     that should be passed along via this exception.
     """
 
-    def __init__(self, messages: Sequence[Any], original_topic: Optional[str] = None):
+    def __init__(
+        self,
+        messages: Sequence[Any],
+        reason: Optional[str] = None,
+        original_topic: Optional[str] = None,
+    ):
         self.messages = messages
+        self.reason = reason or "unknown"
         self.topic = original_topic or "unknown"
         self.timestamp = str(datetime.now())
 
     def __str__(self) -> str:
         return (
             f"Invalid Message originally produced to: {self.topic}\n"
+            f"Reason: {self.reason}\n"
             f"Exception thrown at: {self.timestamp}\n"
             f"Message(s): {self.messages}"
         )

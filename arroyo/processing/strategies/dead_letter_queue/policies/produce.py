@@ -28,13 +28,19 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         invalid message in the form:
         {
             "topic": <original topic the bad message was produced to>,
+            "reason": <why the message(s) are bad>
             "timestamp": <time at which exception was thrown>,
             "message": <original bad message>
         }
         """
         for message in e.messages:
             data = json.dumps(
-                {"topic": e.topic, "timestamp": e.timestamp, "message": message}
+                {
+                    "topic": e.topic,
+                    "reason": e.reason,
+                    "timestamp": e.timestamp,
+                    "message": message,
+                }
             ).encode("utf-8")
             payload = KafkaPayload(key=None, value=data, headers=[])
             self.__producer.produce(
