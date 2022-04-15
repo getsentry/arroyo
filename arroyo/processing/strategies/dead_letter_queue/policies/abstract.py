@@ -42,4 +42,11 @@ class DeadLetterQueuePolicy(ABC):
         """
         Decide what to do with invalid messages.
         """
-        pass
+        raise NotImplementedError()
+
+    @abstractmethod
+    def join(self, timeout: Optional[float]) -> None:
+        """
+        Cleanup any asynchronous tasks that may be running.
+        """
+        raise NotImplementedError()

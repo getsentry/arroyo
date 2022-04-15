@@ -1,3 +1,5 @@
+from typing import Optional
+
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessages,
@@ -11,3 +13,6 @@ class IgnoreInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def handle_invalid_messages(self, e: InvalidMessages) -> None:
         self.__metrics.increment("dlq.dropped_messages", len(e.messages))
+
+    def join(self, timeout: Optional[float]) -> None:
+        return

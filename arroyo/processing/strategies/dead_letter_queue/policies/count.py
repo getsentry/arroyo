@@ -68,3 +68,6 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
     def _count(self) -> int:
         start = int(time()) - self.__seconds
         return sum(bucket.hits for bucket in self.__hits if bucket.timestamp >= start)
+
+    def join(self, timeout: Optional[float]) -> None:
+        self.__next_policy.join(timeout)
