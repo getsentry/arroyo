@@ -133,7 +133,8 @@ def test_count(
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_count: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, CountInvalidMessagePolicy(5)
+        processing_step,
+        CountInvalidMessagePolicy(next_policy=IgnoreInvalidMessagePolicy(), limit=5),
     )
     dlq_count.submit(valid_message)
     for _ in range(5):
@@ -148,7 +149,10 @@ def test_count_short(
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_count_short: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, CountInvalidMessagePolicy(5, 1)
+        processing_step,
+        CountInvalidMessagePolicy(
+            next_policy=IgnoreInvalidMessagePolicy(), limit=5, seconds=1
+        ),
     )
     dlq_count_short.submit(valid_message)
     for _ in range(5):
@@ -172,6 +176,7 @@ def test_stateful_count(
     dlq_count_load_state: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(
+            next_policy=IgnoreInvalidMessagePolicy(),
             limit=5,
             load_state=state,
         ),
@@ -192,7 +197,9 @@ def test_multiple_invalid_messages(
     invalid_message: Message[KafkaPayload],
 ) -> None:
     fake_batching_processor = FakeBatchingProcessingStep()
-    count_policy = CountInvalidMessagePolicy(5)
+    count_policy = CountInvalidMessagePolicy(
+        next_policy=IgnoreInvalidMessagePolicy(), limit=5
+    )
     dlq_count: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
         fake_batching_processor, count_policy
     )
