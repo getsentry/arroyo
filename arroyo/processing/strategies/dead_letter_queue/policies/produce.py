@@ -2,7 +2,7 @@ import json
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, Optional
+from typing import Any, Deque, Optional
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
@@ -37,20 +37,26 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         }
         """
         for message in e.messages:
-            data = json.dumps(
-                {
-                    "topic": e.topic,
-                    "reason": e.reason,
-                    "timestamp": e.timestamp,
-                    "message": message,
-                }
-            ).encode("utf-8")
-            payload = KafkaPayload(key=None, value=data, headers=[])
+            payload = self._build_payload(e, message)
             self._produce(payload)
-
         self.__metrics.increment("dlq.produced_messages", len(e.messages))
 
+    def _build_payload(self, e: InvalidMessages, message: Any) -> KafkaPayload:
+        data = json.dumps(
+            {
+                "topic": e.topic,
+                "reason": e.reason,
+                "timestamp": e.timestamp,
+                "message": message,
+            }
+        ).encode("utf-8")
+        return KafkaPayload(key=None, value=data, headers=[])
+
     def _produce(self, payload: KafkaPayload) -> None:
+        """
+        Wait for queue to clear if filled, then asynchronously produce
+        the message, adding the process to the queue.
+        """
         if len(self.__futures) >= 10:
             self.join()
         self.__futures.append(
