@@ -433,10 +433,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.OFFSET_OUT_OF_RANGE,
                 KafkaError._AUTO_OFFSET_RESET,
             ):
-                # In theory this should not happen under auto offset reset.
-                # However just in case it comes around, be explicit about it.
-                if self.__force_offset_reset:
-                    return None
                 raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
