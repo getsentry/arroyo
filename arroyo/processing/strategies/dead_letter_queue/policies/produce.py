@@ -12,6 +12,8 @@ from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
 from arroyo.types import Message, Topic
 from arroyo.utils.metrics import get_metrics
 
+MAX_QUEUE_SIZE = 5000
+
 
 class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
     """
@@ -54,16 +56,25 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def _produce(self, payload: KafkaPayload) -> None:
         """
-        Wait for queue to clear if filled, then asynchronously produce
-        the message, adding the process to the queue.
+        Prune done futures from queue if filled, then asynchronously
+        produce the message, adding the process (future) to the queue.
         """
-        if len(self.__futures) >= 10:
-            self.join()
+        self._prune_done_futures()
         self.__futures.append(
             self.__producer.produce(
                 destination=self.__dead_letter_topic, payload=payload
             )
         )
+
+    def _prune_done_futures(self) -> None:
+        """
+        Filter futures deque, should iterate only once except
+        for rare edge case all processes are still running.
+        """
+        while len(self.__futures) >= MAX_QUEUE_SIZE:
+            self.__futures = deque(
+                [future for future in self.__futures if not future.done()]
+            )
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.perf_counter()
