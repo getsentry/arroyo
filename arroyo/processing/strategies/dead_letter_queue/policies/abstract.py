@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence, Union
+
+Serializable = Union[str, bytes]
 
 
 class InvalidMessages(Exception):
@@ -14,7 +16,7 @@ class InvalidMessages(Exception):
 
     def __init__(
         self,
-        messages: Sequence[Any],
+        messages: Sequence[Serializable],
         reason: Optional[str] = None,
         original_topic: Optional[str] = None,
     ):

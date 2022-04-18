@@ -2,12 +2,13 @@ import json
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Any, Deque, Optional
+from typing import Deque, Optional
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessages,
+    Serializable,
 )
 from arroyo.types import Message, Topic
 from arroyo.utils.metrics import get_metrics
@@ -38,12 +39,14 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
             "message": <original bad message>
         }
         """
+        produced_messages = 0
         for message in e.messages:
             payload = self._build_payload(e, message)
             self._produce(payload)
-        self.__metrics.increment("dlq.produced_messages", len(e.messages))
+            produced_messages += 1
+        self.__metrics.increment("dlq.produced_messages", produced_messages)
 
-    def _build_payload(self, e: InvalidMessages, message: Any) -> KafkaPayload:
+    def _build_payload(self, e: InvalidMessages, message: Serializable) -> KafkaPayload:
         data = json.dumps(
             {
                 "topic": e.topic,
