@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime
 from typing import MutableSequence, Optional, Tuple
@@ -30,16 +31,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
 
     def poll(self) -> None:
-        raise InvalidMessages(
-            [
-                Message(
-                    Partition(Topic(""), 0),
-                    0,
-                    KafkaPayload(None, b"", []),
-                    datetime.now(),
-                )
-            ]
-        )
+        raise InvalidMessages(["a bad message"])
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -55,7 +47,19 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         Valid message is one with a key.
         """
         if message.payload.key is None:
-            raise InvalidMessages([message])
+            raise InvalidMessages(
+                [
+                    json.dumps(
+                        {
+                            "payload": str(message.payload),
+                            "partition": message.partition.index,
+                            "topic": message.partition.topic.name,
+                            "offset": message.offset,
+                            "timestamp": str(message.timestamp),
+                        }
+                    ).encode("utf-8")
+                ]
+            )
 
 
 class FakeBatchingProcessingStep(FakeProcessingStep):
@@ -76,7 +80,9 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         Valid message is one with a key.
         """
         bad_messages = [
-            message for message in self._batch if message.payload.key is None
+            json.dumps(str(message.payload))
+            for message in self._batch
+            if message.payload.key is None
         ]
         self._batch = []
         if bad_messages:

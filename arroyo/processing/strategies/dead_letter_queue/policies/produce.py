@@ -1,3 +1,4 @@
+import base64
 import json
 import time
 from collections import deque
@@ -39,14 +40,14 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
             "message": <original bad message>
         }
         """
-        produced_messages = 0
         for message in e.messages:
             payload = self._build_payload(e, message)
             self._produce(payload)
-            produced_messages += 1
-        self.__metrics.increment("dlq.produced_messages", produced_messages)
+        self.__metrics.increment("dlq.produced_messages", len(e.messages))
 
     def _build_payload(self, e: InvalidMessages, message: Serializable) -> KafkaPayload:
+        if isinstance(message, bytes):
+            message = base64.b64encode(message).decode("utf-8")
         data = json.dumps(
             {
                 "topic": e.topic,
