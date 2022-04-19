@@ -24,6 +24,9 @@ from typing import (
 
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidMessages,
+)
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
@@ -142,7 +145,7 @@ class MessageBatch(Generic[TPayload]):
         return pickle.loads(
             data,
             buffers=[
-                self.block.buf[offset: offset + length].tobytes()
+                self.block.buf[offset : offset + length].tobytes()
                 for offset, length in buffers
             ],
         )
@@ -177,9 +180,10 @@ class MessageBatch(Generic[TPayload]):
             length = len(value)
             if offset + length > self.block.size:
                 raise ValueTooLarge(
-                    f"value exceeds available space in block, {length} bytes needed but {self.block.size - offset} bytes free"
+                    f"value exceeds available space in block, {length} "
+                    f"bytes needed but {self.block.size - offset} bytes free"
                 )
-            self.block.buf[offset: offset + length] = value
+            self.block.buf[offset : offset + length] = value
             self.__offset += length
             buffers.append((offset, length))
 
@@ -233,15 +237,19 @@ def parallel_transform_worker_apply(
 ) -> Tuple[int, MessageBatch[TTransformed]]:
     output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
 
+    bad_messages: MutableSequence[Any] = []
+
     i = start_index
     while i < len(input_batch):
         message = input_batch[i]
 
         try:
             result = function(message)
+        except InvalidMessages as e:
+            bad_messages += e.messages
         except Exception:
             # The remote traceback thrown when retrieving the result from the
-            # pool elides a lot of useful data (and usually includes a
+            # pool omits a lot of useful data (and usually includes a
             # truncated traceback), logging it here allows us to get this
             # information at the expense of sending duplicate events to Sentry
             # (one from the child and one from the parent.)
@@ -268,6 +276,8 @@ def parallel_transform_worker_apply(
                 break
         else:
             i += 1
+
+    # raise InvalidMessages(bad_messages)
 
     return (i, output_batch)
 
@@ -384,7 +394,12 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
-                    (self.__transform_function, input_batch, output_batch.block, i,),
+                    (
+                        self.__transform_function,
+                        input_batch,
+                        output_batch.block,
+                        i,
+                    ),
                 ),
             )
             return
@@ -429,7 +444,9 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             raise MessageRejected("no available input blocks") from e
 
         self.__batch_builder = BatchBuilder(
-            MessageBatch(input_block), self.__max_batch_size, self.__max_batch_time,
+            MessageBatch(input_block),
+            self.__max_batch_size,
+            self.__max_batch_time,
         )
 
     def submit(self, message: Message[TPayload]) -> None:
