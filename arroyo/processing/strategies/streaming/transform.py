@@ -25,7 +25,8 @@ from typing import (
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidMessages,
+    InvalidBatchedMessages,
+    InvalidMessage,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
@@ -234,10 +235,9 @@ def parallel_transform_worker_apply(
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
-) -> Tuple[int, MessageBatch[TTransformed]]:
+    bad_messages: MutableSequence[InvalidMessage] = [],
+) -> Tuple[int, MessageBatch[TTransformed], MutableSequence[InvalidMessage]]:
     output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
-
-    bad_messages: MutableSequence[Any] = []
 
     i = start_index
     while i < len(input_batch):
@@ -245,8 +245,10 @@ def parallel_transform_worker_apply(
 
         try:
             result = function(message)
-        except InvalidMessages as e:
-            bad_messages += e.messages
+        except InvalidMessage as e:
+            bad_messages.append(e)
+            i += 1
+            continue
         except Exception:
             # The remote traceback thrown when retrieving the result from the
             # pool omits a lot of useful data (and usually includes a
@@ -277,9 +279,7 @@ def parallel_transform_worker_apply(
         else:
             i += 1
 
-    # raise InvalidMessages(bad_messages)
-
-    return (i, output_batch)
+    return (i, output_batch, bad_messages)
 
 
 class ParallelTransformStep(ProcessingStep[TPayload]):
@@ -323,7 +323,9 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__results: Deque[
             Tuple[
                 MessageBatch[TPayload],
-                AsyncResult[Tuple[int, MessageBatch[TTransformed]]],
+                AsyncResult[
+                    Tuple[int, MessageBatch[TTransformed], MutableSequence[Any]]
+                ],
             ]
         ] = deque()
 
@@ -374,12 +376,14 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             # ``TimeoutError``) maintains consistency with ``AsyncResult.get``.
             raise multiprocessing.TimeoutError()
 
-        i, output_batch = result.get(timeout=timeout)
-
+        i, output_batch, bad_messages = result.get(timeout=timeout)
         # TODO: This does not handle rejections from the next step!
         for message in output_batch:
-            self.__next_step.poll()
-            self.__next_step.submit(message)
+            try:
+                self.__next_step.poll()
+                self.__next_step.submit(message)
+            except InvalidMessage as e:
+                bad_messages.append(e)
 
         if i != len(input_batch):
             logger.warning(
@@ -399,6 +403,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                         input_batch,
                         output_batch.block,
                         i,
+                        bad_messages,
                     ),
                 ),
             )
@@ -410,6 +415,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__batches_in_progress.decrement()
 
         del self.__results[0]
+        if bad_messages:
+            raise InvalidBatchedMessages(bad_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()
