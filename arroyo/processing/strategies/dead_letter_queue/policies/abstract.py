@@ -38,8 +38,9 @@ class InvalidMessage(Exception):
 
 class InvalidBatchedMessages(Exception):
     """
-    WIP
-    Should only be used by batching strategies.
+    An exception to be thrown to pass batched invalid messages.
+    to the DLQ. Generally should only be used by batching
+    strategies which collect multiple `InvalidMessage` exceptions.
     """
 
     def __init__(self, exceptions: Sequence[InvalidMessage]):

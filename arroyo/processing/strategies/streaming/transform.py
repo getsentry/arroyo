@@ -324,7 +324,9 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             Tuple[
                 MessageBatch[TPayload],
                 AsyncResult[
-                    Tuple[int, MessageBatch[TTransformed], MutableSequence[Any]]
+                    Tuple[
+                        int, MessageBatch[TTransformed], MutableSequence[InvalidMessage]
+                    ]
                 ],
             ]
         ] = deque()
@@ -416,7 +418,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
         del self.__results[0]
         if bad_messages:
-            raise InvalidBatchedMessages(bad_messages)
+            raise InvalidBatchedMessages(exceptions=bad_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()

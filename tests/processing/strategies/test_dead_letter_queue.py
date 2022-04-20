@@ -75,6 +75,9 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
             self._submit_multiple()
 
     def _process_message(self, message: Message[KafkaPayload]) -> None:
+        """
+        Some processing we want to happen per message.
+        """
         if message.payload.key is None:
             raise InvalidMessage(str(message.payload), reason="invalid key")
 
@@ -88,6 +91,8 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
                 self._process_message(message)
             except InvalidMessage as e:
                 bad_messages.append(e)
+        # At this point, we have some bad messages but the
+        # good ones have been processed without failing entire batch
         self._batch = []
         if bad_messages:
             raise InvalidBatchedMessages(bad_messages)

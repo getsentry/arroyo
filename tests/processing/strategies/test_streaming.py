@@ -12,6 +12,9 @@ import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidMessage,
+)
 from arroyo.processing.strategies.streaming.collect import (
     CollectStep,
     ParallelCollectStep,
@@ -373,7 +376,7 @@ def test_parallel_transform_worker_apply() -> None:
     output_block = smm.SharedMemory(4096)
     assert output_block.size == 4096
 
-    index, output_batch = parallel_transform_worker_apply(
+    index, output_batch, _ = parallel_transform_worker_apply(
         transform_payload_expand,
         input_batch,
         output_block,
@@ -383,7 +386,7 @@ def test_parallel_transform_worker_apply() -> None:
     assert index == 2
     assert len(output_batch) == 2
 
-    index, output_batch = parallel_transform_worker_apply(
+    index, output_batch, _ = parallel_transform_worker_apply(
         transform_payload_expand,
         input_batch,
         output_block,
@@ -402,6 +405,48 @@ def test_parallel_transform_worker_apply() -> None:
             output_block,
             index,
         )
+    smm.shutdown()
+
+
+def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
+    if message.payload.key is None:
+        raise InvalidMessage(str(message), "No Key")
+    return message.payload
+
+
+def test_parallel_transform_worker_bad_messages() -> None:
+    smm = SharedMemoryManager()
+    smm.start()
+    input_block = smm.SharedMemory(1)
+    output_block = smm.SharedMemory(1)
+    input_batch = MessageBatch[Any](input_block)
+
+    # every other message has a key
+    messages = [
+        Message(
+            Partition(Topic("test"), 0),
+            i,
+            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
+            datetime.now(),
+        )
+        for i in range(10)
+    ]
+
+    for message in messages:
+        input_batch.append(message)
+
+    assert len(input_batch) == 10
+
+    index, output_batch, bad_messages = parallel_transform_worker_apply(
+        fail_bad_messages,
+        input_batch,
+        output_block,
+    )
+    # all 10 messages processed
+    assert index == 10
+    # 5 were bad, 5 were good
+    assert len(bad_messages) == 5
+    assert len(output_batch) == 5
     smm.shutdown()
 
 
