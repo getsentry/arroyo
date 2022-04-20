@@ -417,8 +417,8 @@ def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
 def test_parallel_transform_worker_bad_messages() -> None:
     smm = SharedMemoryManager()
     smm.start()
-    input_block = smm.SharedMemory(1)
-    output_block = smm.SharedMemory(1)
+    input_block = smm.SharedMemory(128)
+    output_block = smm.SharedMemory(128)
     input_batch = MessageBatch[Any](input_block)
 
     # every other message has a key
