@@ -1,4 +1,3 @@
-import json
 import time
 from datetime import datetime
 from typing import MutableSequence, Optional, Tuple
@@ -11,6 +10,7 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidMessage,
     InvalidMessages,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.count import (
@@ -31,7 +31,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
 
     def poll(self) -> None:
-        raise InvalidMessages(["a bad message"])
+        raise InvalidMessages([InvalidMessage("a bad message", datetime.now())])
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -49,15 +49,14 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         if message.payload.key is None:
             raise InvalidMessages(
                 [
-                    json.dumps(
-                        {
-                            "payload": str(message.payload),
-                            "partition": message.partition.index,
-                            "topic": message.partition.topic.name,
-                            "offset": message.offset,
-                            "timestamp": str(message.timestamp),
-                        }
-                    ).encode("utf-8")
+                    InvalidMessage(
+                        payload=str(message.payload),
+                        timestamp=message.timestamp,
+                        original_topic=message.partition.topic.name,
+                        offset=message.offset,
+                        partition=message.partition.index,
+                        reason="No key",
+                    )
                 ]
             )
 
@@ -80,7 +79,7 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         Valid message is one with a key.
         """
         bad_messages = [
-            json.dumps(str(message.payload))
+            InvalidMessage(payload=str(message.payload), timestamp=message.timestamp)
             for message in self._batch
             if message.payload.key is None
         ]

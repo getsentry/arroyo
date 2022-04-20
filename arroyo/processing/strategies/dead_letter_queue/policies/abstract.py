@@ -1,37 +1,50 @@
+import base64
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from typing import Mapping, Optional, Sequence, Union
 
 Serializable = Union[str, bytes]
+
+
+@dataclass(frozen=True)
+class InvalidMessage:
+    payload: Serializable
+    timestamp: datetime
+    reason: str = "unknown"
+    original_topic: str = "unknown"
+    partition: int = -1
+    offset: int = -1
+
+    def to_dict(self) -> Mapping[str, str]:
+        if isinstance(self.payload, bytes):
+            try:
+                decoded = self.payload.decode("utf-8")
+            except UnicodeDecodeError:
+                decoded = base64.b64encode(self.payload).decode("utf-8")
+        else:
+            decoded = self.payload
+        return {
+            "payload": decoded,
+            "timestamp": str(self.timestamp),
+            "reason": self.reason,
+            "original_topic": self.original_topic,
+            "partition": str(self.partition),
+            "offset": str(self.offset),
+        }
 
 
 class InvalidMessages(Exception):
     """
     An exception to be thrown to pass bad messages to the DLQ
     so they are handled correctly.
-
-    If the original topic the message(s) were produced to is known,
-    that should be passed along via this exception.
     """
 
     def __init__(
         self,
-        messages: Sequence[Serializable],
-        reason: Optional[str] = None,
-        original_topic: Optional[str] = None,
+        messages: Sequence[InvalidMessage],
     ):
         self.messages = messages
-        self.reason = reason or "unknown"
-        self.topic = original_topic or "unknown"
-        self.timestamp = str(datetime.now())
-
-    def __str__(self) -> str:
-        return (
-            f"Invalid Message originally produced to: {self.topic}\n"
-            f"Reason: {self.reason}\n"
-            f"Exception thrown at: {self.timestamp}\n"
-            f"Message(s): {self.messages}"
-        )
 
 
 class DeadLetterQueuePolicy(ABC):
