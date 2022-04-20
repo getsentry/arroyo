@@ -4,6 +4,7 @@ import pickle
 import signal
 import time
 from collections import deque
+from dataclasses import dataclass
 from functools import partial
 from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.pool import AsyncResult, Pool
@@ -230,13 +231,40 @@ def parallel_transform_worker_initializer(
         custom_initialize_func()
 
 
+@dataclass
+class ParallelTransformResult(Generic[TTransformed]):
+    """
+    Results of applying the transform function to a batch
+    of messages in parallel.
+
+    `index_processed_til` holds the index of the next
+    message to be processed from the input batch. If
+    something goes wrong while processing the batch and
+    that message needs to be reprocessed, the index can
+    be passed back to the function to start processing
+    from there.
+
+    `output_batch` contains all successfully processed
+    messages.
+
+    `bad_messages` contains `InvalidMessage` exceptions
+    caught during processing. These messages (exceptions)
+    should be passed to a DLQ by raising the
+    `InvalidBatchedMessages` exception.
+    """
+
+    index_processed_til: int
+    output_batch: MessageBatch[TTransformed]
+    bad_messages: MutableSequence[InvalidMessage]
+
+
 def parallel_transform_worker_apply(
     function: Callable[[Message[TPayload]], TTransformed],
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
     bad_messages: MutableSequence[InvalidMessage] = [],
-) -> Tuple[int, MessageBatch[TTransformed], MutableSequence[InvalidMessage]]:
+) -> ParallelTransformResult[TTransformed]:
     output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
 
     i = start_index
@@ -278,8 +306,7 @@ def parallel_transform_worker_apply(
                 break
         else:
             i += 1
-
-    return (i, output_batch, bad_messages)
+    return ParallelTransformResult(i, output_batch, bad_messages)
 
 
 class ParallelTransformStep(ProcessingStep[TPayload]):
@@ -323,11 +350,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__results: Deque[
             Tuple[
                 MessageBatch[TPayload],
-                AsyncResult[
-                    Tuple[
-                        int, MessageBatch[TTransformed], MutableSequence[InvalidMessage]
-                    ]
-                ],
+                AsyncResult[ParallelTransformResult[TTransformed]],
             ]
         ] = deque()
 
@@ -368,29 +391,31 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__batch_builder = None
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, result = self.__results[0]
+        input_batch, async_result = self.__results[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
         # retrieve the result itself) avoids costly synchronization.
-        if timeout == 0 and not result.ready():
+        if timeout == 0 and not async_result.ready():
             # ``multiprocessing.TimeoutError`` (rather than builtin
             # ``TimeoutError``) maintains consistency with ``AsyncResult.get``.
             raise multiprocessing.TimeoutError()
 
-        i, output_batch, bad_messages = result.get(timeout=timeout)
+        result = async_result.get(timeout=timeout)
+        bad_messages = result.bad_messages
+
         # TODO: This does not handle rejections from the next step!
-        for message in output_batch:
+        for message in result.output_batch:
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
             except InvalidMessage as e:
                 bad_messages.append(e)
 
-        if i != len(input_batch):
+        if result.index_processed_til != len(input_batch):
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
-                i / len(input_batch) * 100,
+                result.index_processed_til / len(input_batch) * 100,
             )
             # TODO: This reserializes all the ``SerializedMessage`` data prior
             # to the processed index even though the values at those indices
@@ -403,8 +428,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                     (
                         self.__transform_function,
                         input_batch,
-                        output_batch.block,
-                        i,
+                        result.output_batch.block,
+                        result.index_processed_til,
                         bad_messages,
                     ),
                 ),
@@ -413,7 +438,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
         logger.debug("Completed %r, reclaiming blocks...", input_batch)
         self.__input_blocks.append(input_batch.block)
-        self.__output_blocks.append(output_batch.block)
+        self.__output_blocks.append(result.output_batch.block)
         self.__batches_in_progress.decrement()
 
         del self.__results[0]

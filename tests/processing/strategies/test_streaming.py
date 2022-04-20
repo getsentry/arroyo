@@ -376,26 +376,26 @@ def test_parallel_transform_worker_apply() -> None:
     output_block = smm.SharedMemory(4096)
     assert output_block.size == 4096
 
-    index, output_batch, _ = parallel_transform_worker_apply(
+    result = parallel_transform_worker_apply(
         transform_payload_expand,
         input_batch,
         output_block,
     )
 
     # The first batch should be able to fit 2 messages.
-    assert index == 2
-    assert len(output_batch) == 2
+    assert result.index_processed_til == 2
+    assert len(result.output_batch) == 2
 
-    index, output_batch, _ = parallel_transform_worker_apply(
+    result = parallel_transform_worker_apply(
         transform_payload_expand,
         input_batch,
         output_block,
-        index,
+        result.index_processed_til,
     )
 
     # The second batch should be able to fit one message.
-    assert index == 3
-    assert len(output_batch) == 1
+    assert result.index_processed_til == 3
+    assert len(result.output_batch) == 1
 
     # The last message is too large to fit in the batch.
     with pytest.raises(ValueTooLarge):
@@ -403,7 +403,7 @@ def test_parallel_transform_worker_apply() -> None:
             transform_payload_expand,
             input_batch,
             output_block,
-            index,
+            result.index_processed_til,
         )
     smm.shutdown()
 
@@ -437,16 +437,16 @@ def test_parallel_transform_worker_bad_messages() -> None:
 
     assert len(input_batch) == 10
 
-    index, output_batch, bad_messages = parallel_transform_worker_apply(
+    result = parallel_transform_worker_apply(
         fail_bad_messages,
         input_batch,
         output_block,
     )
     # all 10 messages processed
-    assert index == 10
+    assert result.index_processed_til == 10
     # 5 were bad, 5 were good
-    assert len(bad_messages) == 5
-    assert len(output_batch) == 5
+    assert len(result.bad_messages) == 5
+    assert len(result.output_batch) == 5
     smm.shutdown()
 
 
