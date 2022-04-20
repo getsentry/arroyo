@@ -84,13 +84,13 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
         group: Optional[str] = None,
         enable_end_of_partition: bool = True,
         auto_offset_reset: str = "earliest",
-        force_offset_reset: Optional[str] = None,
+        strict_offset_reset: Optional[bool] = None,
     ) -> KafkaConsumer:
         return KafkaConsumer(
             {
                 **self.configuration,
                 "auto.offset.reset": auto_offset_reset,
-                "force.offset.reset": force_offset_reset,
+                "arroyo.strict.offset.reset": strict_offset_reset,
                 "enable.auto.commit": "false",
                 "enable.auto.offset.store": "false",
                 "enable.partition.eof": enable_end_of_partition,
@@ -134,14 +134,14 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 else:
                     raise AssertionError("expected EndOfPartition error")
 
-    def test_force_offset_reset_latest(self) -> None:
+    def test_lenient_offset_reset_latest(self) -> None:
         payload = KafkaPayload(b"a", b"0", [])
         with self.get_topic() as topic:
             with closing(self.get_producer()) as producer:
                 message = producer.produce(topic, payload).result(5.0)
 
             # write a nonsense offset
-            with closing(self.get_consumer(auto_offset_reset="latest")) as consumer:
+            with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
                 consumer.stage_positions(
                     {
@@ -153,7 +153,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 )
                 consumer.commit_positions()
 
-            with closing(self.get_consumer(force_offset_reset="latest")) as consumer:
+            with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
                 result_message = consumer.poll(10.0)
                 assert result_message is not None
