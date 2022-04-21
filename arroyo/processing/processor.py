@@ -79,21 +79,24 @@ class StreamProcessor(Generic[TPayload]):
 
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
-            if self.__processing_strategy is not None:
-                _close_strategy()
-            _create_strategy()
+            if partitions:
+                if self.__processing_strategy is not None:
+                    _close_strategy()
+                _create_strategy()
 
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions revoked: %r", partitions)
-            _close_strategy()
 
-            # Recreate the strategy if the consumer still has other partitions
-            # assigned and is not closed or errored
-            try:
-                if self.__consumer.tell().keys() - set(partitions):
-                    _create_strategy()
-            except RuntimeError:
-                pass
+            if partitions:
+                _close_strategy()
+
+                # Recreate the strategy if the consumer still has other partitions
+                # assigned and is not closed or errored
+                try:
+                    if self.__consumer.tell().keys() - set(partitions):
+                        _create_strategy()
+                except RuntimeError:
+                    pass
 
         self.__consumer.subscribe(
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
