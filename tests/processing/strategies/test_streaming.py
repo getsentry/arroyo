@@ -13,6 +13,7 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidBatchedMessages,
     InvalidMessage,
 )
 from arroyo.processing.strategies.streaming.collect import (
@@ -448,6 +449,58 @@ def test_parallel_transform_worker_bad_messages() -> None:
     assert len(result.bad_messages) == 5
     assert len(result.output_batch) == 5
     smm.shutdown()
+
+
+def test_parallel_transform_step_bad_messages() -> None:
+    next_step = Mock()
+
+    starting_processes = get_subprocess_count()
+    worker_processes = 5
+    manager_processes = 1
+
+    # every other message has a key
+    messages = [
+        Message(
+            Partition(Topic("test"), 0),
+            i,
+            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
+            datetime.now(),
+        )
+        for i in range(10)
+    ]
+
+    # everything should be processed in parallel, 5 workers should spawn
+    with assert_changes(
+        get_subprocess_count,
+        starting_processes,
+        starting_processes + worker_processes + manager_processes,
+    ):
+        # create transform step with multiple processes
+        transform_step = ParallelTransformStep(
+            function=fail_bad_messages,
+            next_step=next_step,
+            processes=worker_processes,
+            max_batch_size=10,
+            max_batch_time=60,
+            input_block_size=128,
+            output_block_size=128,
+        )
+
+        # submit 10 messages: 5 good ones 5 bad ones
+        for message in messages:
+            transform_step.submit(message)
+            transform_step.poll()
+
+        # wait for all processes to finish
+        with pytest.raises(InvalidBatchedMessages) as e_info:
+            transform_step.join()
+
+        transform_step.close()
+
+    # An exception should have been thrown with the 5 bad messages
+    assert len(e_info.value.exceptions) == 5
+    # The 5 good ones should not have been blocked
+    assert next_step.submit.call_count == 5
 
 
 def get_subprocess_count() -> int:

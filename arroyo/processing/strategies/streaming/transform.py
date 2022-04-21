@@ -392,7 +392,6 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
         input_batch, async_result = self.__results[0]
-
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
         # retrieve the result itself) avoids costly synchronization.
@@ -411,6 +410,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 self.__next_step.submit(message)
             except InvalidMessage as e:
                 bad_messages.append(e)
+            except InvalidBatchedMessages as e:
+                bad_messages += e.exceptions
 
         if result.index_processed_til != len(input_batch):
             logger.warning(
