@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime
 from typing import MutableSequence, Optional, Tuple
@@ -270,3 +271,8 @@ def test_produce_invalid_messages(
     dlq_produce.submit(invalid_message)
     produced_message = broker.get_message_storage().consume(Partition(topic, 0), 0)
     assert produced_message is not None
+
+    # produced message should have appropriate info
+    dead_letter_payload = produced_message.payload.value
+    dead_letter_dict = json.loads(dead_letter_payload)
+    assert dead_letter_dict["reason"] == NO_KEY
