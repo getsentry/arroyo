@@ -409,9 +409,12 @@ def test_parallel_transform_worker_apply() -> None:
     smm.shutdown()
 
 
+NO_KEY = "No Key"
+
+
 def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
     if message.payload.key is None:
-        raise InvalidMessage(str(message), "No Key")
+        raise InvalidMessage(str(message), NO_KEY)
     return message.payload
 
 
@@ -462,7 +465,7 @@ def test_parallel_transform_step_bad_messages() -> None:
     messages = [
         Message(
             Partition(Topic("test"), 0),
-            i,
+            0,
             KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
             datetime.now(),
         )
@@ -499,6 +502,9 @@ def test_parallel_transform_step_bad_messages() -> None:
 
     # An exception should have been thrown with the 5 bad messages
     assert len(e_info.value.exceptions) == 5
+    # Test exception pickles and decodes correctly
+    assert e_info.value.exceptions[0].reason == NO_KEY
+    assert e_info.value.exceptions[0].message == str(messages[1])
     # The 5 good ones should not have been blocked
     assert next_step.submit.call_count == 5
 
