@@ -53,6 +53,9 @@ class LocalBroker(Generic[TPayload]):
             self, group, enable_end_of_partition=enable_end_of_partition
         )
 
+    def get_message_storage(self) -> MessageStorage[TPayload]:
+        return self.__message_storage
+
     def get_producer(self) -> Producer[TPayload]:
         return LocalProducer(self)
 

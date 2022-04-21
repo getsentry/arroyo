@@ -5,6 +5,7 @@ from typing import MutableSequence, Optional, Tuple
 import pytest
 
 from arroyo.backends.kafka import KafkaPayload
+from arroyo.backends.local.backend import LocalBroker
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
@@ -19,10 +20,15 @@ from arroyo.processing.strategies.dead_letter_queue.policies.count import (
 from arroyo.processing.strategies.dead_letter_queue.policies.ignore import (
     IgnoreInvalidMessagePolicy,
 )
+from arroyo.processing.strategies.dead_letter_queue.policies.produce import (
+    ProduceInvalidMessagePolicy,
+)
 from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
     RaiseInvalidMessagePolicy,
 )
 from arroyo.types import Message, Partition, Topic
+
+NO_KEY = "No key"
 
 
 class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
@@ -31,7 +37,9 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
 
     def poll(self) -> None:
-        raise InvalidMessages([InvalidMessage("a bad message", datetime.now())])
+        raise InvalidMessages(
+            [InvalidMessage("a bad message", datetime.now(), reason=NO_KEY)]
+        )
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -55,7 +63,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
                         original_topic=message.partition.topic.name,
                         offset=message.offset,
                         partition=message.partition.index,
-                        reason="No key",
+                        reason=NO_KEY,
                     )
                 ]
             )
@@ -236,3 +244,29 @@ def test_multiple_invalid_messages(
 
     assert len(e_info.value.messages) == 4
     assert count_policy._count() == 9
+
+
+def test_produce_invalid_messages(
+    valid_message: Message[KafkaPayload],
+    invalid_message: Message[KafkaPayload],
+    processing_step: FakeProcessingStep,
+    broker: LocalBroker,
+) -> None:
+    producer = broker.get_producer()
+    topic = Topic("test-dead-letter-topic")
+    broker.create_topic(topic, 1)
+    produce_policy = ProduceInvalidMessagePolicy(
+        producer, Topic("test-dead-letter-topic")
+    )
+    dlq_produce: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+        processing_step, produce_policy
+    )
+
+    # valid message should not be produced to dead-letter topic
+    dlq_produce.submit(valid_message)
+    assert broker.get_message_storage().consume(Partition(topic, 0), 0) is None
+
+    # invalid message should
+    dlq_produce.submit(invalid_message)
+    produced_message = broker.get_message_storage().consume(Partition(topic, 0), 0)
+    assert produced_message is not None
