@@ -1,9 +1,5 @@
 from .dead_letter_queue import DeadLetterQueue
-from .policies.abstract import (
-    DeadLetterQueuePolicy,
-    InvalidBatchedMessages,
-    InvalidMessage,
-)
+from .policies.abstract import DeadLetterQueuePolicy, InvalidMessage, InvalidMessages
 from .policies.count import CountInvalidMessagePolicy
 from .policies.ignore import IgnoreInvalidMessagePolicy
 from .policies.raise_e import RaiseInvalidMessagePolicy
@@ -11,7 +7,7 @@ from .policies.raise_e import RaiseInvalidMessagePolicy
 __all__ = [
     "DeadLetterQueue",
     "InvalidMessage",
-    "InvalidBatchedMessages",
+    "InvalidMessages",
     "DeadLetterQueuePolicy",
     "CountInvalidMessagePolicy",
     "IgnoreInvalidMessagePolicy",

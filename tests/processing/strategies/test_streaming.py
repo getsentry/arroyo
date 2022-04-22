@@ -13,8 +13,8 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidBatchedMessages,
     InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.processing.strategies.streaming.collect import (
     CollectStep,
@@ -414,7 +414,18 @@ NO_KEY = "No Key"
 
 def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
     if message.payload.key is None:
-        raise InvalidMessage(str(message), NO_KEY)
+        raise InvalidMessages(
+            [
+                InvalidMessage(
+                    payload=str(message.payload),
+                    timestamp=message.timestamp,
+                    reason=NO_KEY,
+                    original_topic=message.partition.topic.name,
+                    partition=message.partition.index,
+                    offset=message.offset,
+                )
+            ]
+        )
     return message.payload
 
 
@@ -433,80 +444,25 @@ def test_parallel_transform_worker_bad_messages() -> None:
             KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
             datetime.now(),
         )
-        for i in range(10)
+        for i in range(9)
     ]
 
     for message in messages:
         input_batch.append(message)
 
-    assert len(input_batch) == 10
+    assert len(input_batch) == 9
 
     result = parallel_transform_worker_apply(
         fail_bad_messages,
         input_batch,
         output_block,
     )
-    # all 10 messages processed
-    assert result.index_processed_til == 10
-    # 5 were bad, 5 were good
+    # all 9 messages processed
+    assert result.index_processed_til == 9
+    # 5 were bad, 4 were good
     assert len(result.bad_messages) == 5
-    assert len(result.output_batch) == 5
+    assert len(result.output_batch) == 4
     smm.shutdown()
-
-
-def test_parallel_transform_step_bad_messages() -> None:
-    next_step = Mock()
-
-    starting_processes = get_subprocess_count()
-    worker_processes = 5
-    manager_processes = 1
-
-    # every other message has a key
-    messages = [
-        Message(
-            Partition(Topic("test"), 0),
-            0,
-            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-            datetime.now(),
-        )
-        for i in range(10)
-    ]
-
-    # everything should be processed in parallel, 5 workers should spawn
-    with assert_changes(
-        get_subprocess_count,
-        starting_processes,
-        starting_processes + worker_processes + manager_processes,
-    ):
-        # create transform step with multiple processes
-        transform_step = ParallelTransformStep(
-            function=fail_bad_messages,
-            next_step=next_step,
-            processes=worker_processes,
-            max_batch_size=10,
-            max_batch_time=60,
-            input_block_size=128,
-            output_block_size=128,
-        )
-
-        # submit 10 messages: 5 good ones 5 bad ones
-        for message in messages:
-            transform_step.submit(message)
-            transform_step.poll()
-
-        # wait for all processes to finish
-        with pytest.raises(InvalidBatchedMessages) as e_info:
-            transform_step.join()
-
-        transform_step.close()
-
-    # An exception should have been thrown with the 5 bad messages
-    assert len(e_info.value.exceptions) == 5
-    # Test exception pickles and decodes correctly
-    assert e_info.value.exceptions[0].reason == NO_KEY
-    assert e_info.value.exceptions[0].message == str(messages[1])
-    # The 5 good ones should not have been blocked
-    assert next_step.submit.call_count == 5
 
 
 def get_subprocess_count() -> int:
@@ -609,3 +565,58 @@ def test_parallel_transform_step_terminate_workers() -> None:
         starting_processes,
     ), assert_changes(lambda: int(next_step.terminate.call_count), 0, 1):
         transform_step.terminate()
+
+
+def test_parallel_transform_step_bad_messages() -> None:
+    next_step = Mock()
+
+    starting_processes = get_subprocess_count()
+    worker_processes = 5
+    manager_processes = 1
+
+    # every other message has a key
+    messages = [
+        Message(
+            Partition(Topic("test"), 0),
+            0,
+            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
+            datetime.now(),
+        )
+        for i in range(9)
+    ]
+
+    # everything should be processed in parallel, 5 workers should spawn
+    with assert_changes(
+        get_subprocess_count,
+        starting_processes,
+        starting_processes + worker_processes + manager_processes,
+    ):
+        # create transform step with multiple processes
+        transform_step = ParallelTransformStep(
+            function=fail_bad_messages,
+            next_step=next_step,
+            processes=worker_processes,
+            max_batch_size=9,
+            max_batch_time=60,
+            input_block_size=4096,
+            output_block_size=4096,
+        )
+
+        # submit 9 messages: 4 good ones 5 bad ones
+        for message in messages:
+            transform_step.submit(message)
+            transform_step.poll()
+
+        # wait for all processes to finish
+        with pytest.raises(InvalidMessages) as e_info:
+            transform_step.join()
+
+        transform_step.close()
+
+    # An exception should have been thrown with the 5 bad messages
+    assert len(e_info.value.messages) == 5
+    # Test exception pickles and decodes correctly
+    assert e_info.value.messages[0].reason == NO_KEY
+    assert e_info.value.messages[0].payload == str(messages[0].payload)
+    # The 4 good ones should not have been blocked
+    assert next_step.submit.call_count == 4

@@ -26,8 +26,8 @@ from typing import (
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidBatchedMessages,
     InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
@@ -247,10 +247,10 @@ class ParallelTransformResult(Generic[TTransformed]):
     `output_batch` contains all successfully processed
     messages.
 
-    `bad_messages` contains `InvalidMessage` exceptions
-    caught during processing. These messages (exceptions)
-    should be passed to a DLQ by raising the
-    `InvalidBatchedMessages` exception.
+    `bad_messages` contains `InvalidMessage` objects
+    caught during processing. These messages should be
+    passed to a DLQ by raising the `InvalidMessages`
+    exception.
     """
 
     index_processed_til: int
@@ -273,8 +273,8 @@ def parallel_transform_worker_apply(
 
         try:
             result = function(message)
-        except InvalidMessage as e:
-            bad_messages.append(e)
+        except InvalidMessages as e:
+            bad_messages += e.messages
             i += 1
             continue
         except Exception:
@@ -409,10 +409,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
-            except InvalidMessage as e:
-                bad_messages.append(e)
-            except InvalidBatchedMessages as e:
-                bad_messages += e.exceptions
+            except InvalidMessages as e:
+                bad_messages += e.messages
 
         if result.index_processed_til != len(input_batch):
             logger.warning(
@@ -445,7 +443,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
 
         del self.__results[0]
         if bad_messages:
-            raise InvalidBatchedMessages(exceptions=bad_messages)
+            raise InvalidMessages(bad_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()

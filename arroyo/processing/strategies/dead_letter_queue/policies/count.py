@@ -4,7 +4,7 @@ from typing import NamedTuple, Optional, Sequence, Tuple
 
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidBatchedMessages,
+    InvalidMessages,
 )
 from arroyo.utils.metrics import get_metrics
 
@@ -45,15 +45,15 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
             maxlen=self.__seconds,
         )
 
-    def handle_invalid_messages(self, e: InvalidBatchedMessages) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         self._add(e)
         if self._count() > self.__limit:
             raise e
-        self.__metrics.increment("dlq.dropped_messages", len(e.exceptions))
+        self.__metrics.increment("dlq.dropped_messages", len(e.messages))
 
-    def _add(self, e: InvalidBatchedMessages) -> None:
+    def _add(self, e: InvalidMessages) -> None:
         now = int(time())
-        num_hits = len(e.exceptions)
+        num_hits = len(e.messages)
         if len(self.__hits) and self.__hits[-1].timestamp == now:
             bucket = self.__hits[-1]
             self.__hits[-1] = _Bucket(bucket.timestamp, bucket.hits + num_hits)

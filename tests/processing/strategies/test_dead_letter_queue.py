@@ -1,4 +1,3 @@
-import json
 import time
 from datetime import datetime
 from typing import MutableSequence, Optional, Tuple
@@ -11,8 +10,8 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidBatchedMessages,
     InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.count import (
     CountInvalidMessagePolicy,
@@ -32,7 +31,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
 
     def poll(self) -> None:
-        raise InvalidMessage("a bad message")
+        raise InvalidMessages([InvalidMessage("a bad message", datetime.now())])
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -48,16 +47,17 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         Valid message is one with a key.
         """
         if message.payload.key is None:
-            raise InvalidMessage(
-                json.dumps(
-                    {
-                        "payload": str(message.payload),
-                        "partition": message.partition.index,
-                        "topic": message.partition.topic.name,
-                        "offset": message.offset,
-                        "timestamp": str(message.timestamp),
-                    }
-                ).encode("utf-8")
+            raise InvalidMessages(
+                [
+                    InvalidMessage(
+                        payload=str(message.payload),
+                        timestamp=message.timestamp,
+                        reason="No Key",
+                        original_topic=message.partition.topic.name,
+                        partition=message.partition.index,
+                        offset=message.offset,
+                    )
+                ]
             )
 
 
@@ -79,7 +79,18 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         Some processing we want to happen per message.
         """
         if message.payload.key is None:
-            raise InvalidMessage(str(message.payload), reason="invalid key")
+            raise InvalidMessages(
+                [
+                    InvalidMessage(
+                        payload=str(message.payload),
+                        timestamp=message.timestamp,
+                        reason="No Key",
+                        original_topic=message.partition.topic.name,
+                        partition=message.partition.index,
+                        offset=message.offset,
+                    )
+                ]
+            )
 
     def _submit_multiple(self) -> None:
         """
@@ -89,13 +100,13 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         for message in self._batch:
             try:
                 self._process_message(message)
-            except InvalidMessage as e:
-                bad_messages.append(e)
+            except InvalidMessages as e:
+                bad_messages += e.messages
         # At this point, we have some bad messages but the
         # good ones have been processed without failing entire batch
         self._batch = []
         if bad_messages:
-            raise InvalidBatchedMessages(bad_messages)
+            raise InvalidMessages(bad_messages)
 
 
 @pytest.fixture
@@ -124,9 +135,9 @@ def test_raise(
         processing_step, RaiseInvalidMessagePolicy()
     )
     dlq_raise.submit(valid_message)
-    with pytest.raises(InvalidBatchedMessages):
+    with pytest.raises(InvalidMessages):
         dlq_raise.submit(invalid_message)
-    with pytest.raises(InvalidBatchedMessages):
+    with pytest.raises(InvalidMessages):
         dlq_raise.poll()
 
 
@@ -153,7 +164,7 @@ def test_count(
     dlq_count.submit(valid_message)
     for _ in range(5):
         dlq_count.submit(invalid_message)
-    with pytest.raises(InvalidBatchedMessages):
+    with pytest.raises(InvalidMessages):
         dlq_count.submit(invalid_message)
 
 
@@ -168,7 +179,7 @@ def test_count_short(
     dlq_count_short.submit(valid_message)
     for _ in range(5):
         dlq_count_short.submit(invalid_message)
-    with pytest.raises(InvalidBatchedMessages):
+    with pytest.raises(InvalidMessages):
         dlq_count_short.submit(invalid_message)
     time.sleep(1)
     dlq_count_short.submit(invalid_message)
@@ -198,7 +209,7 @@ def test_stateful_count(
     dlq_count_load_state.submit(invalid_message)
 
     # Limit is 5, 5 hits exist, next invalid message should cause exception
-    with pytest.raises(InvalidBatchedMessages):
+    with pytest.raises(InvalidMessages):
         dlq_count_load_state.submit(invalid_message)
 
 
@@ -234,8 +245,8 @@ def test_invalid_batched_messages(
     Next message submitted triggers batch to submit
     - submits 4 batched invalid messages to the count policy, triggering it to raise
     """
-    with pytest.raises(InvalidBatchedMessages) as e_info:
+    with pytest.raises(InvalidMessages) as e_info:
         dlq_count.submit(valid_message)
 
-    assert len(e_info.value.exceptions) == 4
+    assert len(e_info.value.messages) == 4
     assert count_policy._count() == 9

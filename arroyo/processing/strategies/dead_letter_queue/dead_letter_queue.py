@@ -1,11 +1,10 @@
 import logging
-from typing import Optional, Union
+from typing import Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidBatchedMessages,
-    InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import get_metrics
@@ -37,22 +36,18 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
     def poll(self) -> None:
         try:
             self.__next_step.poll()
-        except (InvalidMessage, InvalidBatchedMessages) as e:
+        except InvalidMessages as e:
             self._handle_invalid_messages(e)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
         try:
             self.__next_step.submit(message)
-        except (InvalidMessage, InvalidBatchedMessages) as e:
+        except InvalidMessages as e:
             self._handle_invalid_messages(e)
 
-    def _handle_invalid_messages(
-        self, e: Union[InvalidMessage, InvalidBatchedMessages]
-    ) -> None:
-        if isinstance(e, InvalidMessage):
-            e = InvalidBatchedMessages([e])
-        self.__metrics.increment(RECEIVED_MESSAGE_METRIC, len(e.exceptions))
+    def _handle_invalid_messages(self, e: InvalidMessages) -> None:
+        self.__metrics.increment(RECEIVED_MESSAGE_METRIC, len(e.messages))
         self.__policy.handle_invalid_messages(e)
 
     def close(self) -> None:

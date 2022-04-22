@@ -1,9 +1,9 @@
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidBatchedMessages,
+    InvalidMessages,
 )
 
 
 class RaiseInvalidMessagePolicy(DeadLetterQueuePolicy):
-    def handle_invalid_messages(self, e: InvalidBatchedMessages) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         raise e

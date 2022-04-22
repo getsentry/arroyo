@@ -1,50 +1,28 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from typing import Sequence, Union
 
 Serializable = Union[str, bytes]
 
 
-class InvalidMessage(Exception):
+@dataclass(frozen=True)
+class InvalidMessage:
+    payload: Serializable
+    timestamp: datetime
+    reason: str = "unknown"
+    original_topic: str = "unknown"
+    partition: int = -1
+    offset: int = -1
+
+
+class InvalidMessages(Exception):
     """
-    An exception to be thrown to pass a bad message to the DLQ.
-
-    A reason can be optionally passed describing why the message
-    is bad.
-
-    If the original topic the message was produced to is known,
-    that should be passed along via this exception.
-    """
-
-    def __init__(
-        self,
-        message: Serializable,
-        reason: Optional[str] = None,
-        original_topic: Optional[str] = None,
-    ):
-        self.message = message
-        self.reason = reason or "unknown"
-        self.topic = original_topic or "unknown"
-        self.timestamp = str(datetime.now())
-
-    def __str__(self) -> str:
-        return (
-            f"Invalid Message originally produced to: {self.topic}\n"
-            f"Reason: {self.reason}\n"
-            f"Exception thrown at: {self.timestamp}\n"
-            f"Message: {str(self.message)}"
-        )
-
-
-class InvalidBatchedMessages(Exception):
-    """
-    An exception to be thrown to pass batched invalid messages.
-    to the DLQ. Generally should only be used by batching
-    strategies which collect multiple `InvalidMessage` exceptions.
+    An exception to be thrown to pass invalid messages to the DLQ.
     """
 
-    def __init__(self, exceptions: Sequence[InvalidMessage]):
-        self.exceptions = exceptions
+    def __init__(self, messages: Sequence[InvalidMessage]):
+        self.messages = messages
 
 
 class DeadLetterQueuePolicy(ABC):
@@ -53,8 +31,8 @@ class DeadLetterQueuePolicy(ABC):
     """
 
     @abstractmethod
-    def handle_invalid_messages(self, e: InvalidBatchedMessages) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
-        Decide what to do with a batch of invalid messages.
+        Decide what to do with invalid messages.
         """
         pass
