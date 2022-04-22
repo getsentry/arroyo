@@ -265,11 +265,11 @@ def test_produce_invalid_messages(
 
     # valid message should not be produced to dead-letter topic
     dlq_produce.submit(valid_message)
-    assert broker.get_message_storage().consume(Partition(topic, 0), 0) is None
+    assert broker.consume(Partition(topic, 0), 0) is None
 
     # invalid message should
     dlq_produce.submit(invalid_message)
-    produced_message = broker.get_message_storage().consume(Partition(topic, 0), 0)
+    produced_message = broker.consume(Partition(topic, 0), 0)
     assert produced_message is not None
 
     # produced message should have appropriate info

@@ -11,10 +11,10 @@ Serializable = Union[str, bytes]
 class InvalidMessage:
     payload: Serializable
     timestamp: datetime
-    reason: str = "unknown"
-    original_topic: str = "unknown"
-    partition: int = -1
-    offset: int = -1
+    reason: Optional[str] = None
+    original_topic: Optional[str] = None
+    partition: Optional[int] = None
+    offset: Optional[int] = None
 
     def to_dict(self) -> Mapping[str, str]:
         if isinstance(self.payload, bytes):
@@ -27,8 +27,8 @@ class InvalidMessage:
         return {
             "payload": decoded,
             "timestamp": str(self.timestamp),
-            "reason": self.reason,
-            "original_topic": self.original_topic,
+            "reason": str(self.reason),
+            "original_topic": str(self.original_topic),
             "partition": str(self.partition),
             "offset": str(self.offset),
         }
