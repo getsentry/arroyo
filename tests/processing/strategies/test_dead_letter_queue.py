@@ -263,13 +263,17 @@ def test_produce_invalid_messages(
         processing_step, produce_policy
     )
 
+    consumer = broker.get_consumer("test-group")
+    consumer.subscribe([topic])
+
     # valid message should not be produced to dead-letter topic
     dlq_produce.submit(valid_message)
-    assert broker.consume(Partition(topic, 0), 0) is None
+    assert consumer.poll() is None
 
     # invalid message should
     dlq_produce.submit(invalid_message)
-    produced_message = broker.consume(Partition(topic, 0), 0)
+
+    produced_message = consumer.poll()
     assert produced_message is not None
 
     # produced message should have appropriate info
