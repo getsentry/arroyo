@@ -18,7 +18,8 @@ class InvalidMessage:
 
 class InvalidMessages(Exception):
     """
-    An exception to be thrown to pass invalid messages to the DLQ.
+    An exception to be thrown to pass bad messages to the DLQ
+    so they are handled correctly.
     """
 
     def __init__(self, messages: Sequence[InvalidMessage]):

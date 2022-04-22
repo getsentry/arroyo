@@ -19,8 +19,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
     DLQ Processing Step.
 
     Attempts to submit a given message to the next processing step,
-    handling `InvalidMessage` and `InvalidBatchedMessages`
-    according to the given Policy.
+    handling `InvalidMessages` according to the given Policy.
     """
 
     def __init__(
