@@ -53,7 +53,6 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
                         payload=str(message.payload),
                         timestamp=message.timestamp,
                         reason="No Key",
-                        original_topic=message.partition.topic.name,
                         partition=message.partition.index,
                         offset=message.offset,
                     )
@@ -85,7 +84,6 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
                         payload=str(message.payload),
                         timestamp=message.timestamp,
                         reason="No Key",
-                        original_topic=message.partition.topic.name,
                         partition=message.partition.index,
                         offset=message.offset,
                     )

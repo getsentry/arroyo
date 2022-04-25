@@ -11,7 +11,7 @@ class InvalidMessage:
     payload: Serializable
     timestamp: datetime
     reason: Optional[str] = None
-    original_topic: Optional[str] = None
+    consumer_group: Optional[str] = None
     partition: Optional[int] = None
     offset: Optional[int] = None
 

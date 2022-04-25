@@ -420,7 +420,6 @@ def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
                     payload=str(message.payload),
                     timestamp=message.timestamp,
                     reason=NO_KEY,
-                    original_topic=message.partition.topic.name,
                     partition=message.partition.index,
                     offset=message.offset,
                 )
