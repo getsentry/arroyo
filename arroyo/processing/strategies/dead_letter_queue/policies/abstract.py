@@ -9,10 +9,26 @@ Serializable = Union[str, bytes]
 
 @dataclass(frozen=True)
 class InvalidMessage:
+    """
+    A dataclass to generally represent a bad Kafka message.
+    The Kafka specific fields (offset etc) are all optional
+    since this can be used to pass almost anything to the
+    DLQ.
+
+    A `reason` can be provided for debugging purposes. If a
+    produce policy is configured on the relevant DLQ, a message
+    in the form returned by `to_dict()` will be produced via
+    the policy.
+
+    An `InvalidMessages` exception should be raised containing
+    one or more objects of this class in order to actually
+    pass data to the DLQ.
+    """
+
     payload: Serializable
     timestamp: datetime
     reason: Optional[str] = None
-    original_topic: Optional[str] = None
+    consumer_group: Optional[str] = None
     partition: Optional[int] = None
     offset: Optional[int] = None
 
@@ -28,7 +44,7 @@ class InvalidMessage:
             "payload": decoded,
             "timestamp": str(self.timestamp),
             "reason": str(self.reason),
-            "original_topic": str(self.original_topic),
+            "consumer_group": str(self.consumer_group),
             "partition": str(self.partition),
             "offset": str(self.offset),
         }

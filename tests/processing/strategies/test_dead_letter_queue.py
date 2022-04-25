@@ -61,7 +61,6 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
                     InvalidMessage(
                         payload=str(message.payload),
                         timestamp=message.timestamp,
-                        original_topic=message.partition.topic.name,
                         offset=message.offset,
                         partition=message.partition.index,
                         reason=NO_KEY,
