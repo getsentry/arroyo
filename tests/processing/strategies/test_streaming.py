@@ -608,9 +608,8 @@ def test_parallel_transform_step_bad_messages() -> None:
 
         # wait for all processes to finish
         with pytest.raises(InvalidMessages) as e_info:
+            transform_step.close()
             transform_step.join()
-
-        transform_step.close()
 
     # An exception should have been thrown with the 5 bad messages
     assert len(e_info.value.messages) == 5
