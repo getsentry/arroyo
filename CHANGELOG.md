@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.0.17
+
+### Various fixes & improvements
+
+- feat: Avoid unnecessarily recreating processing strategy (#62) by @lynnagara
+- feat: Run CI on multiple Python versions (#63) by @lynnagara
+
 ## 0.0.16
 
 ### Various fixes & improvements
