@@ -37,7 +37,7 @@ class InvalidMessage:
             try:
                 decoded = self.payload.decode("utf-8")
             except UnicodeDecodeError:
-                decoded = base64.b64encode(self.payload).decode("utf-8")
+                decoded = "(base64) " + base64.b64encode(self.payload).decode("utf-8")
         else:
             decoded = self.payload
         return {
