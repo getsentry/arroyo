@@ -63,20 +63,19 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def _produce(self, payload: KafkaPayload) -> None:
         """
-        Prune done futures from queue if filled, then asynchronously
-        produce the message, adding the process (future) to the queue.
+        Prune done futures and asynchronously produce
         """
-        self._prune_done_future()
+        while self.__futures and self.__futures[0].done():
+            self.__futures.popleft()
+        if len(self.__futures) >= MAX_QUEUE_SIZE:
+            self.__futures[0].result(timeout=1.0)
+            self.__futures.popleft()
+
         self.__futures.append(
             self.__producer.produce(
                 destination=self.__dead_letter_topic, payload=payload
             )
         )
-
-    def _prune_done_future(self) -> None:
-        if len(self.__futures) >= MAX_QUEUE_SIZE:
-            self.__futures[0].result()
-            self.__futures.popleft()
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.perf_counter()
