@@ -25,7 +25,7 @@ class InvalidMessage(ABC):
     def to_dict(self) -> Mapping[str, JSONSerializable]:
         raise NotImplementedError
 
-    def deserialize_payload(self, payload: SerializedPayload) -> str:
+    def _deserialize_payload(self, payload: SerializedPayload) -> str:
         if isinstance(payload, bytes):
             try:
                 decoded = payload.decode("utf-8")
@@ -47,7 +47,7 @@ class InvalidRawMessage(InvalidMessage):
     reason: Optional[str] = None
 
     def to_dict(self) -> Mapping[str, JSONSerializable]:
-        return {"payload": self.deserialize_payload(self.payload)}
+        return {"payload": super()._deserialize_payload(self.payload)}
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class InvalidKafkaMessage(InvalidMessage):
 
     def to_dict(self) -> Mapping[str, JSONSerializable]:
         return {
-            "payload": self.deserialize_payload(self.payload),
+            "payload": super()._deserialize_payload(self.payload),
             "timestamp": self.timestamp,
             "reason": self.reason,
             "consumer_group": self.consumer_group,
