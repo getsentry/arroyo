@@ -32,7 +32,7 @@ class InvalidMessage:
     partition: Optional[int] = None
     offset: Optional[int] = None
 
-    def to_dict(self) -> Mapping[str, str]:
+    def to_dict(self) -> Mapping[str, Optional[Union[str, int, datetime]]]:
         if isinstance(self.payload, bytes):
             try:
                 decoded = self.payload.decode("utf-8")
@@ -42,11 +42,11 @@ class InvalidMessage:
             decoded = self.payload
         return {
             "payload": decoded,
-            "timestamp": str(self.timestamp),
-            "reason": str(self.reason),
-            "consumer_group": str(self.consumer_group),
-            "partition": str(self.partition),
-            "offset": str(self.offset),
+            "timestamp": self.timestamp,
+            "reason": self.reason,
+            "consumer_group": self.consumer_group,
+            "partition": self.partition,
+            "offset": self.offset,
         }
 
 
