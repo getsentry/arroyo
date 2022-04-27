@@ -518,10 +518,18 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         deadline = time.time() + timeout if timeout is not None else None
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
+
+        invalid_messages: MutableSequence[InvalidMessage] = []
+
         while self.__processes:
-            self.__check_for_results(
-                timeout=max(deadline - time.time(), 0) if deadline is not None else None
-            )
+            try:
+                self.__check_for_results(
+                    timeout=max(deadline - time.time(), 0)
+                    if deadline is not None
+                    else None
+                )
+            except InvalidMessages as e:
+                invalid_messages += e.messages
 
         self.__pool.close()
 
@@ -534,6 +542,12 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__shared_memory_manager.shutdown()
 
         self.__next_step.close()
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        try:
+            self.__next_step.join(
+                timeout=max(deadline - time.time(), 0) if deadline is not None else None
+            )
+        except InvalidMessages as e:
+            invalid_messages += e.messages
+
+        if invalid_messages:
+            raise InvalidMessages(invalid_messages)
