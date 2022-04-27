@@ -10,6 +10,7 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidKafkaMessage,
     InvalidMessages,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.count import (
@@ -32,11 +33,10 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     def poll(self) -> None:
         raise InvalidMessages(
             [
-                Message(
-                    Partition(Topic(""), 0),
-                    0,
-                    KafkaPayload(None, b"", []),
-                    datetime.now(),
+                InvalidKafkaMessage(
+                    payload=str(KafkaPayload(None, b"", [])),
+                    timestamp=datetime.now(),
+                    reason="No Key",
                 )
             ]
         )
@@ -55,7 +55,17 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         Valid message is one with a key.
         """
         if message.payload.key is None:
-            raise InvalidMessages([message])
+            raise InvalidMessages(
+                [
+                    InvalidKafkaMessage(
+                        str(message.payload),
+                        message.timestamp,
+                        "No Key",
+                        partition=message.partition.index,
+                        offset=message.offset,
+                    )
+                ]
+            )
 
 
 class FakeBatchingProcessingStep(FakeProcessingStep):
@@ -76,7 +86,9 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         Valid message is one with a key.
         """
         bad_messages = [
-            message for message in self._batch if message.payload.key is None
+            InvalidKafkaMessage(str(message.payload), message.timestamp, "No Key")
+            for message in self._batch
+            if message.payload.key is None
         ]
         self._batch = []
         if bad_messages:
