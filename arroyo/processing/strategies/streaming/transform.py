@@ -302,7 +302,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self,
         function: Callable[[Message[TPayload]], TTransformed],
         next_step: ProcessingStep[TTransformed],
-        processes: int,
+        num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
         input_block_size: int,
@@ -318,24 +318,24 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__shared_memory_manager.start()
 
         self.__pool = Pool(
-            processes,
+            num_processes,
             initializer=partial(parallel_transform_worker_initializer, initializer),
             context=multiprocessing.get_context("spawn"),
         )
 
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(input_block_size)
-            for _ in range(processes)
+            for _ in range(num_processes)
         ]
 
         self.__output_blocks = [
             self.__shared_memory_manager.SharedMemory(output_block_size)
-            for _ in range(processes)
+            for _ in range(num_processes)
         ]
 
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
 
-        self.__results: Deque[
+        self.__processes: Deque[
             Tuple[
                 MessageBatch[TPayload],
                 AsyncResult[ParallelTransformResult[TTransformed]],
@@ -346,7 +346,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge("transform.processes", processes)
+        self.__metrics.gauge("transform.processes", num_processes)
 
         self.__closed = False
 
@@ -365,7 +365,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         assert self.__batch_builder is not None
         batch = self.__batch_builder.build()
         logger.debug("Submitting %r to %r...", batch, self.__pool)
-        self.__results.append(
+        self.__processes.append(
             (
                 batch,
                 self.__pool.apply_async(
@@ -381,7 +381,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__batch_builder = None
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result, partial_invalid_messages = self.__results[0]
+        input_batch, async_result, partial_invalid_messages = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -411,7 +411,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             # to the processed index even though the values at those indices
             # will never be unpacked. It probably makes sense to remove that
             # data from the batch to avoid unnecessary serialization overhead.
-            self.__results[0] = (
+            self.__processes[0] = (
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
@@ -431,14 +431,14 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__output_blocks.append(result.valid_messages_transformed.block)
         self.__batches_in_progress.decrement()
 
-        del self.__results[0]
+        del self.__processes[0]
         if partial_invalid_messages:
             raise InvalidMessages(partial_invalid_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()
 
-        while self.__results:
+        while self.__processes:
             try:
                 self.__check_for_results(timeout=0)
             except multiprocessing.TimeoutError:
@@ -450,7 +450,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                         logger.warning(
                             "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
                             LOG_THRESHOLD_TIME,
-                            len(self.__results),
+                            len(self.__processes),
                             self.__pool,
                         )
                         self.__pool_waiting_time = current_time
@@ -517,8 +517,8 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
 
-        logger.debug("Waiting for %s batches...", len(self.__results))
-        while self.__results:
+        logger.debug("Waiting for %s batches...", len(self.__processes))
+        while self.__processes:
             self.__check_for_results(
                 timeout=max(deadline - time.time(), 0) if deadline is not None else None
             )

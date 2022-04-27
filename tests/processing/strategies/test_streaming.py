@@ -507,7 +507,7 @@ def test_parallel_transform_step() -> None:
         transform_step = ParallelTransformStep(
             transform_payload_expand,
             next_step,
-            processes=worker_processes,
+            num_processes=worker_processes,
             max_batch_size=5,
             max_batch_time=60,
             input_block_size=4096,
@@ -551,7 +551,7 @@ def test_parallel_transform_step_terminate_workers() -> None:
         transform_step = ParallelTransformStep(
             transform_payload_expand,  # doesn't matter
             next_step,
-            processes=worker_processes,
+            num_processes=worker_processes,
             max_batch_size=5,
             max_batch_time=60,
             input_block_size=4096,
@@ -594,7 +594,7 @@ def test_parallel_transform_step_bad_messages() -> None:
         transform_step = ParallelTransformStep(
             function=fail_bad_messages,
             next_step=next_step,
-            processes=worker_processes,
+            num_processes=worker_processes,
             max_batch_size=9,
             max_batch_time=60,
             input_block_size=4096,
