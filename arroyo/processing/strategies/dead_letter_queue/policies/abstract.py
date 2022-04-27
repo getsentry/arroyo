@@ -83,7 +83,7 @@ class InvalidMessages(Exception):
 
     def __init__(
         self,
-        messages: Sequence[InvalidKafkaMessage],
+        messages: Sequence[InvalidMessage],
     ):
         self.messages = messages
 
