@@ -236,26 +236,11 @@ class ParallelTransformResult(Generic[TTransformed]):
     """
     Results of applying the transform function to a batch
     of messages in parallel.
-
-    `index_processed_til` holds the index of the next
-    message to be processed from the input batch. If
-    something goes wrong while processing the batch and
-    that message needs to be reprocessed, the index can
-    be passed back to the function to start processing
-    from there.
-
-    `output_batch` contains all successfully processed
-    messages.
-
-    `bad_messages` contains `InvalidMessage` objects
-    caught during processing. These messages should be
-    passed to a DLQ by raising the `InvalidMessages`
-    exception.
     """
 
-    index_processed_til: int
-    output_batch: MessageBatch[TTransformed]
-    bad_messages: MutableSequence[InvalidMessage]
+    next_index_to_process: int
+    valid_messages_transformed: MessageBatch[TTransformed]
+    invalid_messages: MutableSequence[InvalidMessage]
 
 
 def parallel_transform_worker_apply(
@@ -263,19 +248,20 @@ def parallel_transform_worker_apply(
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
-    bad_messages: MutableSequence[InvalidMessage] = [],
 ) -> ParallelTransformResult[TTransformed]:
-    output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
 
-    i = start_index
-    while i < len(input_batch):
-        message = input_batch[i]
+    valid_messages_transformed: MessageBatch[TTransformed] = MessageBatch(output_block)
+    invalid_messages: MutableSequence[InvalidMessage] = []
+
+    next_index_to_process = start_index
+    while next_index_to_process < len(input_batch):
+        message = input_batch[next_index_to_process]
 
         try:
             result = function(message)
         except InvalidMessages as e:
-            bad_messages += e.messages
-            i += 1
+            invalid_messages += e.messages
+            next_index_to_process += 1
             continue
         except Exception:
             # The remote traceback thrown when retrieving the result from the
@@ -292,7 +278,7 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            output_batch.append(
+            valid_messages_transformed.append(
                 Message(message.partition, message.offset, result, message.timestamp)
             )
         except ValueTooLarge:
@@ -300,13 +286,15 @@ def parallel_transform_worker_apply(
             # the batch is empty, we'll never be able to write it and should
             # error instead of retrying. Otherwise, we need to return the
             # values we've already accumulated and continue processing later.
-            if len(output_batch) == 0:
+            if len(valid_messages_transformed) == 0:
                 raise
             else:
                 break
         else:
-            i += 1
-    return ParallelTransformResult(i, output_batch, bad_messages)
+            next_index_to_process += 1
+    return ParallelTransformResult(
+        next_index_to_process, valid_messages_transformed, invalid_messages
+    )
 
 
 class ParallelTransformStep(ProcessingStep[TPayload]):
@@ -351,6 +339,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             Tuple[
                 MessageBatch[TPayload],
                 AsyncResult[ParallelTransformResult[TTransformed]],
+                MutableSequence[InvalidMessage],
             ]
         ] = deque()
 
@@ -383,6 +372,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                     parallel_transform_worker_apply,
                     (self.__transform_function, batch, self.__output_blocks.pop()),
                 ),
+                [],
             )
         )
         self.__batches_in_progress.increment()
@@ -391,7 +381,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__batch_builder = None
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result = self.__results[0]
+        input_batch, async_result, partial_invalid_messages = self.__results[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -402,20 +392,20 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             raise multiprocessing.TimeoutError()
 
         result = async_result.get(timeout=timeout)
-        bad_messages = result.bad_messages
+        partial_invalid_messages += result.invalid_messages
 
         # TODO: This does not handle rejections from the next step!
-        for message in result.output_batch:
+        for message in result.valid_messages_transformed:
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
             except InvalidMessages as e:
-                bad_messages += e.messages
+                partial_invalid_messages += e.messages
 
-        if result.index_processed_til != len(input_batch):
+        if result.next_index_to_process != len(input_batch):
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
-                result.index_processed_til / len(input_batch) * 100,
+                result.next_index_to_process / len(input_batch) * 100,
             )
             # TODO: This reserializes all the ``SerializedMessage`` data prior
             # to the processed index even though the values at those indices
@@ -428,22 +418,22 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                     (
                         self.__transform_function,
                         input_batch,
-                        result.output_batch.block,
-                        result.index_processed_til,
-                        bad_messages,
+                        result.valid_messages_transformed.block,
+                        result.next_index_to_process,
                     ),
                 ),
+                partial_invalid_messages,
             )
             return
 
         logger.debug("Completed %r, reclaiming blocks...", input_batch)
         self.__input_blocks.append(input_batch.block)
-        self.__output_blocks.append(result.output_batch.block)
+        self.__output_blocks.append(result.valid_messages_transformed.block)
         self.__batches_in_progress.decrement()
 
         del self.__results[0]
-        if bad_messages:
-            raise InvalidMessages(bad_messages)
+        if partial_invalid_messages:
+            raise InvalidMessages(partial_invalid_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()
