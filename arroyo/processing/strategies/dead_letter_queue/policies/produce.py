@@ -3,7 +3,7 @@ import time
 from collections import deque
 from concurrent.futures import Future
 from datetime import datetime
-from typing import Any, Deque, Mapping, Optional, Union
+from typing import Any, Deque, Mapping, Optional
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
@@ -11,6 +11,7 @@ from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessage,
     InvalidMessages,
+    JSONSerializable,
 )
 from arroyo.types import Message, Topic
 from arroyo.utils.codecs import Encoder
@@ -20,16 +21,14 @@ MAX_QUEUE_SIZE = 5000
 DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-class JSONMessageEncoder(
-    Encoder[bytes, Mapping[str, Optional[Union[str, int, datetime]]]]
-):
+class JSONMessageEncoder(Encoder[bytes, Mapping[str, JSONSerializable]]):
     def __default(self, value: Any) -> str:
         if isinstance(value, datetime):
             return value.strftime(DATE_TIME_FORMAT)
         else:
             raise TypeError
 
-    def encode(self, value: Mapping[str, Optional[Union[str, int, datetime]]]) -> bytes:
+    def encode(self, value: Mapping[str, JSONSerializable]) -> bytes:
         return json.dumps(value, default=self.__default).encode("utf-8")
 
 
