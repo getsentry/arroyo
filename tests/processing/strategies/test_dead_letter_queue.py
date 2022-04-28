@@ -12,9 +12,8 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidMessage,
+    InvalidKafkaMessage,
     InvalidMessages,
-    Serializable,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.count import (
     CountInvalidMessagePolicy,
@@ -36,13 +35,41 @@ BAD_PAYLOAD = "Bad payload"
 NOW = datetime.now()
 
 
+def kafka_message_to_invalid_kafka_message(
+    message: Message[KafkaPayload], reason: str
+) -> InvalidKafkaMessage:
+    return InvalidKafkaMessage(
+        payload=message.payload.value,
+        timestamp=message.timestamp,
+        topic=message.partition.topic.name,
+        consumer_group="",
+        partition=message.partition.index,
+        offset=message.offset,
+        headers=message.payload.headers,
+        reason=reason,
+    )
+
+
 class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
     Raises InvalidMessages if a submitted message has no key in payload.
     """
 
     def poll(self) -> None:
-        raise InvalidMessages([InvalidMessage("a bad message", NOW, reason=NO_KEY)])
+        raise InvalidMessages(
+            [
+                InvalidKafkaMessage(
+                    payload=b"",
+                    timestamp=NOW,
+                    topic="",
+                    consumer_group="",
+                    partition=0,
+                    offset=0,
+                    headers=[],
+                    reason=NO_KEY,
+                )
+            ]
+        )
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -57,29 +84,19 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         """
         Valid message is one with a key and decodable value.
         """
-        payload: Serializable = ""
         reason: str = ""
+
         try:
             message.payload.value.decode("utf-8")
         except UnicodeDecodeError:
             reason = BAD_PAYLOAD
-            payload = message.payload.value
         else:
             if message.payload.key is None:
                 reason = NO_KEY
-                payload = str(message.payload)
 
         if reason:
             raise InvalidMessages(
-                [
-                    InvalidMessage(
-                        payload=payload,
-                        timestamp=message.timestamp,
-                        offset=message.offset,
-                        partition=message.partition.index,
-                        reason=reason,
-                    )
-                ]
+                [kafka_message_to_invalid_kafka_message(message, reason)]
             )
 
 
@@ -101,7 +118,7 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         Valid message is one with a key.
         """
         bad_messages = [
-            InvalidMessage(payload=str(message.payload), timestamp=message.timestamp)
+            kafka_message_to_invalid_kafka_message(message, NO_KEY)
             for message in self._batch
             if message.payload.key is None
         ]
@@ -298,12 +315,15 @@ def test_produce_invalid_messages(
     assert_produced_message_is_expected(
         produced_message,
         {
-            "payload": "KafkaPayload(key=None, value=b'Value', headers=[])",
+            "payload": "Value",
             "timestamp": NOW.strftime(DATE_TIME_FORMAT),
-            "reason": NO_KEY,
-            "consumer_group": None,
+            "topic": "",
+            "consumer_group": "",
             "partition": 0,
             "offset": 0,
+            "headers": [],
+            "key": None,
+            "reason": NO_KEY,
         },
     )
 
@@ -313,10 +333,13 @@ def test_produce_invalid_messages(
         {
             "payload": "(base64) /w==",
             "timestamp": NOW.strftime(DATE_TIME_FORMAT),
-            "reason": BAD_PAYLOAD,
-            "consumer_group": None,
+            "topic": "",
+            "consumer_group": "",
             "partition": 0,
             "offset": 0,
+            "headers": [],
+            "key": None,
+            "reason": BAD_PAYLOAD,
         },
     )
 
