@@ -2,10 +2,13 @@ import base64
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping, Optional, Sequence, Union
+from typing import Mapping, Optional, Sequence, Tuple, Union
+
+from arroyo.backends.kafka.consumer import Headers
 
 SerializedPayload = Union[str, bytes]
-JSONSerializable = Optional[Union[str, int, datetime]]
+DeserializedHeaders = Sequence[Tuple[str, str]]
+JSONSerializable = Optional[Union[str, int, datetime, DeserializedHeaders]]
 
 
 class InvalidMessage(ABC):
@@ -27,12 +30,14 @@ class InvalidMessage(ABC):
 
     def _deserialize_payload(self, payload: SerializedPayload) -> str:
         if isinstance(payload, bytes):
-            try:
-                decoded = payload.decode("utf-8")
-            except UnicodeDecodeError:
-                decoded = "(base64) " + base64.b64encode(payload).decode("utf-8")
-        else:
-            decoded = payload
+            return self._deserialize_bytes(payload)
+        return payload
+
+    def _deserialize_bytes(self, value: bytes) -> str:
+        try:
+            decoded = value.decode("utf-8")
+        except UnicodeDecodeError:
+            decoded = "(base64) " + base64.b64encode(value).decode("utf-8")
         return decoded
 
 
@@ -59,20 +64,32 @@ class InvalidKafkaMessage(InvalidMessage):
 
     payload: SerializedPayload
     timestamp: datetime
+    topic: str
+    consumer_group: str
+    partition: int
+    offset: int
+    headers: Headers
+    key: Optional[bytes] = None
     reason: Optional[str] = None
-    consumer_group: Optional[str] = None
-    partition: Optional[int] = None
-    offset: Optional[int] = None
 
     def to_dict(self) -> Mapping[str, JSONSerializable]:
+        decoded_key: Optional[str] = None
+        if self.key is not None:
+            decoded_key = super()._deserialize_bytes(self.key)
         return {
             "payload": super()._deserialize_payload(self.payload),
             "timestamp": self.timestamp,
-            "reason": self.reason,
+            "topic": self.topic,
             "consumer_group": self.consumer_group,
             "partition": self.partition,
             "offset": self.offset,
+            "headers": self.__deserialize_headers(),
+            "key": decoded_key,
+            "reason": self.reason,
         }
+
+    def __deserialize_headers(self) -> DeserializedHeaders:
+        return [(key, self._deserialize_bytes(value)) for (key, value) in self.headers]
 
 
 class InvalidMessages(Exception):
