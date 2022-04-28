@@ -617,7 +617,9 @@ def test_parallel_transform_step_bad_messages() -> None:
     # An exception should have been thrown with the 5 bad messages
     assert len(e_info.value.messages) == 5
     # Test exception pickles and decodes correctly
-    assert e_info.value.messages[0].reason == NO_KEY
-    assert e_info.value.messages[0].payload == str(messages[0].payload)
+    message = e_info.value.messages[0]
+    assert isinstance(message, InvalidKafkaMessage)
+    assert message.reason == NO_KEY
+    assert message.payload == str(messages[0].payload)
     # The 4 good ones should not have been blocked
     assert next_step.submit.call_count == 4
