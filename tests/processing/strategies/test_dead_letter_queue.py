@@ -10,6 +10,7 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidKafkaMessage,
     InvalidMessage,
     InvalidMessages,
 )
@@ -25,13 +26,41 @@ from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
 from arroyo.types import Message, Partition, Topic
 
 
+def kafka_message_to_invalid_kafka_message(
+    message: Message[KafkaPayload], reason: str
+) -> InvalidKafkaMessage:
+    return InvalidKafkaMessage(
+        payload=message.payload.value,
+        timestamp=message.timestamp,
+        topic=message.partition.topic.name,
+        consumer_group="",
+        partition=message.partition.index,
+        offset=message.offset,
+        headers=message.payload.headers,
+        reason=reason,
+    )
+
+
 class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
     Raises InvalidMessages if a submitted message has no key in payload.
     """
 
     def poll(self) -> None:
-        raise InvalidMessages([InvalidMessage("a bad message", datetime.now())])
+        raise InvalidMessages(
+            [
+                InvalidKafkaMessage(
+                    payload=b"a bad message",
+                    timestamp=datetime.now(),
+                    topic="",
+                    consumer_group="",
+                    partition=0,
+                    offset=0,
+                    headers=[],
+                    reason="No Key",
+                )
+            ]
+        )
 
     def join(self, timeout: Optional[float] = None) -> None:
         pass
@@ -48,15 +77,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         """
         if message.payload.key is None:
             raise InvalidMessages(
-                [
-                    InvalidMessage(
-                        payload=str(message.payload),
-                        timestamp=message.timestamp,
-                        reason="No Key",
-                        partition=message.partition.index,
-                        offset=message.offset,
-                    )
-                ]
+                [kafka_message_to_invalid_kafka_message(message, "No Key")]
             )
 
 
@@ -79,15 +100,7 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         """
         if message.payload.key is None:
             raise InvalidMessages(
-                [
-                    InvalidMessage(
-                        payload=str(message.payload),
-                        timestamp=message.timestamp,
-                        reason="No Key",
-                        partition=message.partition.index,
-                        offset=message.offset,
-                    )
-                ]
+                [kafka_message_to_invalid_kafka_message(message, "No Key")]
             )
 
     def _submit_multiple(self) -> None:

@@ -13,7 +13,7 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    InvalidMessage,
+    InvalidKafkaMessage,
     InvalidMessages,
 )
 from arroyo.processing.strategies.streaming.collect import (
@@ -416,12 +416,15 @@ def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
     if message.payload.key is None:
         raise InvalidMessages(
             [
-                InvalidMessage(
+                InvalidKafkaMessage(
                     payload=str(message.payload),
                     timestamp=message.timestamp,
-                    reason=NO_KEY,
+                    topic=message.partition.topic.name,
+                    consumer_group="",
                     partition=message.partition.index,
                     offset=message.offset,
+                    headers=message.payload.headers,
+                    reason=NO_KEY,
                 )
             ]
         )
