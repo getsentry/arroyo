@@ -23,6 +23,8 @@ class JSONMessageEncoder(Encoder[bytes, Mapping[str, Any]]):
             return value.strftime(DATE_TIME_FORMAT)
         elif isinstance(value, bytes):
             return self.__deserialize_bytes(value)
+        else:
+            raise TypeError
 
     def __deserialize_bytes(self, value: bytes) -> str:
         try:
