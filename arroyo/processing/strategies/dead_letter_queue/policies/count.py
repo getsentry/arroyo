@@ -6,7 +6,6 @@ from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
     InvalidMessages,
 )
-from arroyo.utils.metrics import get_metrics
 
 
 class _Bucket(NamedTuple):
@@ -20,9 +19,14 @@ class _Bucket(NamedTuple):
 
 class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
     """
-    Ignore invalid messages up to a certain limit per time unit window in seconds.
-    This window is 1 minute by default. The exception associated with the invalid
-    messages is raised for all incoming invalid messages which go past this limit.
+    Does not raise invalid messages up to a certain limit per time unit window
+    in seconds. This window is 1 minute by default. The exception associated with
+    the invalid messages is raised for all incoming invalid messages which go past
+    this limit.
+
+    A `next_policy` (a DLQ Policy) must be passed to handle any exception which
+    remains within the per second limit. This gives full control over what happens
+    to exceptions within the limit.
 
     A saved state in the form `[(<timestamp: int>, <hits: int>), ...]` can be passed
     on init to load a previously saved state. This state should be aggregated to
@@ -31,13 +35,14 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def __init__(
         self,
+        next_policy: DeadLetterQueuePolicy,
         limit: int,
         seconds: int = 60,
         load_state: Optional[Sequence[Tuple[int, int]]] = None,
     ) -> None:
         self.__limit = limit
         self.__seconds = seconds
-        self.__metrics = get_metrics()
+        self.__next_policy = next_policy
         if load_state is None:
             load_state = []
         self.__hits = deque(
@@ -49,7 +54,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
         self._add(e)
         if self._count() > self.__limit:
             raise e
-        self.__metrics.increment("dlq.dropped_messages", len(e.messages))
+        self.__next_policy.handle_invalid_messages(e)
 
     def _add(self, e: InvalidMessages) -> None:
         now = int(time())
@@ -63,3 +68,6 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
     def _count(self) -> int:
         start = int(time()) - self.__seconds
         return sum(bucket.hits for bucket in self.__hits if bucket.timestamp >= start)
+
+    def join(self, timeout: Optional[float]) -> None:
+        self.__next_policy.join(timeout)
