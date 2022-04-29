@@ -1,14 +1,40 @@
 import base64
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
 from arroyo.backends.kafka.consumer import Headers
+from arroyo.utils.codecs import Encoder
 
 SerializedPayload = Union[str, bytes]
-DeserializedHeaders = Sequence[Tuple[str, str]]
-JSONSerializable = Optional[Union[str, int, datetime, DeserializedHeaders]]
+
+DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+class JSONMessageEncoder(Encoder[bytes, Mapping[str, Any]]):
+    """
+    JSON message encoder to support `bytes` and `datetime` objects.
+    """
+
+    def __default(self, value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.strftime(DATE_TIME_FORMAT)
+        elif isinstance(value, bytes):
+            return self.__deserialize_bytes(value)
+        else:
+            raise TypeError
+
+    def __deserialize_bytes(self, value: bytes) -> str:
+        try:
+            decoded = value.decode("utf-8")
+        except UnicodeDecodeError:
+            decoded = "(base64) " + base64.b64encode(value).decode("utf-8")
+        return decoded
+
+    def encode(self, value: Mapping[str, Any]) -> bytes:
+        return json.dumps(value, default=self.__default).encode("utf-8")
 
 
 class InvalidMessage(ABC):
@@ -24,21 +50,11 @@ class InvalidMessage(ABC):
     via the policy.
     """
 
-    @abstractmethod
-    def to_dict(self) -> Mapping[str, JSONSerializable]:
-        raise NotImplementedError
-
-    def _deserialize_payload(self, payload: SerializedPayload) -> str:
-        if isinstance(payload, bytes):
-            return self._deserialize_bytes(payload)
-        return payload
-
-    def _deserialize_bytes(self, value: bytes) -> str:
-        try:
-            decoded = value.decode("utf-8")
-        except UnicodeDecodeError:
-            decoded = "(base64) " + base64.b64encode(value).decode("utf-8")
-        return decoded
+    def to_bytes(self) -> bytes:
+        """
+        JSON encoded representation of this Invalid Message.
+        """
+        return JSONMessageEncoder().encode(self.__dict__)
 
 
 @dataclass(frozen=True)
@@ -50,9 +66,6 @@ class InvalidRawMessage(InvalidMessage):
 
     payload: SerializedPayload
     reason: Optional[str] = None
-
-    def to_dict(self) -> Mapping[str, JSONSerializable]:
-        return {"payload": super()._deserialize_payload(self.payload)}
 
 
 @dataclass(frozen=True)
@@ -71,25 +84,6 @@ class InvalidKafkaMessage(InvalidMessage):
     headers: Headers
     key: Optional[bytes] = None
     reason: Optional[str] = None
-
-    def to_dict(self) -> Mapping[str, JSONSerializable]:
-        decoded_key: Optional[str] = None
-        if self.key is not None:
-            decoded_key = super()._deserialize_bytes(self.key)
-        return {
-            "payload": super()._deserialize_payload(self.payload),
-            "timestamp": self.timestamp,
-            "topic": self.topic,
-            "consumer_group": self.consumer_group,
-            "partition": self.partition,
-            "offset": self.offset,
-            "headers": self.__deserialize_headers(),
-            "key": decoded_key,
-            "reason": self.reason,
-        }
-
-    def __deserialize_headers(self) -> DeserializedHeaders:
-        return [(key, self._deserialize_bytes(value)) for (key, value) in self.headers]
 
 
 class InvalidMessages(Exception):
@@ -115,4 +109,11 @@ class DeadLetterQueuePolicy(ABC):
         """
         Decide what to do with invalid messages.
         """
-        pass
+        raise NotImplementedError()
+
+    @abstractmethod
+    def join(self, timeout: Optional[float]) -> None:
+        """
+        Cleanup any asynchronous tasks that may be running.
+        """
+        raise NotImplementedError()
