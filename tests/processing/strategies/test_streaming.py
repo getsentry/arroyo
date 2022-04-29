@@ -436,7 +436,6 @@ def test_parallel_transform_worker_bad_messages() -> None:
     smm.start()
     input_block = smm.SharedMemory(128)
     output_block = smm.SharedMemory(128)
-    input_batch = MessageBatch[Any](input_block)
 
     # every other message has a key
     messages = [
@@ -449,21 +448,33 @@ def test_parallel_transform_worker_bad_messages() -> None:
         for i in range(9)
     ]
 
+    input_batch = MessageBatch[Any](input_block)
     for message in messages:
         input_batch.append(message)
-
     assert len(input_batch) == 9
-
+    # process entire batch
     result = parallel_transform_worker_apply(
-        fail_bad_messages,
-        input_batch,
-        output_block,
+        fail_bad_messages, input_batch, output_block
     )
     # all 9 messages processed
     assert result.next_index_to_process == 9
     # 5 were bad, 4 were good
     assert len(result.invalid_messages) == 5
     assert len(result.valid_messages_transformed) == 4
+
+    input_batch = MessageBatch[Any](input_block)
+    for message in messages:
+        input_batch.append(message)
+    assert len(input_batch) == 9
+    # process batch from halfway through
+    result = parallel_transform_worker_apply(
+        fail_bad_messages, input_batch, output_block, start_index=5
+    )
+    # all 9 messages processed
+    assert result.next_index_to_process == 9
+    # Out of remaining 4, 2 were bad, 2 were good
+    assert len(result.invalid_messages) == 2
+    assert len(result.valid_messages_transformed) == 2
     smm.shutdown()
 
 
