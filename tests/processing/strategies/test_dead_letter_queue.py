@@ -12,6 +12,7 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    DATE_TIME_FORMAT,
     InvalidKafkaMessage,
     InvalidMessages,
 )
@@ -22,7 +23,6 @@ from arroyo.processing.strategies.dead_letter_queue.policies.ignore import (
     IgnoreInvalidMessagePolicy,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.produce import (
-    DATE_TIME_FORMAT,
     ProduceInvalidMessagePolicy,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
