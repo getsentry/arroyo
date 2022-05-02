@@ -219,7 +219,7 @@ def test_stateful_count(
     processing_step: FakeProcessingStep,
 ) -> None:
 
-    now = int(NOW.timestamp())
+    now = int(datetime.now().timestamp())
     state: MutableSequence[Tuple[int, int]] = [(now - 1, 2), (now, 2)]
 
     # Stateful count DLQ intialized with 4 hits in the state
