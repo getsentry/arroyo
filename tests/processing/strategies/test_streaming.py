@@ -320,11 +320,11 @@ def test_message_batch() -> None:
     smm = SharedMemoryManager()
     smm.start()
 
-    block = smm.SharedMemory(4096)
-    assert block.size == 4096
+    block = smm.SharedMemory(16384)
+    assert block.size == 16384
 
     message = Message(
-        partition, 0, KafkaPayload(None, b"\x00" * 4000, []), datetime.now()
+        partition, 0, KafkaPayload(None, b"\x00" * 16000, []), datetime.now()
     )
 
     batch: MessageBatch[KafkaPayload] = MessageBatch(block)
@@ -356,13 +356,13 @@ def test_parallel_transform_worker_apply() -> None:
             KafkaPayload(None, b"\x00" * size, []),
             datetime.now(),
         )
-        for i, size in enumerate([1000, 1000, 2000, 4000])
+        for i, size in enumerate([4000, 4000, 8000, 12000])
     ]
 
     smm = SharedMemoryManager()
     smm.start()
-    input_block = smm.SharedMemory(8192)
-    assert input_block.size == 8192
+    input_block = smm.SharedMemory(32768)
+    assert input_block.size == 32768
 
     input_batch = MessageBatch[Any](input_block)
     for message in messages:
@@ -370,8 +370,8 @@ def test_parallel_transform_worker_apply() -> None:
 
     assert len(input_batch) == 4
 
-    output_block = smm.SharedMemory(4096)
-    assert output_block.size == 4096
+    output_block = smm.SharedMemory(16384)
+    assert output_block.size == 16384
 
     index, output_batch = parallel_transform_worker_apply(
         transform_payload_expand,
@@ -419,7 +419,7 @@ def test_parallel_transform_step() -> None:
             KafkaPayload(None, b"\x00" * size, []),
             datetime.now(),
         )
-        for i, size in enumerate([1000, 1000, 2000, 2000])
+        for i, size in enumerate([4000, 4000, 8000, 2000])
     ]
 
     starting_processes = get_subprocess_count()
@@ -439,7 +439,7 @@ def test_parallel_transform_step() -> None:
             GaugeCall("transform.processes", 2.0, tags=None),
             GaugeCall("batches_in_progress", 1.0, tags=None),
             TimingCall("batch.size.msg", 3, None),
-            TimingCall("batch.size.bytes", 4000, None),
+            TimingCall("batch.size.bytes", 16000, None),
             GaugeCall("batches_in_progress", 2.0, tags=None),
             TimingCall("batch.size.msg", 1, None),
             TimingCall("batch.size.bytes", 2000, None),
@@ -451,8 +451,8 @@ def test_parallel_transform_step() -> None:
             processes=worker_processes,
             max_batch_size=5,
             max_batch_time=60,
-            input_block_size=4096,
-            output_block_size=4096,
+            input_block_size=16384,
+            output_block_size=16384,
         )
 
         for message in messages:
