@@ -304,20 +304,25 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__offsets.update(offsets)
 
-    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+    def stage_positions(
+        self, positions: Mapping[Partition, Position], force: bool = False
+    ) -> None:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            if positions.keys() - self.__offsets.keys():
-                raise ConsumerError("cannot stage offsets for unassigned partitions")
+            if not force:
+                if positions.keys() - self.__offsets.keys():
+                    raise ConsumerError(
+                        "cannot stage offsets for unassigned partitions"
+                    )
 
-            self.__validate_offsets(
-                {
-                    partition: position.offset
-                    for (partition, position) in positions.items()
-                }
-            )
+                self.__validate_offsets(
+                    {
+                        partition: position.offset
+                        for (partition, position) in positions.items()
+                    }
+                )
 
             self.__staged_positions.update(positions)
 

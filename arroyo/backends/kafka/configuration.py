@@ -74,6 +74,7 @@ def build_kafka_consumer_configuration(
     queued_min_messages: Optional[int] = None,
     bootstrap_servers: Optional[Sequence[str]] = None,
     override_params: Optional[Mapping[str, Any]] = None,
+    strict_offset_reset: Optional[bool] = None,
 ) -> KafkaBrokerConfig:
 
     if auto_offset_reset is None:
@@ -95,6 +96,8 @@ def build_kafka_consumer_configuration(
             "enable.auto.offset.store": False,
             "group.id": group_id,
             "auto.offset.reset": auto_offset_reset,
+            # this is an arroyo specific flag that only affects the consumer.
+            "arroyo.strict.offset.reset": strict_offset_reset,
             # overridden to reduce memory usage when there's a large backlog
             "queued.max.messages.kbytes": queued_max_messages_kbytes,
             "queued.min.messages": queued_min_messages,

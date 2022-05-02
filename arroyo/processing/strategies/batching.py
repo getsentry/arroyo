@@ -128,9 +128,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             or time.time() > self.__batch.created + self.__max_batch_time / 1000.0
         ):
 
-            self.__metrics.timing(
-                "processing_phase", time.time() - self.__flush_done
-            )
+            self.__metrics.timing("processing_phase", time.time() - self.__flush_done)
             self.__flush()
             self.__flush_done = time.time()
 
@@ -249,5 +247,8 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
-            commit, self.__worker, self.__max_batch_size, self.__max_batch_time,
+            commit,
+            self.__worker,
+            self.__max_batch_size,
+            self.__max_batch_time,
         )

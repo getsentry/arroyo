@@ -142,7 +142,7 @@ class MessageBatch(Generic[TPayload]):
         return pickle.loads(
             data,
             buffers=[
-                self.block.buf[offset: offset + length].tobytes()
+                self.block.buf[offset : offset + length].tobytes()
                 for offset, length in buffers
             ],
         )
@@ -179,7 +179,7 @@ class MessageBatch(Generic[TPayload]):
                 raise ValueTooLarge(
                     f"value exceeds available space in block, {length} bytes needed but {self.block.size - offset} bytes free"
                 )
-            self.block.buf[offset: offset + length] = value
+            self.block.buf[offset : offset + length] = value
             self.__offset += length
             buffers.append((offset, length))
 
@@ -384,7 +384,12 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
-                    (self.__transform_function, input_batch, output_batch.block, i,),
+                    (
+                        self.__transform_function,
+                        input_batch,
+                        output_batch.block,
+                        i,
+                    ),
                 ),
             )
             return
@@ -429,7 +434,9 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
             raise MessageRejected("no available input blocks") from e
 
         self.__batch_builder = BatchBuilder(
-            MessageBatch(input_block), self.__max_batch_size, self.__max_batch_time,
+            MessageBatch(input_block),
+            self.__max_batch_size,
+            self.__max_batch_time,
         )
 
     def submit(self, message: Message[TPayload]) -> None:
