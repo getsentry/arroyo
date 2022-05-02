@@ -1,5 +1,26 @@
 # Changelog and versioning
 
+## 0.0.17
+
+### Various fixes & improvements
+
+- feat: Avoid unnecessarily recreating processing strategy (#62) by @lynnagara
+- feat: Run CI on multiple Python versions (#63) by @lynnagara
+
+## 0.0.16
+
+### Various fixes & improvements
+
+- feat: Support incremental assignments in stream processor (#58) by @lynnagara
+
+## 0.0.15
+
+### Various fixes & improvements
+
+- feat(dlq): InvalidMessage exception refactored to handle multiple invalid messages (#50) by @rahul-kumar-saini
+- test: Fix flaky test (#59) by @lynnagara
+- feat(consumer): Wrap consumer strategy with DLQ if it exists (#56) by @rahul-kumar-saini
+
 ## 0.0.14
 
 ### Various fixes & improvements

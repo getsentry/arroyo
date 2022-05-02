@@ -4,7 +4,7 @@ from typing import Optional
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessage,
+    InvalidMessages,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import get_metrics
@@ -17,7 +17,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
     DLQ Processing Step.
 
     Attempts to submit a given message to the next processing step,
-    handling an `InvalidMessage` according to the given Policy.
+    handling `InvalidMessages` according to the given Policy.
     """
 
     def __init__(
@@ -33,17 +33,17 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
     def poll(self) -> None:
         try:
             self.__next_step.poll()
-        except InvalidMessage as e:
-            self.__metrics.increment("dlq.received_message")
-            self.__policy.handle_invalid_message(e)
+        except InvalidMessages as e:
+            self.__metrics.increment("dlq.received_message", len(e.messages))
+            self.__policy.handle_invalid_messages(e)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
         try:
             self.__next_step.submit(message)
-        except InvalidMessage as e:
-            self.__metrics.increment("dlq.received_message")
-            self.__policy.handle_invalid_message(e)
+        except InvalidMessages as e:
+            self.__metrics.increment("dlq.received_message", len(e.messages))
+            self.__policy.handle_invalid_messages(e)
 
     def close(self) -> None:
         self.__closed = True
@@ -54,5 +54,6 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
+        self.__policy.join(timeout)
         self.__next_step.close()
         self.__next_step.join(timeout)

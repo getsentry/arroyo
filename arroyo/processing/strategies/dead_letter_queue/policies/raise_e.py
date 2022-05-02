@@ -1,9 +1,14 @@
+from typing import Optional
+
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessage,
+    InvalidMessages,
 )
 
 
 class RaiseInvalidMessagePolicy(DeadLetterQueuePolicy):
-    def handle_invalid_message(self, e: InvalidMessage) -> None:
+    def handle_invalid_messages(self, e: InvalidMessages) -> None:
         raise e
+
+    def join(self, timeout: Optional[float]) -> None:
+        return
