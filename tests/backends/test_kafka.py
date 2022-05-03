@@ -17,7 +17,7 @@ from arroyo.backends.kafka.configuration import build_kafka_configuration
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.synchronized import Commit, commit_codec
-from arroyo.types import Message, Partition, Topic, Position
+from arroyo.types import Message, Partition, Position, Topic
 from tests.backends.mixins import StreamsTestMixin
 
 
@@ -143,13 +143,13 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
             # write a nonsense offset
             with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
+                consumer.poll(10.0)  # Wait for assignment
                 consumer.stage_positions(
                     {
                         message.partition: Position(
                             offset=message.offset + 1000, timestamp=message.timestamp
                         )
                     },
-                    force=True,
                 )
                 consumer.commit_positions()
 

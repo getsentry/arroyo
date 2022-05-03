@@ -582,22 +582,16 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return [*self.__paused]
 
-    def stage_positions(
-        self, positions: Mapping[Partition, Position], force: bool = False
-    ) -> None:
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
-        if not force:
-            if positions.keys() - self.__offsets.keys():
-                raise ConsumerError("cannot stage offsets for unassigned partitions")
+        if positions.keys() - self.__offsets.keys():
+            raise ConsumerError("cannot stage offsets for unassigned partitions")
 
-            self.__validate_offsets(
-                {
-                    partition: position.offset
-                    for (partition, position) in positions.items()
-                }
-            )
+        self.__validate_offsets(
+            {partition: position.offset for (partition, position) in positions.items()}
+        )
 
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
