@@ -139,9 +139,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def stage_positions(
-        self, positions: Mapping[Partition, Position], force: bool = False
-    ) -> None:
+    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
         """
         Stage offsets to be committed. If an offset has already been staged
         for a given partition, that offset is overwritten (even if the offset
