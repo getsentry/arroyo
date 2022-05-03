@@ -144,6 +144,12 @@ class Consumer(Generic[TPayload], ABC):
         Stage offsets to be committed. If an offset has already been staged
         for a given partition, that offset is overwritten (even if the offset
         moves in reverse.)
+
+        The force flag overrides the validation of the partitions.  This lets one
+        stage a position to a partition that is not yet assigned to the consumer.
+        This functionality is useful in some corner cases when trying to write tests
+        for instance where specific offsets need to be written without having to wait
+        for an initial poll which can take time.
         """
         raise NotImplementedError
 

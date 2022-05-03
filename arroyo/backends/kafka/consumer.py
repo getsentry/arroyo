@@ -137,7 +137,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     those messages expire, or reading newer messages from the log and the
     leader crashes and partition ownership fails over to an out-of-date
     replica), the consumer will fail-stop rather than reset to the value of
-    ``auto.offset.reset``.
+    ``auto.offset.reset``.  This behavior can be disabled by setting
+    ``arroyo.strict.offset.reset`` to `False`.
     """
 
     # Set of logical offsets that do not correspond to actual log positions.
@@ -157,7 +158,18 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if commit_retry_policy is None:
             commit_retry_policy = NoRetryPolicy()
 
+        configuration = dict(configuration)
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
+
+        # This is a special flag that controls the auto offset behavior for
+        # arroyo.  If set to `None` or missing, the default behavior of `True`
+        # is assuemed.  For more information see the docstring of the consumer.
+        self.__strict_offset_reset = configuration.pop(
+            "arroyo.strict.offset.reset", None
+        )
+        if self.__strict_offset_reset is None:
+            self.__strict_offset_reset = True
+
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
             self.__resolve_partition_starting_offset = (
                 self.__resolve_partition_offset_earliest
@@ -194,9 +206,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         # NOTE: Offsets are explicitly managed as part of the assignment
-        # callback, so preemptively resetting offsets is not enabled.
+        # callback, so preemptively resetting offsets is not enabled when
+        # strict_offset_reset is enabled.
+        real_auto_offset_reset = (
+            self.__strict_offset_reset and "error" or auto_offset_reset
+        )
         self.__consumer = ConfluentConsumer(
-            {**configuration, "auto.offset.reset": "error"}
+            {**configuration, "auto.offset.reset": real_auto_offset_reset}
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}

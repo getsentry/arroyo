@@ -1,8 +1,8 @@
 import logging
-from datetime import datetime
-from time import time
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Event
+from time import time
 from typing import Callable, Mapping, MutableMapping, Optional, Sequence, Set
 
 from arroyo.backends.abstract import Consumer
@@ -182,7 +182,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
                     tags={
                         "partition": str(commit.partition.index),
                         "group": commit.group,
-                    }
+                    },
                 )
             self.__metrics.timing(
                 "commit_log_latency",
@@ -190,7 +190,7 @@ class SynchronizedConsumer(Consumer[TPayload]):
                 tags={
                     "partition": str(commit.partition.index),
                     "group": commit.group,
-                }
+                },
             )
 
         self.__commit_log_consumer.close()
