@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 0.0.18
+
+### Various fixes & improvements
+
+- fix(tests): Make tests pass on M1 Macs (#67) by @mcannizz
+- test: Fix flaky test (#66) by @lynnagara
+- feat: Add flag to restore confluence kafka auto.offset.reset behavior (#54) by @mitsuhiko
+- feat(dlq): Added produce policy (#57) by @rahul-kumar-saini
+- feat(dlq): Revamped Invalid Message(s) Model (#64) by @rahul-kumar-saini
+
 ## 0.0.17
 
 ### Various fixes & improvements
