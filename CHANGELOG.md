@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.19
+
+### Various fixes & improvements
+
+- fix(dlq): Updated DLQ logic for ParallelTransformStep (#61) by @rahul-kumar-saini
+
 ## 0.0.18
 
 ### Various fixes & improvements
