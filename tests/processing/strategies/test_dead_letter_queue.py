@@ -14,6 +14,7 @@ from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DATE_TIME_FORMAT,
     InvalidKafkaMessage,
+    InvalidMessage,
     InvalidMessages,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.count import (
@@ -59,7 +60,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         raise InvalidMessages(
             [
                 InvalidKafkaMessage(
-                    payload=b"",
+                    payload=b"a bad message",
                     timestamp=NOW,
                     topic="",
                     consumer_group="",
@@ -113,15 +114,27 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         if len(self._batch) > 4:
             self._submit_multiple()
 
+    def _process_message(self, message: Message[KafkaPayload]) -> None:
+        """
+        Some processing we want to happen per message.
+        """
+        if message.payload.key is None:
+            raise InvalidMessages(
+                [kafka_message_to_invalid_kafka_message(message, NO_KEY)]
+            )
+
     def _submit_multiple(self) -> None:
         """
         Valid message is one with a key.
         """
-        bad_messages = [
-            kafka_message_to_invalid_kafka_message(message, NO_KEY)
-            for message in self._batch
-            if message.payload.key is None
-        ]
+        bad_messages: MutableSequence[InvalidMessage] = []
+        for message in self._batch:
+            try:
+                self._process_message(message)
+            except InvalidMessages as e:
+                bad_messages += e.messages
+        # At this point, we have some bad messages but the
+        # good ones have been processed without failing entire batch
         self._batch = []
         if bad_messages:
             raise InvalidMessages(bad_messages)
@@ -242,7 +255,7 @@ def test_stateful_count(
         dlq_count_load_state.submit(invalid_message_no_key)
 
 
-def test_multiple_invalid_messages(
+def test_invalid_batched_messages(
     valid_message: Message[KafkaPayload],
     invalid_message_no_key: Message[KafkaPayload],
 ) -> None:

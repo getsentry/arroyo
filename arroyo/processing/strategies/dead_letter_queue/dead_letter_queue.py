@@ -11,6 +11,8 @@ from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
+RECEIVED_MESSAGE_METRIC = "dlq.received_message"
+
 
 class DeadLetterQueue(ProcessingStep[TPayload]):
     """
@@ -34,16 +36,18 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         try:
             self.__next_step.poll()
         except InvalidMessages as e:
-            self.__metrics.increment("dlq.received_message", len(e.messages))
-            self.__policy.handle_invalid_messages(e)
+            self._handle_invalid_messages(e)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
         try:
             self.__next_step.submit(message)
         except InvalidMessages as e:
-            self.__metrics.increment("dlq.received_message", len(e.messages))
-            self.__policy.handle_invalid_messages(e)
+            self._handle_invalid_messages(e)
+
+    def _handle_invalid_messages(self, e: InvalidMessages) -> None:
+        self.__metrics.increment(RECEIVED_MESSAGE_METRIC, len(e.messages))
+        self.__policy.handle_invalid_messages(e)
 
     def close(self) -> None:
         self.__closed = True

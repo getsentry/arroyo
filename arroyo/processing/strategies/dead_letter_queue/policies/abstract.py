@@ -92,10 +92,7 @@ class InvalidMessages(Exception):
     so they are handled correctly.
     """
 
-    def __init__(
-        self,
-        messages: Sequence[InvalidMessage],
-    ):
+    def __init__(self, messages: Sequence[InvalidMessage]):
         self.messages = messages
 
 

@@ -4,6 +4,7 @@ import pickle
 import signal
 import time
 from collections import deque
+from dataclasses import dataclass
 from functools import partial
 from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.pool import AsyncResult, Pool
@@ -24,6 +25,10 @@ from typing import (
 
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    InvalidMessage,
+    InvalidMessages,
+)
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
@@ -177,7 +182,8 @@ class MessageBatch(Generic[TPayload]):
             length = len(value)
             if offset + length > self.block.size:
                 raise ValueTooLarge(
-                    f"value exceeds available space in block, {length} bytes needed but {self.block.size - offset} bytes free"
+                    f"value exceeds available space in block, {length} "
+                    f"bytes needed but {self.block.size - offset} bytes free"
                 )
             self.block.buf[offset : offset + length] = value
             self.__offset += length
@@ -225,23 +231,41 @@ def parallel_transform_worker_initializer(
         custom_initialize_func()
 
 
+@dataclass
+class ParallelTransformResult(Generic[TTransformed]):
+    """
+    Results of applying the transform function to a batch
+    of messages in parallel.
+    """
+
+    next_index_to_process: int
+    valid_messages_transformed: MessageBatch[TTransformed]
+    invalid_messages: MutableSequence[InvalidMessage]
+
+
 def parallel_transform_worker_apply(
     function: Callable[[Message[TPayload]], TTransformed],
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
-) -> Tuple[int, MessageBatch[TTransformed]]:
-    output_batch: MessageBatch[TTransformed] = MessageBatch(output_block)
+) -> ParallelTransformResult[TTransformed]:
 
-    i = start_index
-    while i < len(input_batch):
-        message = input_batch[i]
+    valid_messages_transformed: MessageBatch[TTransformed] = MessageBatch(output_block)
+    invalid_messages: MutableSequence[InvalidMessage] = []
+
+    next_index_to_process = start_index
+    while next_index_to_process < len(input_batch):
+        message = input_batch[next_index_to_process]
 
         try:
             result = function(message)
+        except InvalidMessages as e:
+            invalid_messages += e.messages
+            next_index_to_process += 1
+            continue
         except Exception:
             # The remote traceback thrown when retrieving the result from the
-            # pool elides a lot of useful data (and usually includes a
+            # pool omits a lot of useful data (and usually includes a
             # truncated traceback), logging it here allows us to get this
             # information at the expense of sending duplicate events to Sentry
             # (one from the child and one from the parent.)
@@ -254,7 +278,7 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            output_batch.append(
+            valid_messages_transformed.append(
                 Message(message.partition, message.offset, result, message.timestamp)
             )
         except ValueTooLarge:
@@ -262,14 +286,15 @@ def parallel_transform_worker_apply(
             # the batch is empty, we'll never be able to write it and should
             # error instead of retrying. Otherwise, we need to return the
             # values we've already accumulated and continue processing later.
-            if len(output_batch) == 0:
+            if len(valid_messages_transformed) == 0:
                 raise
             else:
                 break
         else:
-            i += 1
-
-    return (i, output_batch)
+            next_index_to_process += 1
+    return ParallelTransformResult(
+        next_index_to_process, valid_messages_transformed, invalid_messages
+    )
 
 
 class ParallelTransformStep(ProcessingStep[TPayload]):
@@ -277,7 +302,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self,
         function: Callable[[Message[TPayload]], TTransformed],
         next_step: ProcessingStep[TTransformed],
-        processes: int,
+        num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
         input_block_size: int,
@@ -293,34 +318,35 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__shared_memory_manager.start()
 
         self.__pool = Pool(
-            processes,
+            num_processes,
             initializer=partial(parallel_transform_worker_initializer, initializer),
             context=multiprocessing.get_context("spawn"),
         )
 
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(input_block_size)
-            for _ in range(processes)
+            for _ in range(num_processes)
         ]
 
         self.__output_blocks = [
             self.__shared_memory_manager.SharedMemory(output_block_size)
-            for _ in range(processes)
+            for _ in range(num_processes)
         ]
 
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
 
-        self.__results: Deque[
+        self.__processes: Deque[
             Tuple[
                 MessageBatch[TPayload],
-                AsyncResult[Tuple[int, MessageBatch[TTransformed]]],
+                AsyncResult[ParallelTransformResult[TTransformed]],
+                MutableSequence[InvalidMessage],
             ]
         ] = deque()
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge("transform.processes", processes)
+        self.__metrics.gauge("transform.processes", num_processes)
 
         self.__closed = False
 
@@ -339,13 +365,14 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         assert self.__batch_builder is not None
         batch = self.__batch_builder.build()
         logger.debug("Submitting %r to %r...", batch, self.__pool)
-        self.__results.append(
+        self.__processes.append(
             (
                 batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
                     (self.__transform_function, batch, self.__output_blocks.pop()),
                 ),
+                [],
             )
         )
         self.__batches_in_progress.increment()
@@ -354,57 +381,64 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__batch_builder = None
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, result = self.__results[0]
+        input_batch, async_result, partial_invalid_messages = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
         # retrieve the result itself) avoids costly synchronization.
-        if timeout == 0 and not result.ready():
+        if timeout == 0 and not async_result.ready():
             # ``multiprocessing.TimeoutError`` (rather than builtin
             # ``TimeoutError``) maintains consistency with ``AsyncResult.get``.
             raise multiprocessing.TimeoutError()
 
-        i, output_batch = result.get(timeout=timeout)
+        result = async_result.get(timeout=timeout)
+        partial_invalid_messages += result.invalid_messages
 
         # TODO: This does not handle rejections from the next step!
-        for message in output_batch:
-            self.__next_step.poll()
-            self.__next_step.submit(message)
+        for message in result.valid_messages_transformed:
+            try:
+                self.__next_step.poll()
+                self.__next_step.submit(message)
+            except InvalidMessages as e:
+                partial_invalid_messages += e.messages
 
-        if i != len(input_batch):
+        if result.next_index_to_process != len(input_batch):
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
-                i / len(input_batch) * 100,
+                result.next_index_to_process / len(input_batch) * 100,
             )
             # TODO: This reserializes all the ``SerializedMessage`` data prior
             # to the processed index even though the values at those indices
             # will never be unpacked. It probably makes sense to remove that
             # data from the batch to avoid unnecessary serialization overhead.
-            self.__results[0] = (
+            self.__processes[0] = (
                 input_batch,
                 self.__pool.apply_async(
                     parallel_transform_worker_apply,
                     (
                         self.__transform_function,
                         input_batch,
-                        output_batch.block,
-                        i,
+                        result.valid_messages_transformed.block,
+                        result.next_index_to_process,
                     ),
                 ),
+                partial_invalid_messages,
             )
             return
 
         logger.debug("Completed %r, reclaiming blocks...", input_batch)
         self.__input_blocks.append(input_batch.block)
-        self.__output_blocks.append(output_batch.block)
+        self.__output_blocks.append(result.valid_messages_transformed.block)
         self.__batches_in_progress.decrement()
 
-        del self.__results[0]
+        del self.__processes[0]
+        if partial_invalid_messages:
+            raise InvalidMessages(partial_invalid_messages)
 
     def poll(self) -> None:
         self.__next_step.poll()
 
-        while self.__results:
+        while self.__processes:
             try:
                 self.__check_for_results(timeout=0)
             except multiprocessing.TimeoutError:
@@ -416,7 +450,7 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
                         logger.warning(
                             "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
                             LOG_THRESHOLD_TIME,
-                            len(self.__results),
+                            len(self.__processes),
                             self.__pool,
                         )
                         self.__pool_waiting_time = current_time
@@ -483,11 +517,19 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
 
-        logger.debug("Waiting for %s batches...", len(self.__results))
-        while self.__results:
-            self.__check_for_results(
-                timeout=max(deadline - time.time(), 0) if deadline is not None else None
-            )
+        logger.debug("Waiting for %s batches...", len(self.__processes))
+
+        invalid_messages: MutableSequence[InvalidMessage] = []
+
+        while self.__processes:
+            try:
+                self.__check_for_results(
+                    timeout=max(deadline - time.time(), 0)
+                    if deadline is not None
+                    else None
+                )
+            except InvalidMessages as e:
+                invalid_messages += e.messages
 
         self.__pool.close()
 
@@ -500,6 +542,12 @@ class ParallelTransformStep(ProcessingStep[TPayload]):
         self.__shared_memory_manager.shutdown()
 
         self.__next_step.close()
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        try:
+            self.__next_step.join(
+                timeout=max(deadline - time.time(), 0) if deadline is not None else None
+            )
+        except InvalidMessages as e:
+            invalid_messages += e.messages
+
+        if invalid_messages:
+            raise InvalidMessages(invalid_messages)
