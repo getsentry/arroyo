@@ -40,6 +40,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
         seconds: int = 60,
         load_state: Optional[Sequence[Tuple[int, int]]] = None,
     ) -> None:
+        self.__closed = False
         self.__limit = limit
         self.__seconds = seconds
         self.__next_policy = next_policy
@@ -51,6 +52,7 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
         )
 
     def handle_invalid_messages(self, e: InvalidMessages) -> None:
+        assert not self.__closed
         self._add(e)
         if self._count() > self.__limit:
             raise e
@@ -71,3 +73,9 @@ class CountInvalidMessagePolicy(DeadLetterQueuePolicy):
 
     def join(self, timeout: Optional[float]) -> None:
         self.__next_policy.join(timeout)
+
+    def close(self) -> None:
+        self.__closed = True
+
+    def terminate(self) -> None:
+        self.close()
