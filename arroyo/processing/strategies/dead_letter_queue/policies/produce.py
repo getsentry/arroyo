@@ -64,13 +64,13 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         )
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__producer.close()
         start = time.perf_counter()
         while self.__futures:
             if self.__futures[0].done():
                 self.__futures.popleft()
             if timeout is not None and time.perf_counter() - start > timeout:
                 break
+        self.__producer.close()
 
     def close(self) -> None:
         self.__closed = True
