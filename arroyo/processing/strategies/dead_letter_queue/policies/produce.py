@@ -24,6 +24,7 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
     def __init__(
         self, producer: Producer[KafkaPayload], dead_letter_topic: Topic
     ) -> None:
+        self.__closed = False
         self.__metrics = get_metrics()
         self.__dead_letter_topic = dead_letter_topic
         self.__producer = producer
@@ -35,6 +36,8 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         invalid message. Produced message is in the form provided
         by `InvalidMessage.to_dict()`
         """
+        assert not self.__closed
+
         for message in e.messages:
             payload = self._build_payload(message)
             self._produce(payload)
@@ -67,3 +70,11 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
                 self.__futures.popleft()
             if timeout is not None and time.perf_counter() - start > timeout:
                 break
+        self.__producer.close()
+
+    def close(self) -> None:
+        self.__closed = True
+
+    def terminate(self) -> None:
+        self.close()
+        self.__producer.close()

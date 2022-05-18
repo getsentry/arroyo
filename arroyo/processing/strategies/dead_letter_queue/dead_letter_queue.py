@@ -54,6 +54,8 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
 
     def terminate(self) -> None:
         self.close()
+        logger.debug("Terminating %r...", self.__policy)
+        self.__policy.terminate()
         logger.debug("Terminating %r...", self.__next_step)
         self.__next_step.terminate()
 
