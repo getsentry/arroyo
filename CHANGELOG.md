@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.0.20
+
+### Various fixes & improvements
+
+- fix(dlq): Policy closure added + Producer closed (#68) by @rahul-kumar-saini
+
 ## 0.0.19
 
 ### Various fixes & improvements
