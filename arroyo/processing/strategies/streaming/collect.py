@@ -17,7 +17,7 @@ class OffsetRange:
     __slots__ = ["lo", "hi", "timestamp"]
 
     lo: int  # inclusive
-    hi: int  # exclusive
+    hi: int  # inclusive
     timestamp: datetime
 
 
@@ -54,11 +54,11 @@ class Batch(Generic[TPayload]):
         self.__length += 1
 
         if message.partition in self.__offsets:
-            self.__offsets[message.partition].hi = message.next_offset
+            self.__offsets[message.partition].hi = message.offset
             self.__offsets[message.partition].timestamp = message.timestamp
         else:
             self.__offsets[message.partition] = OffsetRange(
-                message.offset, message.next_offset, message.timestamp
+                message.offset, message.offset, message.timestamp
             )
 
     def close(self) -> None:

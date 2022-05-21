@@ -136,7 +136,7 @@ def test_collect(parallel: int) -> None:
         # Give the threadpool some time to do processing
         time.sleep(1) if parallel else None
         assert commit_function.call_args == call(
-            {partition: Position(2, second_message.timestamp)}
+            {partition: Position(1, second_message.timestamp)}
         )
 
     step_factory.return_value = inner_step = Mock()
