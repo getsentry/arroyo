@@ -146,8 +146,7 @@ class FileMessageStorage(MessageStorage[TPayload]):
         file.write(self.__record_header.pack(len(encoded), crc32(encoded)))
         file.write(encoded)
         file.flush()
-        next_offset = file.tell()
-        return Message(partition, offset, payload, timestamp, next_offset)
+        return Message(partition, offset, payload, timestamp)
 
     def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
         file_partition = self.__get_file_partition(partition)
@@ -172,4 +171,4 @@ class FileMessageStorage(MessageStorage[TPayload]):
             )
         payload, timestamp = self.__codec.decode(encoded)
 
-        return Message(partition, offset, payload, timestamp, file.tell())
+        return Message(partition, offset, payload, timestamp)
