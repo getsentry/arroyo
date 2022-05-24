@@ -1,6 +1,7 @@
 import itertools
 import pickle
 from binascii import crc32
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
@@ -25,6 +26,15 @@ from arroyo.backends.local.storages.abstract import (
 from arroyo.errors import OffsetOutOfRange
 from arroyo.types import Message, Partition, Topic, TPayload
 from arroyo.utils.codecs import Codec
+
+
+@dataclass(unsafe_hash=True)
+class FileMessage(Message[TPayload]):
+    _next_offset: int
+
+    @property
+    def next_offset(self) -> int:
+        return self._next_offset
 
 
 class PickleCodec(Codec[bytes, Tuple[TPayload, datetime]]):
@@ -139,14 +149,14 @@ class FileMessageStorage(MessageStorage[TPayload]):
 
     def produce(
         self, partition: Partition, payload: TPayload, timestamp: datetime
-    ) -> Message[TPayload]:
+    ) -> FileMessage[TPayload]:
         encoded = self.__codec.encode((payload, timestamp))
         file = self.__get_file_partition(partition).writer
         offset = file.tell()
         file.write(self.__record_header.pack(len(encoded), crc32(encoded)))
         file.write(encoded)
         file.flush()
-        return Message(partition, offset, payload, timestamp)
+        return FileMessage(partition, offset, payload, timestamp, file.tell())
 
     def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
         file_partition = self.__get_file_partition(partition)
@@ -171,4 +181,4 @@ class FileMessageStorage(MessageStorage[TPayload]):
             )
         payload, timestamp = self.__codec.decode(encoded)
 
-        return Message(partition, offset, payload, timestamp)
+        return FileMessage(partition, offset, payload, timestamp, file.tell())
