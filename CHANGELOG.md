@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## Unreleased
+
+### Breaking changes
+
+- refactor(dlq): Renamed policy "closure" to policy "creator" (#71) by @rahul-kumar-saini
+
 ## 0.0.20
 
 ### Various fixes & improvements
