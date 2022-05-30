@@ -13,3 +13,7 @@ lint:
 
 tests:
 	pytest -vv
+
+arroyodocs:
+	pip install -U -r ./docs-requirements.txt
+	sphinx-build -W -b html docs/source docs/build
