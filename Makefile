@@ -14,6 +14,6 @@ lint:
 tests:
 	pytest -vv
 
-arroyodocs:
+docs:
 	pip install -U -r ./docs-requirements.txt
 	sphinx-build -W -b html docs/source docs/build
