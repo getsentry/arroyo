@@ -1,4 +1,4 @@
-Arroyo is a library to build streaming application that consumes from
+Arroyo is a library to build streaming applications that consume from
 and produce to Kafka.
 
 It relies on the `confluent_kafka` python library, which itself relies
