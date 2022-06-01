@@ -40,7 +40,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     Builds a four step consumer strategy consisting of dead letter queue,
     filter, transform, and collect phases.
 
-    The `dead_letter_queue_policy_closure` defines the policy for what to do
+    The `dead_letter_queue_policy_creator` defines the policy for what to do
     when an bad message is encountered throughout the next processing step(s).
     A DLQ wraps the entire strategy, catching InvalidMessage exceptions and
     handling them as the policy dictates.
@@ -69,13 +69,13 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         input_block_size: Optional[int],
         output_block_size: Optional[int],
         initialize_parallel_transform: Optional[Callable[[], None]] = None,
-        dead_letter_queue_policy_closure: Optional[
+        dead_letter_queue_policy_creator: Optional[
             Callable[[], DeadLetterQueuePolicy]
         ] = None,
         parallel_collect: bool = False,
     ) -> None:
         self.__prefilter = prefilter
-        self.__dead_letter_queue_policy_closure = dead_letter_queue_policy_closure
+        self.__dead_letter_queue_policy_creator = dead_letter_queue_policy_creator
         self.__process_message = process_message
         self.__collector = collector
 
@@ -141,12 +141,12 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         if self.__prefilter is not None:
             strategy = FilterStep(self.__should_accept, strategy)
 
-        if self.__dead_letter_queue_policy_closure is not None:
+        if self.__dead_letter_queue_policy_creator is not None:
             # The DLQ Policy is instantiated here so it gets the correct
             # metrics singleton in the init function of the policy
             # It also ensures any producer/consumer is recreated on rebalance
             strategy = DeadLetterQueue(
-                strategy, self.__dead_letter_queue_policy_closure()
+                strategy, self.__dead_letter_queue_policy_creator()
             )
 
         return strategy
