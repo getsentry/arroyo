@@ -31,7 +31,9 @@ class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPaylo
         self.__topic = topic
 
     def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
+        self,
+        commit: Callable[[Mapping[Partition, Position]], None],
+        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
         return HashPasswordStrategy(
             next_step=ProduceStrategy(commit, self.__producer, self.__topic)
