@@ -97,7 +97,7 @@ class ProduceStrategy(ProcessingStrategy[KafkaPayload]):
         if committable:
             self.__commit(
                 {
-                    partition: Position(message.offset, message.timestamp)
+                    partition: Position(message.next_offset, message.timestamp)
                     for partition, message in committable.items()
                 }
             )
