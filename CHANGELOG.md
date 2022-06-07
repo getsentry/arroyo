@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.1.0
+
+### Various fixes & improvements
+
+- feat: Prevent passing invalid next_offset (#73) by @lynnagara
+- fix: Fix offset committed in example (#76) by @lynnagara
+
 ## 0.0.21
 
 ### Breaking changes
