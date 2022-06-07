@@ -98,7 +98,7 @@ class StreamProcessor(Generic[TPayload]):
                     if self.__consumer.tell().keys() - set(partitions):
                         active_partitions = {
                             partition: offset
-                            for partition, offset in self.__consumer.tell()
+                            for partition, offset in self.__consumer.tell().items()
                             if partition not in partitions
                         }
                         _create_strategy(active_partitions)
