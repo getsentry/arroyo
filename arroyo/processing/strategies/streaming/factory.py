@@ -104,7 +104,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         return not self.__prefilter.should_drop(message)
 
     def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
+        self, commit: Callable[[Mapping[Partition, Position], Optional[float]], None]
     ) -> ProcessingStrategy[TPayload]:
         collect = (
             ParallelCollectStep(

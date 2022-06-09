@@ -102,7 +102,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        commit: Callable[[Mapping[Partition, Position], Optional[float]], None],
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -224,7 +224,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             partition: Position(offsets.hi, offsets.timestamp)
             for partition, offsets in self.__batch.offsets.items()
         }
-        self.__commit(offsets)
+        self.__commit(offsets, None)
         logger.debug("Committed offsets: %s", offsets)
         commit_duration = (time.time() - commit_start) * 1000
         logger.debug("Offset commit took %dms", commit_duration)
@@ -244,7 +244,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_time = max_batch_time
 
     def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
+        self, commit: Callable[[Mapping[Partition, Position], Optional[float]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,

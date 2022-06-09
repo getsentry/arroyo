@@ -25,7 +25,9 @@ class Batch(Generic[TPayload]):
     def __init__(
         self,
         step: ProcessingStep[TPayload],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        commit_function: Callable[
+            [Mapping[Partition, Position], Optional[float]], None
+        ],
     ) -> None:
         self.__step = step
         self.__commit_function = commit_function
@@ -78,7 +80,7 @@ class Batch(Generic[TPayload]):
             for partition, offsets in self.__offsets.items()
         }
         logger.debug("Committing offsets: %r", offsets)
-        self.__commit_function(offsets)
+        self.__commit_function(offsets, None)
 
 
 class CollectStep(ProcessingStep[TPayload]):
@@ -90,7 +92,9 @@ class CollectStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         step_factory: Callable[[], ProcessingStep[TPayload]],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        commit_function: Callable[
+            [Mapping[Partition, Position], Optional[float]], None
+        ],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:
@@ -180,7 +184,9 @@ class ParallelCollectStep(CollectStep[TPayload]):
     def __init__(
         self,
         step_factory: Callable[[], ProcessingStep[TPayload]],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        commit_function: Callable[
+            [Mapping[Partition, Position], Optional[float]], None
+        ],
         max_batch_size: int,
         max_batch_time: float,
     ):

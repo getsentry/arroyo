@@ -52,6 +52,9 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__shutdown_requested = False
 
+        # Time of last commit
+        self.__last_committed: Optional[float] = None
+
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
                 raise InvalidStateError(
@@ -102,15 +105,25 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(self, positions: Mapping[Partition, Position]) -> None:
+    def __commit(
+        self,
+        positions: Mapping[Partition, Position],
+        throttle_sec: Optional[float] = None,
+    ) -> None:
         self.__consumer.stage_positions(positions)
-        start = time.time()
-        self.__consumer.commit_positions()
-        logger.debug(
-            "Waited %0.4f seconds for offsets to be committed to %r.",
-            time.time() - start,
-            self.__consumer,
-        )
+
+        now = time.time()
+
+        if throttle_sec is not None and (
+            self.__last_committed is None or now - self.__last_committed > throttle_sec
+        ):
+            self.__consumer.commit_positions()
+            logger.debug(
+                "Waited %0.4f seconds for offsets to be committed to %r.",
+                time.time() - now,
+                self.__consumer,
+            )
+            self.__last_committed = now
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
