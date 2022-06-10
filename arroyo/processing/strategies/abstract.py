@@ -103,8 +103,7 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     """
 
     def create(
-        self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.

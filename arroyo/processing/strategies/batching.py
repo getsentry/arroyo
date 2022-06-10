@@ -244,8 +244,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_time = max_batch_time
 
     def create(
-        self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        self, commit: Callable[[Mapping[Partition, Position]], None]
     ) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,
