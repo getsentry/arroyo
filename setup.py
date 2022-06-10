@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 
 
 def get_requirements() -> Sequence[str]:
-    with open(u"requirements.txt") as fp:
+    with open("requirements.txt") as fp:
         return [x.strip() for x in fp if not x.startswith("#")]
 
 
