@@ -97,10 +97,11 @@ class StreamProcessor(Generic[TPayload]):
                 # Recreate the strategy if the consumer still has other partitions
                 # assigned and is not closed or errored
                 try:
-                    if self.__consumer.tell().keys() - set(partitions):
+                    current_partitions = self.__consumer.tell()
+                    if current_partitions.keys() - set(partitions):
                         active_partitions = {
                             partition: offset
-                            for partition, offset in self.__consumer.tell().items()
+                            for partition, offset in current_partitions.items()
                             if partition not in partitions
                         }
                         _create_strategy(active_partitions)
