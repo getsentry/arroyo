@@ -198,6 +198,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
             # If any exceptions are raised they should get bubbled up.
             self.future.result(timeout=5)
 
+        assert self.batch is not None
         self.future = self.__threadpool.submit(self.__finish_batch, batch=self.batch)
         self.batch = None
         self._metrics.timing("collect.poll.time", self._collect_poll_time)
