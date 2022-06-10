@@ -72,8 +72,10 @@ class StreamProcessor(Generic[TPayload]):
             self.__message = None  # avoid leaking buffered messages across assignments
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
-            self.__processing_strategy = self.__processor_factory.create(
-                self.__commit, partitions
+            self.__processing_strategy = (
+                self.__processor_factory.create_with_partitions(
+                    self.__commit, partitions
+                )
             )
             logger.debug(
                 "Initialized processing strategy: %r", self.__processing_strategy

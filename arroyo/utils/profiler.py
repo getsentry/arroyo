@@ -63,12 +63,11 @@ class ProcessingStrategyProfilerWrapperFactory(ProcessingStrategyFactory[TPayloa
     def create(
         self,
         commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         profiler = Profile()
         profiler.enable()
         return ProcessingStrategyProfilerWrapper(
-            self.__strategy_factory.create(commit, partitions),
+            self.__strategy_factory.create(commit),
             profiler,
             str(self.__output_directory / f"{int(time.time() * 1000)}.prof"),
         )

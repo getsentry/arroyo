@@ -91,11 +91,20 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
 
 
 class ProcessingStrategyFactory(ABC, Generic[TPayload]):
-    @abstractmethod
+    """
+    A ProcessingStrategyFactory is used to wrap a series of
+    ProcessingStrategy steps, and calls `create_with_partitions`
+    to instantiate the ProcessingStrategy on partition assignment
+    or partition revocation if the strategy needs to be recreated.
+
+    In order to have backwards compatability, `create_with_partitions`
+    wraps the former `create` method that is not aware of the
+    partitions.
+    """
+
     def create(
         self,
         commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
@@ -104,3 +113,20 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         instances to offset values that should be committed.
         """
         raise NotImplementedError
+
+    def create_with_partitions(
+        self,
+        commit: Callable[[Mapping[Partition, Position]], None],
+        partitions: Mapping[Partition, int],
+    ) -> ProcessingStrategy[TPayload]:
+        """
+        Override this method if creating the ``ProcessingStrategy``
+        depends on the current active partitions.
+
+        :param commit: A function that accepts a mapping of ``Partition``
+        instances to offset values that should be committed.
+
+        :param partitions: A mapping of a ``Partition`` to it's most recent
+        offset.
+        """
+        return self.create(commit)

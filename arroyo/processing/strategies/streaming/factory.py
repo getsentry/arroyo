@@ -106,7 +106,6 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     def create(
         self,
         commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         collect = (
             ParallelCollectStep(

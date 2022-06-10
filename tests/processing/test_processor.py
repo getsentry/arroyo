@@ -16,7 +16,7 @@ def test_stream_processor_lifecycle() -> None:
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     metrics = TestingMetricsBackend
 
@@ -121,7 +121,7 @@ def test_stream_processor_termination_on_error() -> None:
     strategy.submit.side_effect = exception
 
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     processor: StreamProcessor[int] = StreamProcessor(
         consumer,
@@ -146,7 +146,7 @@ def test_stream_processor_incremental_assignment_revocation() -> None:
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
         processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
