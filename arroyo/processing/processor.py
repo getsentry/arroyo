@@ -98,7 +98,7 @@ class StreamProcessor(Generic[TPayload]):
                 # assigned and is not closed or errored
                 try:
                     current_partitions = self.__consumer.tell()
-                    if current_partitions.keys() - set(partitions):
+                    if len(current_partitions.keys() - set(partitions)):
                         active_partitions = {
                             partition: offset
                             for partition, offset in current_partitions.items()
