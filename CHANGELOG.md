@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.1.1
+
+### Various fixes & improvements
+
+- ref: don't depend on mypy, upgrade and fix mypy (#79) by @asottile-sentry
+- docs: Fix docstring (#77) by @lynnagara
+
 ## 0.1.0
 
 ### Various fixes & improvements

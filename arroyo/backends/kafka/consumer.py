@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    SupportsIndex,
     Tuple,
     Type,
     Union,
@@ -67,8 +68,8 @@ class KafkaPayload(NamedTuple):
     value: bytes
     headers: Headers
 
-    def __reduce_ex__(self, protocol: int) -> Tuple[Type[KafkaPayload], Any]:
-        if protocol >= 5:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Tuple[Type[KafkaPayload], Any]:
+        if int(protocol) >= 5:
             return (
                 type(self),
                 (self.key, PickleBuffer(self.value), self.headers),
