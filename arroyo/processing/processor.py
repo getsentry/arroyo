@@ -71,8 +71,12 @@ class StreamProcessor(Generic[TPayload]):
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
 
-        def _create_strategy() -> None:
-            self.__processing_strategy = self.__processor_factory.create(self.__commit)
+        def _create_strategy(partitions: Mapping[Partition, int]) -> None:
+            self.__processing_strategy = (
+                self.__processor_factory.create_with_partitions(
+                    self.__commit, partitions
+                )
+            )
             logger.debug(
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
@@ -82,7 +86,7 @@ class StreamProcessor(Generic[TPayload]):
             if partitions:
                 if self.__processing_strategy is not None:
                     _close_strategy()
-                _create_strategy()
+                _create_strategy(partitions)
 
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions revoked: %r", partitions)
@@ -93,8 +97,14 @@ class StreamProcessor(Generic[TPayload]):
                 # Recreate the strategy if the consumer still has other partitions
                 # assigned and is not closed or errored
                 try:
-                    if self.__consumer.tell().keys() - set(partitions):
-                        _create_strategy()
+                    current_partitions = self.__consumer.tell()
+                    if len(current_partitions.keys() - set(partitions)):
+                        active_partitions = {
+                            partition: offset
+                            for partition, offset in current_partitions.items()
+                            if partition not in partitions
+                        }
+                        _create_strategy(active_partitions)
                 except RuntimeError:
                     pass
 
