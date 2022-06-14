@@ -98,7 +98,7 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     or partition revocation if the strategy needs to be recreated.
 
     In order to have backwards compatability, `create_with_partitions`
-    wraps the former `create` method that is not aware of the
+    wraps the now deprecated `create` method that is not aware of the
     partitions.
     """
 
