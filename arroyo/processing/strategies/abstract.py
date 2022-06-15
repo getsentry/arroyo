@@ -98,7 +98,14 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
 
-        :param commit: A function that accepts a mapping of ``Partition``
-        instances to offset values that should be committed.
+        The commit function accepts:
+        - `positions`:  A mapping of ``Partition`` instances to the positions
+        (timestamps and offsets) to be committed
+        - `throttle_sec`: The minimum time to wait between commits (in seconds)
+        A higher value for `throttle_sec` will lead to more infrequent commits
+        and potentially more messages needing to be reprocessed in the event
+        of a consumer crash. Committing after every message (or passing a very low
+        `throttle_sec` value) is also not recommended as it can slow down
+        Kafka/Zookeeper.
         """
         raise NotImplementedError

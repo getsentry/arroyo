@@ -114,8 +114,10 @@ class StreamProcessor(Generic[TPayload]):
 
         now = time.time()
 
-        if throttle_sec is not None and (
-            self.__last_committed is None or now - self.__last_committed > throttle_sec
+        if (
+            throttle_sec is None
+            or self.__last_committed is None
+            or now - self.__last_committed > throttle_sec
         ):
             self.__consumer.commit_positions()
             logger.debug(
