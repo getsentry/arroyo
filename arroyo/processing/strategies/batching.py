@@ -5,18 +5,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import (
-    Callable,
-    Generic,
-    Mapping,
-    MutableMapping,
-    MutableSequence,
-    Optional,
-    Sequence,
-    TypeVar,
-)
+from typing import Generic, MutableMapping, MutableSequence, Optional, Sequence, TypeVar
 
 from arroyo.processing.strategies.abstract import (
+    CommitFunction,
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
@@ -102,7 +94,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        commit: CommitFunction,
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -224,7 +216,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
             partition: Position(offsets.hi, offsets.timestamp)
             for partition, offsets in self.__batch.offsets.items()
         }
-        self.__commit(offsets)
+        self.__commit(offsets, None)
         logger.debug("Committed offsets: %s", offsets)
         commit_duration = (time.time() - commit_start) * 1000
         logger.debug("Offset commit took %dms", commit_duration)
@@ -243,9 +235,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
 
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
-    ) -> ProcessingStrategy[TPayload]:
+    def create(self, commit: CommitFunction) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,
             self.__worker,

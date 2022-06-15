@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Mapping, Optional
+from typing import Generic, Mapping, Optional, Protocol
 
 from arroyo.types import Message, Partition, Position, TPayload
 
@@ -90,6 +90,15 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
         raise NotImplementedError
 
 
+class CommitFunction(Protocol):
+    def __call__(
+        self,
+        positions: Mapping[Partition, Position],
+        throttle_sec: Optional[float] = None,
+    ) -> None:
+        pass
+
+
 class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     """
     A ProcessingStrategyFactory is used to wrap a series of
@@ -102,30 +111,44 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     partitions.
     """
 
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
-    ) -> ProcessingStrategy[TPayload]:
+    def create(self, commit: CommitFunction) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
 
-        :param commit: A function that accepts a mapping of ``Partition``
-        instances to offset values that should be committed.
+        The commit function accepts:
+        - `positions`:  A mapping of ``Partition`` instances to the positions
+        (timestamps and offsets) to be committed
+        - `throttle_sec`: The minimum time to wait between commits (in seconds)
+        A higher value for `throttle_sec` will lead to more infrequent commits
+        and potentially more messages needing to be reprocessed in the event
+        of a consumer crash. Committing after every message (or passing a very low
+        `throttle_sec` value) is also not recommended as it can slow down
+        Kafka/Zookeeper.
         """
         raise NotImplementedError
 
     def create_with_partitions(
         self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        commit: CommitFunction,
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         """
         Override this method if creating the ``ProcessingStrategy``
         depends on the current active partitions.
 
-        :param commit: A function that accepts a mapping of ``Partition``
-        instances to offset values that should be committed.
+        :param commit
+        The commit function accepts:
+        - `positions`:  A mapping of ``Partition`` instances to the positions
+        (timestamps and offsets) to be committed
+        - `throttle_sec`: The minimum time to wait between commits (in seconds)
+        A higher value for `throttle_sec` will lead to more infrequent commits
+        and potentially more messages needing to be reprocessed in the event
+        of a consumer crash. Committing after every message (or passing a very low
+        `throttle_sec` value) is also not recommended as it can slow down
+        Kafka/Zookeeper.
 
         :param partitions: A mapping of a ``Partition`` to it's most recent
         offset.
+
         """
         return self.create(commit)
