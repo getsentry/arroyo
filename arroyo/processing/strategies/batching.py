@@ -5,18 +5,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import (
-    Callable,
-    Generic,
-    Mapping,
-    MutableMapping,
-    MutableSequence,
-    Optional,
-    Sequence,
-    TypeVar,
-)
+from typing import Generic, MutableMapping, MutableSequence, Optional, Sequence, TypeVar
 
 from arroyo.processing.strategies.abstract import (
+    CommitFunction,
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
@@ -102,7 +94,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        commit: Callable[[Mapping[Partition, Position], Optional[float]], None],
+        commit: CommitFunction,
         worker: AbstractBatchWorker[TPayload, TResult],
         max_batch_size: int,
         max_batch_time: int,
@@ -243,9 +235,7 @@ class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
 
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position], Optional[float]], None]
-    ) -> ProcessingStrategy[TPayload]:
+    def create(self, commit: CommitFunction) -> ProcessingStrategy[TPayload]:
         return BatchProcessingStrategy(
             commit,
             self.__worker,

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Mapping, Optional
+from typing import Generic, Mapping, Optional, Protocol
 
 from arroyo.types import Message, Partition, Position, TPayload
 
@@ -90,11 +90,18 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
         raise NotImplementedError
 
 
+class CommitFunction(Protocol):
+    def __call__(
+        self,
+        positions: Mapping[Partition, Position],
+        throttle_sec: Optional[float] = None,
+    ) -> None:
+        pass
+
+
 class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     @abstractmethod
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position], Optional[float]], None]
-    ) -> ProcessingStrategy[TPayload]:
+    def create(self, commit: CommitFunction) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
 
