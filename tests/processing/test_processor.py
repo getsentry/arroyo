@@ -16,7 +16,7 @@ def test_stream_processor_lifecycle() -> None:
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     metrics = TestingMetricsBackend
 
@@ -121,7 +121,7 @@ def test_stream_processor_termination_on_error() -> None:
     strategy.submit.side_effect = exception
 
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     processor: StreamProcessor[int] = StreamProcessor(
         consumer,
@@ -146,7 +146,7 @@ def test_stream_processor_incremental_assignment_revocation() -> None:
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
-    factory.create.return_value = strategy
+    factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
         processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
@@ -187,3 +187,60 @@ def test_stream_processor_incremental_assignment_revocation() -> None:
     # Shutdown
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
         processor._shutdown()
+
+
+def test_stream_processor_create_with_partitions() -> None:
+    """
+    Similar to test_stream_processor_incremental_assignment_revocation
+    but instead validates the partitions for the calls to
+    `create_with_partitions`.
+    """
+    topic = Topic("topic")
+
+    consumer = mock.Mock()
+    strategy = mock.Mock()
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
+        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
+
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+
+    assignment_callback = subscribe_kwargs["on_assign"]
+    revocation_callback = subscribe_kwargs["on_revoke"]
+
+    # First partition assigned
+    offsets_p0 = {Partition(topic, 0): 0}
+    assignment_callback(offsets_p0)
+
+    create_args, _ = factory.create_with_partitions.call_args
+    assert factory.create_with_partitions.call_count == 1
+    assert create_args[1] == offsets_p0
+
+    # Second partition assigned
+    offsets_p1 = {Partition(topic, 1): 0}
+    assignment_callback(offsets_p1)
+
+    create_args, _ = factory.create_with_partitions.call_args
+    assert factory.create_with_partitions.call_count == 2
+    assert create_args[1] == offsets_p1
+
+    processor._run_once()
+
+    # First partition revoked
+    consumer.tell.return_value = {**offsets_p0, **offsets_p1}
+    revocation_callback([Partition(topic, 0)])
+
+    create_args, _ = factory.create_with_partitions.call_args
+    assert factory.create_with_partitions.call_count == 3
+    assert create_args[1] == offsets_p1
+
+    # Second partition revoked - no partitions left
+    consumer.tell.return_value = {**offsets_p1}
+    revocation_callback([Partition(topic, 1)])
+
+    # No partitions left means we don't re-create the strategy
+    # so `create_with_partitions` call count shouldn't increase
+    assert factory.create_with_partitions.call_count == 3

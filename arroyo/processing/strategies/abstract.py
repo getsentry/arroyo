@@ -100,7 +100,17 @@ class CommitFunction(Protocol):
 
 
 class ProcessingStrategyFactory(ABC, Generic[TPayload]):
-    @abstractmethod
+    """
+    A ProcessingStrategyFactory is used to wrap a series of
+    ProcessingStrategy steps, and calls `create_with_partitions`
+    to instantiate the ProcessingStrategy on partition assignment
+    or partition revocation if the strategy needs to be recreated.
+
+    In order to have backwards compatability, `create_with_partitions`
+    wraps the now deprecated `create` method that is not aware of the
+    partitions.
+    """
+
     def create(self, commit: CommitFunction) -> ProcessingStrategy[TPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
@@ -116,3 +126,29 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         Kafka/Zookeeper.
         """
         raise NotImplementedError
+
+    def create_with_partitions(
+        self,
+        commit: CommitFunction,
+        partitions: Mapping[Partition, int],
+    ) -> ProcessingStrategy[TPayload]:
+        """
+        Override this method if creating the ``ProcessingStrategy``
+        depends on the current active partitions.
+
+        :param commit
+        The commit function accepts:
+        - `positions`:  A mapping of ``Partition`` instances to the positions
+        (timestamps and offsets) to be committed
+        - `throttle_sec`: The minimum time to wait between commits (in seconds)
+        A higher value for `throttle_sec` will lead to more infrequent commits
+        and potentially more messages needing to be reprocessed in the event
+        of a consumer crash. Committing after every message (or passing a very low
+        `throttle_sec` value) is also not recommended as it can slow down
+        Kafka/Zookeeper.
+
+        :param partitions: A mapping of a ``Partition`` to it's most recent
+        offset.
+
+        """
+        return self.create(commit)

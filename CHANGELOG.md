@@ -1,6 +1,20 @@
 # Changelog and versioning
 
-## Unreleased
+## 0.1.1
+
+### Various fixes & improvements
+
+- ref: don't depend on mypy, upgrade and fix mypy (#79) by @asottile-sentry
+- docs: Fix docstring (#77) by @lynnagara
+
+## 0.1.0
+
+### Various fixes & improvements
+
+- feat: Prevent passing invalid next_offset (#73) by @lynnagara
+- fix: Fix offset committed in example (#76) by @lynnagara
+
+## 0.0.21
 
 ### Breaking changes
 

@@ -4,13 +4,13 @@ from setuptools import find_packages, setup
 
 
 def get_requirements() -> Sequence[str]:
-    with open(u"requirements.txt") as fp:
+    with open("requirements.txt") as fp:
         return [x.strip() for x in fp if not x.startswith("#")]
 
 
 setup(
     name="sentry-arroyo",
-    version="0.0.20",
+    version="0.1.1",
     author="Sentry",
     author_email="oss@sentry.io",
     license="Apache-2.0",
