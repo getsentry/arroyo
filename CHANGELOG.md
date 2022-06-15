@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 0.2.0
+
+### Various fixes & improvements
+
+- feat(processing): Pass through partitions using create_with_partitions (#75) by @MeredithAnya
+- ref: Upgrade Kafka and Zookeeper in CI (#80) by @lynnagara
+
 ## 0.1.1
 
 ### Various fixes & improvements
