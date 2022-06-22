@@ -103,8 +103,10 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         assert self.__prefilter is not None
         return not self.__prefilter.should_drop(message)
 
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
+    def create_with_partitions(
+        self,
+        commit: Callable[[Mapping[Partition, Position]], None],
+        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         collect = (
             ParallelCollectStep(
