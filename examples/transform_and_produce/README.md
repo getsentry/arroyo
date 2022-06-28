@@ -59,3 +59,21 @@ Produce a message to the topic by typing in a message in the expected format and
 ```
 
 Now the message should appear in the `raw-topic` shell, followed by another message in the `hashed-topic` shell. The password field of the message in `hashed-topic` should be the SHA256 hash of the password field of the message we manually produced to `raw-topic`.
+
+### Troubleshooting
+
+**Installing and running the `sentry_kafka` docker container.**
+
+1. In the file `~/.sentry/sentry.conf.py` append (or update) the `SENTRY_EVENTSTREAM` variable and set it to `"sentry.eventstream.kafka.KafkaEventStream"`.
+2. Change directory to the `sentry` repository.
+3. Set the `SENTRY_USE_RELAY` variable to `True`.
+   - It can be found in `sentry/src/sentry/conf/server.py`.
+4. Run `sentry devservices up`.
+5. You should see the following in stdout (or similar).
+
+```
+> Pulling image '.../cp-kafka:6.2.0'
+> Starting EXISTING container 'sentry_kafka' (listening: ('127.0.0.1', 9092))
+```
+
+Congratulations! You can now run docker commands against the `sentry_kafka` container. If you are still having issues reach out on the `#discuss-eng-sns` Slack channel.
