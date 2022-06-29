@@ -196,10 +196,9 @@ def test_ignore(
 
 def test_dlq_join(processing_step: FakeProcessingStep) -> None:
     # processing step should raise, dlq should handle within join
-    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, IgnoreInvalidMessagePolicy()
-    )
-    with patch.object(dlq_ignore, "_handle_invalid_messages") as mock:
+    policy = IgnoreInvalidMessagePolicy()
+    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(processing_step, policy)
+    with patch.object(policy, "handle_invalid_messages") as mock:
         dlq_ignore.join()
     mock.assert_called_once()
 
