@@ -35,8 +35,7 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
     def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """
         Produces a message to the given dead letter topic for each
-        invalid message. Produced message is in the form provided
-        by `InvalidMessage.to_dict()`
+        invalid message.
         """
         assert not self.__closed
 
