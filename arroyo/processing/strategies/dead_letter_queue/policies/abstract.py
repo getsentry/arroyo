@@ -46,8 +46,8 @@ class InvalidMessage(ABC):
     pass data to the DLQ.
 
     If a produce policy is configured on the relevant DLQ, a
-    message in the form returned by `to_dict()` will be produced
-    via the policy.
+    message containing the dictionary representation of this invalid
+    message will be produced to the topic configured via the policy.
     """
 
     def to_bytes(self) -> bytes:
