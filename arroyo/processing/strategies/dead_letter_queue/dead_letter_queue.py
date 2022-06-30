@@ -2,9 +2,11 @@ import logging
 from typing import Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages,
+)
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessages,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import get_metrics

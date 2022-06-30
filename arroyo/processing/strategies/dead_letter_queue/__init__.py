@@ -1,11 +1,11 @@
 from .dead_letter_queue import DeadLetterQueue
-from .policies.abstract import (
-    DeadLetterQueuePolicy,
+from .invalid_messages import (
     InvalidKafkaMessage,
     InvalidMessage,
     InvalidMessages,
     InvalidRawMessage,
 )
+from .policies.abstract import DeadLetterQueuePolicy
 from .policies.count import CountInvalidMessagePolicy
 from .policies.ignore import IgnoreInvalidMessagePolicy
 from .policies.produce import ProduceInvalidMessagePolicy
