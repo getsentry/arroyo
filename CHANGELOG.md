@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 0.2.1
+
+### Various fixes & improvements
+
+- always use create_with_partitions (#82) by @MeredithAnya
+
 ## 0.2.0
 
 ### Various fixes & improvements

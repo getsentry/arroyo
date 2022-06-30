@@ -2,6 +2,7 @@ import json
 import time
 from datetime import datetime
 from typing import Any, Mapping, MutableSequence, Optional, Tuple
+from unittest.mock import patch
 
 import pytest
 
@@ -56,7 +57,7 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     Raises InvalidMessages if a submitted message has no key in payload.
     """
 
-    def poll(self) -> None:
+    def __raise(self) -> None:
         raise InvalidMessages(
             [
                 InvalidKafkaMessage(
@@ -72,8 +73,11 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
             ]
         )
 
+    def poll(self) -> None:
+        self.__raise()
+
     def join(self, timeout: Optional[float] = None) -> None:
-        pass
+        self.__raise()
 
     def terminate(self) -> None:
         pass
@@ -188,6 +192,15 @@ def test_ignore(
     )
     dlq_ignore.submit(valid_message)
     dlq_ignore.submit(invalid_message_no_key)
+
+
+def test_dlq_join(processing_step: FakeProcessingStep) -> None:
+    # processing step should raise, dlq should handle within join
+    policy = IgnoreInvalidMessagePolicy()
+    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(processing_step, policy)
+    with patch.object(policy, "handle_invalid_messages") as mock:
+        dlq_ignore.join()
+    mock.assert_called_once()
 
 
 def test_count(
