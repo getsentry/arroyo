@@ -3,7 +3,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Set, Union
 
 from arroyo.backends.kafka.consumer import Headers
 from arroyo.utils.codecs import Encoder
@@ -46,8 +46,8 @@ class InvalidMessage(ABC):
     pass data to the DLQ.
 
     If a produce policy is configured on the relevant DLQ, a
-    message in the form returned by `to_dict()` will be produced
-    via the policy.
+    message containing the dictionary representation of this invalid
+    message will be produced to the topic configured via the policy.
     """
 
     def to_bytes(self) -> bytes:
@@ -94,6 +94,24 @@ class InvalidMessages(Exception):
 
     def __init__(self, messages: Sequence[InvalidMessage]):
         self.messages = messages
+        self.num_kafka_messages = 0
+        self.topics: Set[str] = set()
+        self.num_raw_messages = 0
+        self.__generate_stats()
+
+    def __generate_stats(self) -> Any:
+        for message in self.messages:
+            if isinstance(message, InvalidKafkaMessage):
+                self.num_kafka_messages += 1
+                self.topics.add(message.topic)
+            else:
+                self.num_raw_messages += 1
+
+    def __repr__(self) -> str:
+        return (
+            f"InvalidMessages Exception containing: {self.num_kafka_messages} Kafka messages "
+            f"from topic(s): `{'`, `'.join(self.topics)}`. {self.num_raw_messages} Raw messages."
+        )
 
 
 class DeadLetterQueuePolicy(ABC):
