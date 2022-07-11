@@ -2,9 +2,11 @@ from collections import deque
 from time import time
 from typing import NamedTuple, Optional, Sequence, Tuple
 
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages,
+)
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessages,
 )
 
 

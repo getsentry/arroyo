@@ -5,10 +5,12 @@ from typing import Deque, Optional
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka.consumer import KafkaPayload
-from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
-    DeadLetterQueuePolicy,
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
+)
+from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+    DeadLetterQueuePolicy,
 )
 from arroyo.types import Message, Topic
 from arroyo.utils.metrics import get_metrics

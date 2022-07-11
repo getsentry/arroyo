@@ -12,7 +12,7 @@ import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
-from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidKafkaMessage,
     InvalidMessages,
 )
