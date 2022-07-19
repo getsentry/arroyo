@@ -60,13 +60,15 @@ class ProcessingStrategyProfilerWrapperFactory(ProcessingStrategyFactory[TPayloa
         self.__output_directory = Path(output_directory)
         assert self.__output_directory.exists() and self.__output_directory.is_dir()
 
-    def create(
-        self, commit: Callable[[Mapping[Partition, Position]], None]
+    def create_with_partitions(
+        self,
+        commit: Callable[[Mapping[Partition, Position]], None],
+        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         profiler = Profile()
         profiler.enable()
         return ProcessingStrategyProfilerWrapper(
-            self.__strategy_factory.create(commit),
+            self.__strategy_factory.create_with_partitions(commit, partitions),
             profiler,
             str(self.__output_directory / f"{int(time.time() * 1000)}.prof"),
         )

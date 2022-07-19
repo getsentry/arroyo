@@ -6,6 +6,20 @@
 
 - Synchronized consumer deprecated (#81)
 
+## 0.2.2
+
+### Various fixes & improvements
+
+- fix(dlq): InvalidMessages Exception **repr** (#88) by @rahul-kumar-saini
+- feat: Add docker-compose orchestrated example script (#85) by @cmanallen
+- fix(dlq): Join method did not handle InvalidMessages (#83) by @rahul-kumar-saini
+
+## 0.2.1
+
+### Various fixes & improvements
+
+- always use create_with_partitions (#82) by @MeredithAnya
+
 ## 0.2.0
 
 ### Various fixes & improvements

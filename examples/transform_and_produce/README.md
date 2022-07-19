@@ -18,44 +18,42 @@ The process is fairly simple:
 
 ---
 
-<strong>To begin, start the following commands in different shells:</strong>
+To run this example ensure each of your shells are inside the examples/transfrom_and_produce directory.  To begin, build the session by running `docker-compose up`.  Once Kafka has entered a running state you may continue onto the next section.
 
-_Monitor messages produced to `raw-topic`:_
+Note you will see `transform_and_produce-arroyo-1 exited with code 0`.  You can safely ignore it.  This is expected behavior.
 
-```shell
-$ docker exec -it sentry_kafka kafka-console-consumer \
-                                --bootstrap-server localhost:9092 \
-                                --topic raw-topic
-```
+**Monitoring your raw-topic consumer.**
 
-_Monitor messages produced to `hashed-topic`:_
+This will echo every message produced to the `raw-topic` topic.
 
 ```shell
-$ docker exec -it sentry_kafka kafka-console-consumer \
-                                --bootstrap-server localhost:9092 \
-                                --topic hashed-topic
+docker-compose exec kafka kafka-console-consumer --bootstrap-server kafka:9095 --topic raw-topic
 ```
 
-_Start the script itself:_
+**Running your raw-topic producer.**
+
+This process produces the messages that will flow through the system.  We will need to return to this shell to enter commands once we've finished setup.
 
 ```shell
-$ python3 arroyo/examples/transform_and_produce/script.py
+docker-compose exec kafka kafka-console-producer --bootstrap-server kafka:9095 --topic raw-topic
 ```
 
----
+**Monitoring your hashed-topic consumer.**
 
-<strong>At this point we have all the pieces in place and can start manually producing messages to `raw-topic`:</strong>
+This will echo every message produced to the `hashed-topic` topic.  This is your post-transformation output consumer.  You should see the transformations performed by Arroyo here.
 
 ```shell
-$ docker exec -it sentry_kafka kafka-console-producer \
-                                --bootstrap-server localhost:9092 \
-                                --topic raw-topic
+docker-compose exec kafka kafka-console-consumer --bootstrap-server kafka:9095 --topic hashed-topic
 ```
 
-Produce a message to the topic by typing in a message in the expected format and hitting enter.
+**Running your arroyo middleware.**
 
 ```shell
-{"username": "user1", "password": "Password1!"}
+docker-compose run arroyo python /app/script.py
 ```
+
+**Seeing it all come together.**
+
+Produce a message by returning to our producer shell.  Provide the producer a message formatted similarly to this one: `{"username": "user1", "password": "Password1!"}`.
 
 Now the message should appear in the `raw-topic` shell, followed by another message in the `hashed-topic` shell. The password field of the message in `hashed-topic` should be the SHA256 hash of the password field of the message we manually produced to `raw-topic`.

@@ -1,8 +1,10 @@
 from typing import Optional
 
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages,
+)
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessages,
 )
 from arroyo.utils.metrics import get_metrics
 

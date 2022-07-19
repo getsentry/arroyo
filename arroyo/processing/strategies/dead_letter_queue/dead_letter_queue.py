@@ -2,9 +2,11 @@ import logging
 from typing import Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages,
+)
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
-    InvalidMessages,
 )
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import get_metrics
@@ -60,6 +62,10 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__policy.join(timeout)
         self.__next_step.close()
-        self.__next_step.join(timeout)
+        try:
+            self.__next_step.join(timeout)
+        except InvalidMessages as e:
+            self._handle_invalid_messages(e)
+        self.__policy.close()
+        self.__policy.join(timeout)

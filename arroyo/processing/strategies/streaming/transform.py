@@ -25,7 +25,7 @@ from typing import (
 
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
