@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## Unreleased
+
+### Breaking changes in this release
+
+- Synchronized consumer deprecated (#81)
+- create deprecated in favor of create_with_partitions (#91)
+
 ## 0.2.2
 
 ### Various fixes & improvements
