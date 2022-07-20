@@ -1,6 +1,6 @@
 # Changelog and versioning
 
-## Unreleased
+## 1.0.0
 
 ### Breaking changes in this release
 
