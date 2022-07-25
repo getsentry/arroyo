@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 1.0.1
+
+### Various fixes & improvements
+
+- deps: Update confluent-kafka-python to 1.8.2 (#92) by @lynnagara
+- doc: Remove reference to synchronized consumer in readme (#93) by @lynnagara
+
 ## 1.0.0
 
 ### Breaking changes in this release
