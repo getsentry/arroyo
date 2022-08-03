@@ -1,0 +1,4 @@
+name: "Arroyo CodeQL Config"
+
+paths-ignore:
+  - "**/tests/**"
