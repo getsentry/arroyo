@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 1.0.2
+
+### Various fixes & improvements
+
+- upgrade confluent-kafka to 1.9.0 (#95) by @asottile-sentry
+- Configure CodeQL (#94) by @mdtro
+
 ## 1.0.1
 
 ### Various fixes & improvements
