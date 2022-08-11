@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 1.0.3
+
+### Various fixes & improvements
+
+- adjust confluent-kafka version to >= (#96) by @asottile-sentry
+
 ## 1.0.2
 
 ### Various fixes & improvements
