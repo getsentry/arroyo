@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 1.0.4
+
+### Various fixes & improvements
+
+- fix: Use correct log level for fatal crashes [sns-1622] (#97) by @untitaker
+
 ## 1.0.3
 
 ### Various fixes & improvements
