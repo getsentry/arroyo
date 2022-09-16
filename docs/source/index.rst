@@ -7,3 +7,4 @@ Contents:
    :maxdepth: 1
 
    getstarted
+   what_for
