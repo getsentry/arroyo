@@ -1,4 +1,4 @@
-.PHONY: install lint setup-git tests
+.PHONY: install lint setup-git tests, docs
 
 setup-git:
 	pip install pre-commit==2.13.0
