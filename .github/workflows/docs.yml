@@ -19,7 +19,7 @@ jobs:
       - name: Build docs
         run: |
           pip install virtualenv
-          make docs
+          make arroyodocs
       - uses: peaceiris/actions-gh-pages@v3.7.3
         name: Publish to GitHub Pages
         with:

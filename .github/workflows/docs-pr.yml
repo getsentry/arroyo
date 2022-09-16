@@ -17,4 +17,4 @@ jobs:
       - name: Build docs
         run: |
           pip install virtualenv
-          make docs
+          make arroyodocs
