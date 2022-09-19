@@ -15,6 +15,7 @@ release = "0.0.20"
 extensions = [
     "sphinx.ext.githubpages",
     "sphinx.ext.intersphinx",
+    "sphinxcontrib.mermaid",
 ]
 
 # This is relative to this directory.
