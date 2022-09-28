@@ -183,10 +183,12 @@ class ParallelCollectStep(CollectStep[TPayload]):
         commit_function: Callable[[Mapping[Partition, Position]], None],
         max_batch_size: int,
         max_batch_time: float,
+        wait_timeout: float = 10.0,
     ):
         super().__init__(step_factory, commit_function, max_batch_size, max_batch_time)
         self.__threadpool = ThreadPoolExecutor(max_workers=1)
         self.future: Optional[Future[None]] = None
+        self.wait_timeout = wait_timeout
 
     def close_and_reset_batch(self) -> None:
         """
@@ -196,7 +198,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
         """
         if self.future:
             # If any exceptions are raised they should get bubbled up.
-            self.future.result(timeout=5)
+            self.future.result(timeout=self.wait_timeout)
 
         assert self.batch is not None
         self.future = self.__threadpool.submit(self.__finish_batch, batch=self.batch)

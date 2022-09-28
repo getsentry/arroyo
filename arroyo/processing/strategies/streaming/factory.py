@@ -73,6 +73,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
             Callable[[], DeadLetterQueuePolicy]
         ] = None,
         parallel_collect: bool = False,
+        parallel_collect_timeout: float = 10.0,
     ) -> None:
         self.__prefilter = prefilter
         self.__dead_letter_queue_policy_creator = dead_letter_queue_policy_creator
@@ -98,6 +99,7 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
         self.__output_block_size = output_block_size
         self.__initialize_parallel_transform = initialize_parallel_transform
         self.__parallel_collect = parallel_collect
+        self.__parallel_collect_timeout = parallel_collect_timeout
 
     def __should_accept(self, message: Message[TPayload]) -> bool:
         assert self.__prefilter is not None
@@ -110,7 +112,11 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     ) -> ProcessingStrategy[TPayload]:
         collect = (
             ParallelCollectStep(
-                self.__collector, commit, self.__max_batch_size, self.__max_batch_time
+                self.__collector,
+                commit,
+                self.__max_batch_size,
+                self.__max_batch_time,
+                self.__parallel_collect_timeout,
             )
             if self.__parallel_collect
             else CollectStep(
