@@ -1,5 +1,16 @@
 # Changelog and versioning
 
+## 1.0.5
+
+### Various fixes & improvements
+
+- Add parallel collect timeout (#104) by @fpacifici
+- move 'what is arroyo for' docs to public docs (#103) by @volokluev
+- Link the official documentation to the readme (#102) by @fpacifici
+- fix(docs) Fix makefile (#101) by @fpacifici
+- Fix branch name in docs generation (#100) by @fpacifici
+- feat(docs) Add a `getting started` page to the docs (#99) by @fpacifici
+
 ## 1.0.4
 
 ### Various fixes & improvements
