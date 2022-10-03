@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Mapping, Optional
+from typing import Generic, Mapping, Optional
 
-from arroyo.types import Message, Partition, Position, TPayload
+from arroyo.types import Commit, Message, Partition, TPayload
 
 
 class MessageRejected(Exception):
@@ -101,7 +101,7 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
     @abstractmethod
     def create_with_partitions(
         self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        commit: Commit,
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TPayload]:
         """

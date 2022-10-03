@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Generic, Mapping, Protocol, TypeVar
 
 
 @dataclass(order=True, unsafe_hash=True)
@@ -68,3 +68,10 @@ class Position:
     __slots__ = ["offset", "timestamp"]
     offset: int
     timestamp: datetime
+
+
+class Commit(Protocol):
+    def __call__(
+        self, positions: Mapping[Partition, Position], force: bool = False
+    ) -> None:
+        pass

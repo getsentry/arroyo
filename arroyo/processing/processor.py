@@ -5,6 +5,7 @@ import time
 from typing import Generic, Mapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
+from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -36,6 +37,7 @@ class StreamProcessor(Generic[TPayload]):
         consumer: Consumer[TPayload],
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TPayload],
+        commit_policy: Optional[CommitPolicy] = None,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -49,6 +51,10 @@ class StreamProcessor(Generic[TPayload]):
         # ``pause`` occurred.
         self.__paused_timestamp: Optional[float] = None
         self.__last_log_timestamp: Optional[float] = None
+
+        self.__commit_policy = commit_policy or IMMEDIATE
+        self.__last_committed_time: float = time.time()
+        self.__messages_since_last_commit = 0
 
         self.__shutdown_requested = False
 
@@ -112,15 +118,28 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(self, positions: Mapping[Partition, Position]) -> None:
+    def __commit(
+        self, positions: Mapping[Partition, Position], force: bool = False
+    ) -> None:
+        """
+        If force is passed, commit immediately and do not throttle. This should
+        be used during consumer shutdown where we do not want to wait before committing.
+        """
         self.__consumer.stage_positions(positions)
-        start = time.time()
-        self.__consumer.commit_positions()
-        logger.debug(
-            "Waited %0.4f seconds for offsets to be committed to %r.",
-            time.time() - start,
-            self.__consumer,
-        )
+        self.__messages_since_last_commit += 1
+
+        if force or self.__commit_policy.should_commit(
+            self.__last_committed_time, self.__messages_since_last_commit
+        ):
+            start = time.time()
+            self.__consumer.commit_positions()
+            logger.debug(
+                "Waited %0.4f seconds for offsets to be committed to %r.",
+                time.time() - start,
+                self.__consumer,
+            )
+            self.__last_committed_time = start
+            self.__messages_since_last_commit = 0
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
