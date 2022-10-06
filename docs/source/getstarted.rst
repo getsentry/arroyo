@@ -236,7 +236,7 @@ Now we will add some logic to the `ProcessingStrategy` to produce messages on a 
             )
 
         def poll(self) -> None:
-            while self.____callbacks and self.__callbacks[0].future.done():
+            while self.__callbacks and self.__callbacks[0].future.done():
                 self.__callbacks.popleft()
 
         def submit(self, message: Message[KafkaPayload]) -> None:
@@ -255,7 +255,7 @@ Now we will add some logic to the `ProcessingStrategy` to produce messages on a 
             print("Terminating")
 
         def join(self, timeout: Optional[float] = None) -> None:
-            while self.____callbacks
+            while self.__callbacks
                 c = self.__callbacks.popleft()
                 c.result()
 
@@ -272,7 +272,7 @@ Arroyo does not auto commit offsets. It is up to you to manually commit offsets 
 message is completed.
 
 The commit callback will be passed to processing strategy via `ProcessingStrategyFactory.create_with_partitions`.
-You should pass this to the strategy and have you strategy call this commit function once the rest of the message
+You should pass this to the strategy and have your strategy call this commit function once the rest of the message
 processing has been done.
 
 The offset to be committed in Kafka is always the next offset to be consumed from, i.e. message's offset + 1.
@@ -283,6 +283,36 @@ It is not safe to commit every offset in a high throughput consumer as this will
 Commits should generally be throttled. In order to make this easier, Arroyo supports passing an optional `CommitPolicy`
 to the stream processor, which allows specifying a minimum commit frequency (or messages between commits). Commit
 throttling can be skipped when needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
+
+.. code-block:: Python
+
+    class ConsumerStrategy(ProcessingStrategy[KafkaPayload]):
+        def __init__(
+            self,
+            committer: Commit,
+            partitions: Mapping[Partition, int],
+        ):
+            self.__commit = commit
+
+        def poll(self) -> None:
+            pass
+
+        def submit(self, message: Message[KafkaPayload]) -> None:
+            # do something (synchronous) with the message
+            do_something()
+            self.__commit(
+                {message.partition: Position(message.next_offset, message.timestamp)}
+            )
+
+
+        def close(self) -> None:
+
+
+        def terminate(self) -> None:
+            print("Terminating")
+
+        def join(self, timeout: Optional[float] = None) -> None:
+            pass
 
 
 Further examples
