@@ -1,11 +1,17 @@
 from datetime import datetime
+from typing import Mapping, Optional
 from unittest import mock
 
 import pytest
 
+from arroyo.commit import CommitPolicy
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
-from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.types import Message, Partition, Topic
+from arroyo.processing.strategies.abstract import (
+    MessageRejected,
+    ProcessingStrategy,
+    ProcessingStrategyFactory,
+)
+from arroyo.types import Commit, Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -244,3 +250,83 @@ def test_stream_processor_create_with_partitions() -> None:
     # No partitions left means we don't re-create the strategy
     # so `create_with_partitions` call count shouldn't increase
     assert factory.create_with_partitions.call_count == 3
+
+
+class CommitOffsets(ProcessingStrategy[int]):
+    def __init__(self, commit: Commit) -> None:
+        self.__commit = commit
+
+    def submit(self, message: Message[int]) -> None:
+        # If we get a message with value of 1, force commit
+        if message.payload == 1:
+            self.__commit(
+                {message.partition: Position(message.next_offset, message.timestamp)},
+                force=True,
+            )
+
+        self.__commit(
+            {message.partition: Position(message.next_offset, message.timestamp)}
+        )
+
+    def poll(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        pass
+
+    def terminate(self) -> None:
+        pass
+
+
+class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
+    def create_with_partitions(
+        self,
+        commit: Commit,
+        partitions: Mapping[Partition, int],
+    ) -> ProcessingStrategy[int]:
+        return CommitOffsets(commit)
+
+
+def test_stream_processor_commit_policy() -> None:
+    topic = Topic("topic")
+    commit = mock.Mock()
+    consumer = mock.Mock()
+    consumer.commit_positions = commit
+
+    factory = CommitOffsetsFactory()
+
+    commit_every_second_message = CommitPolicy(None, 2)
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, commit_every_second_message
+    )
+
+    # Assignment
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+    assignment_callback = subscribe_kwargs["on_assign"]
+    offsets = {Partition(topic, 0): 0}
+    assignment_callback(offsets)
+
+    assert commit.call_count == 0
+
+    # Does not commit first message
+    message = Message(Partition(topic, 0), 0, 0, datetime.now())
+    consumer.poll.return_value = message
+    processor._run_once()
+    assert commit.call_count == 0
+
+    # Commits second message
+    message = Message(Partition(topic, 0), 1, 0, datetime.now())
+    consumer.poll.return_value = message
+    processor._run_once()
+    assert commit.call_count == 1
+
+    # Test force flag
+    message = Message(Partition(topic, 0), 1, 0, datetime.now())
+    consumer.poll.return_value = message
+    processor._run_once()
+    assert commit.call_count == 1

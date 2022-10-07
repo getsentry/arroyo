@@ -13,12 +13,15 @@ import pytest
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
+from arroyo.backends.kafka.commit import CommitCodec
 from arroyo.backends.kafka.configuration import build_kafka_configuration
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
+from arroyo.commit import Commit
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.synchronized import Commit, commit_codec
 from arroyo.types import Message, Partition, Position, Topic
 from tests.backends.mixins import StreamsTestMixin
+
+commit_codec = CommitCodec()
 
 
 def test_payload_equality() -> None:

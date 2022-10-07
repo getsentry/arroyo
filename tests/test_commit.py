@@ -1,30 +1,21 @@
-from datetime import datetime
+import pytest
 
-from arroyo.backends.kafka import KafkaPayload
-from arroyo.backends.local.backend import LocalBroker as Broker
-from arroyo.commit import Commit, CommitCodec
-from arroyo.types import Partition, Topic
+from arroyo.commit import IMMEDIATE, ONCE_PER_SECOND, CommitPolicy
 
 
-def test_encode_decode(broker: Broker[KafkaPayload]) -> None:
-    topic = Topic("topic")
-    broker.create_topic(topic, partitions=1)
+def test_commit_policy() -> None:
+    assert IMMEDIATE.should_commit(0.5, 1) is True
+    assert IMMEDIATE.should_commit(2, 1) is True
+    assert IMMEDIATE.should_commit(0.5, 5) is True
 
-    producer = broker.get_producer()
+    assert ONCE_PER_SECOND.should_commit(0.5, 10) is False
+    assert ONCE_PER_SECOND.should_commit(1, 10) is True
+    assert ONCE_PER_SECOND.should_commit(1.5, 10) is True
 
-    message = producer.produce(
-        topic, KafkaPayload(None, "hello".encode("utf8"), [])
-    ).result(1.0)
+    custom_policy = CommitPolicy(2, 100)
+    assert custom_policy.should_commit(1, 99) is False
+    assert custom_policy.should_commit(2, 1) is True
+    assert custom_policy.should_commit(1, 101) is True
 
-    commit_codec = CommitCodec()
-
-    commit = Commit(
-        "leader-a",
-        Partition(topic, 0),
-        message.next_offset,
-        datetime.now(),
-    )
-
-    encoded = commit_codec.encode(commit)
-
-    assert commit_codec.decode(encoded) == commit
+    with pytest.raises(Exception):
+        CommitPolicy(None, None)
