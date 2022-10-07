@@ -48,7 +48,7 @@ jobs:
     strategy:
       max-parallel: 3
       matrix:
-        python: [3.8, 3.9, 3.10]
+        python: [3.8, 3.9, "3.10"]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v2
