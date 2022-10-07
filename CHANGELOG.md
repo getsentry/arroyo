@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 1.0.6
+
+### Various fixes & improvements
+
+- feat: Introduce commit policies (#106) by @lynnagara
+
 ## 1.0.5
 
 ### Various fixes & improvements
