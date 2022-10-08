@@ -1,5 +1,7 @@
-from unittest import mock
+import time
 from datetime import datetime
+from unittest import mock
+
 from arroyo.processing.run_task import RunTask
 from arroyo.types import Message, Partition, Topic
 
@@ -16,10 +18,21 @@ def test_run_task() -> None:
     strategy.submit(Message(partition, 1, b"world", datetime.now()))
     strategy.poll()
 
+    # Wait for async functions to finish
+    retries = 10
+
+    for _i in range(0, retries):
+        if mock_func.call_count < 2 or commit_func.call_count < 2:
+            strategy.poll()
+            time.sleep(0.1)
+        else:
+            break
+
     assert mock_func.call_count == 2
     assert commit_func.call_count == 2
 
     strategy.join()
     strategy.close()
 
+    assert mock_func.call_count == 2
     assert commit_func.call_count == 3
