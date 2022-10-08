@@ -63,7 +63,7 @@ class RunTask(ProcessingStrategy[TPayload]):
             future.result(remaining)
 
             self.__commit(
-                {message.partition: Position(message.offset, message.timestamp)},
+                {message.partition: Position(message.next_offset, message.timestamp)},
                 force=True,
             )
 
