@@ -62,6 +62,10 @@ class Message(Generic[TPayload]):
     def next_offset(self) -> int:
         return self.offset + 1
 
+    @property
+    def position_to_commit(self) -> Position:
+        return Position(self.next_offset, self.timestamp)
+
 
 @dataclass(frozen=True)
 class Position:

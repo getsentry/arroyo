@@ -86,6 +86,9 @@ class Batch(Generic[TResult]):
 
 class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
     """
+    Do not use for new consumers.
+    This is deprecated and will be removed in a future version.
+
     The ``BatchProcessingStrategy`` is a processing strategy that accumulates
     processed message values, periodically flushing them after a given
     duration of time has passed or number of output values have been
@@ -233,6 +236,11 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
 
 class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
+    """
+    Do not use for new consumers.
+    This is deprecated and will be removed in a future version.
+    """
+
     def __init__(
         self,
         worker: AbstractBatchWorker[TPayload, TResult],
