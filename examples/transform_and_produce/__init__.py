@@ -10,7 +10,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.processing.strategies.streaming.transform import TransformStep
+from arroyo.processing.strategies.transform import TransformStep
 from arroyo.types import Message, Partition, Position, Topic
 
 logger = logging.getLogger(__name__)
