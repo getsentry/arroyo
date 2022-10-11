@@ -1,6 +1,6 @@
 import os
 
-from examples.transform_and_produce.factory import HashPasswordAndProduceStrategyFactory
+from examples.transform_and_produce import HashPasswordAndProduceStrategyFactory
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
