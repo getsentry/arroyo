@@ -12,16 +12,12 @@ import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
+from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidKafkaMessage,
     InvalidMessages,
 )
-from arroyo.processing.strategies.streaming.collect import (
-    CollectStep,
-    ParallelCollectStep,
-)
-from arroyo.processing.strategies.streaming.filter import FilterStep
-from arroyo.processing.strategies.streaming.transform import (
+from arroyo.processing.strategies.transform import (
     MessageBatch,
     ParallelTransformStep,
     TransformStep,
@@ -33,35 +29,6 @@ from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
 from tests.metrics import Timing as TimingCall
-
-
-def test_filter() -> None:
-    next_step = Mock()
-
-    def test_function(message: Message[bool]) -> bool:
-        return message.payload
-
-    filter_step = FilterStep(test_function, next_step)
-
-    fail_message = Message(Partition(Topic("topic"), 0), 0, False, datetime.now())
-
-    with assert_does_not_change(lambda: int(next_step.submit.call_count), 0):
-        filter_step.submit(fail_message)
-
-    pass_message = Message(Partition(Topic("topic"), 0), 0, True, datetime.now())
-
-    with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
-        filter_step.submit(pass_message)
-
-    assert next_step.submit.call_args == call(pass_message)
-
-    with assert_changes(lambda: int(next_step.poll.call_count), 0, 1):
-        filter_step.poll()
-
-    with assert_changes(lambda: int(next_step.close.call_count), 0, 1), assert_changes(
-        lambda: int(next_step.join.call_count), 0, 1
-    ):
-        filter_step.join()
 
 
 def test_transform() -> None:
