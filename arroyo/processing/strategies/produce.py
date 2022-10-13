@@ -18,8 +18,18 @@ logger = logging.getLogger(__name__)
 
 class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     """
-    For each message received, produces a message to the topic being passed in.
-    Waits on the futures and only once completed, commits the offset of the message.
+    This strategy can be used to produce Kafka messages to a destination topic. A typical use
+    case could be to consume messages from one topic, apply some transformations and then output
+    to another topic.
+
+    For each message received in the submit method, it attempts to produce a single Kafka message in
+    a thread. On poll we check for completion of these produced messages. If the message has been
+    successfully produced then the offset is committed. If an error occured we raise the
+    InvalidMessages exception.
+
+    Important: The destination topic is always the `topic` passed into the constructor and not the topic
+    being referenced in the message itself (which typically refers to the original topic from where the
+    message was consumed from)
     """
 
     def __init__(
