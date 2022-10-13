@@ -5,18 +5,13 @@ from concurrent.futures import Future
 from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
-from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidKafkaMessage,
-    InvalidMessages,
-)
-from arroyo.types import Commit, Message, Position, Topic
+from arroyo.types import Commit, Message, Position, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
 
-class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
+class ProduceAndCommit(ProcessingStrategy[TPayload]):
     """
     This strategy can be used to produce Kafka messages to a destination topic. A typical use
     case could be to consume messages from one topic, apply some transformations and then output
@@ -40,7 +35,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
 
     def __init__(
         self,
-        producer: Producer[KafkaPayload],
+        producer: Producer[TPayload],
         topic: Topic,
         commit: Commit,
         max_buffer_size: int = 10000,
@@ -51,7 +46,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Message[KafkaPayload], Future[Message[KafkaPayload]]]
+            Tuple[Message[TPayload], Future[Message[TPayload]]]
         ] = deque()
 
         self.__closed = False
@@ -66,21 +61,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
             exc = future.exception()
 
             if exc is not None:
-                raise InvalidMessages(
-                    [
-                        InvalidKafkaMessage(
-                            payload=message.payload.value,
-                            timestamp=message.timestamp,
-                            topic=message.partition.topic.name,
-                            consumer_group="",
-                            partition=message.partition.index,
-                            offset=message.offset,
-                            headers=message.payload.headers,
-                            key=message.payload.key,
-                            reason=str(exc),
-                        )
-                    ]
-                )
+                raise exc
 
             self.__queue.popleft()
 
@@ -88,7 +69,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
                 {message.partition: Position(message.next_offset, message.timestamp)}
             )
 
-    def submit(self, message: Message[KafkaPayload]) -> None:
+    def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
 
         if len(self.__queue) >= self.__max_buffer_size:
