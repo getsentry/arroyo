@@ -1,17 +1,15 @@
 import hashlib
 import json
 import logging
-from typing import Callable, Mapping
-
-from examples.transform_and_produce.produce_step import ProduceStrategy
+from typing import Mapping
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
+from arroyo.processing.strategies import ProduceAndCommit, TransformStep
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import Message, Partition, Position, Topic
+from arroyo.types import Commit, Message, Partition, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +42,11 @@ class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPaylo
 
     def create_with_partitions(
         self,
-        commit: Callable[[Mapping[Partition, Position]], None],
+        commit: Commit,
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
 
         return TransformStep(
             function=hash_password,
-            next_step=ProduceStrategy(commit, self.__producer, self.__topic),
+            next_step=ProduceAndCommit(self.__producer, self.__topic, commit),
         )
