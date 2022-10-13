@@ -1,5 +1,22 @@
 # Changelog and versioning
 
+## 1.0.7
+
+### Various fixes & improvements
+
+- ref: Move strategies out of streaming module (#114) by @lynnagara
+- feat: Add Message.position_to_commit (#113) by @lynnagara
+- feat: Simplify example (#112) by @lynnagara
+- feat: Add deprecation comment on batching strategies (#110) by @lynnagara
+- build: Run CI on Python 3.10 (#108) by @lynnagara
+- build: Include requirements.txt in source distribution (#107) by @lynnagara
+
+## 1.0.6
+
+### Various fixes & improvements
+
+- feat: Introduce commit policies (#106) by @lynnagara
+
 ## 1.0.5
 
 ### Various fixes & improvements

@@ -10,7 +10,7 @@ The process is fairly simple:
 
 - The consumer consumes messages from the `raw-topic`
 - This message is in the form `{"username": "<username>", "password": "<password>"}`
-- The message is submitted to the `HashPasswordStrategy` which hashes the password string
+- The message is submitted to the `TransformStrategy` which hashes the password string
 - The credentials are then submitted to the `ProduceAndCommitStep` which simply produces the given message to `hash-topic`
 - The `ProduceAndCommitStep` is also responsible for commiting the original offset back for the consumer
 
