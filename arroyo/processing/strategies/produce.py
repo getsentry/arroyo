@@ -103,7 +103,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
 
-        # Commit all pending offsets
+        # Commit all previously staged offsets
         self.__commit({}, force=True)
 
         while self.__queue:
