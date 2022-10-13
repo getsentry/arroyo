@@ -7,6 +7,7 @@ from arroyo.backends.kafka.configuration import (
     build_kafka_consumer_configuration,
 )
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaProducer
+from arroyo.commit import ONCE_PER_SECOND
 from arroyo.processing.processor import StreamProcessor
 from arroyo.types import Topic
 
@@ -46,6 +47,7 @@ if __name__ == "__main__":
         processor_factory=HashPasswordAndProduceStrategyFactory(
             producer=producer, topic=HASHED_TOPIC
         ),
+        commit_policy=ONCE_PER_SECOND,
     )
 
     processor.run()
