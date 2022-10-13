@@ -22,14 +22,17 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     case could be to consume messages from one topic, apply some transformations and then output
     to another topic.
 
-    For each message received in the submit method, it attempts to produce a single Kafka message in
-    a thread. On poll we check for completion of these produced messages. If the message has been
-    successfully produced then the offset is committed. If an error occured we raise the
-    InvalidMessages exception.
+    For each message received in the submit method, it attempts to produce a single Kafka message
+    in a thread. If there are too many pending futures, we MessageRejected will be raised to notify
+    stream processor to slow down.
 
-    Important: The destination topic is always the `topic` passed into the constructor and not the topic
-    being referenced in the message itself (which typically refers to the original topic from where the
-    message was consumed from)
+    On poll we check for completion of the produced messages. If the message has been successfully
+    produced then the offset is committed. If an error occured the InvalidMessages exception will
+    be raised.
+
+    Important: The destination topic is always the `topic` passed into the constructor and not the
+    topic being referenced in the message itself (which typically refers to the original topic from
+    where the message was consumed from).
     """
 
     def __init__(
