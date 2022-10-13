@@ -33,6 +33,9 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     Important: The destination topic is always the `topic` passed into the constructor and not the
     topic being referenced in the message itself (which typically refers to the original topic from
     where the message was consumed from).
+
+    Caution: MessageRejected is not properly handled by the ParallelTransform step. Exercise
+    caution if chaining this step anywhere after a parallel transform.
     """
 
     def __init__(
