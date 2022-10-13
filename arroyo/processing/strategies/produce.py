@@ -5,13 +5,18 @@ from concurrent.futures import Future
 from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
+from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Position, Topic, TPayload
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidKafkaMessage,
+    InvalidMessages,
+)
+from arroyo.types import Commit, Message, Position, Topic
 
 logger = logging.getLogger(__name__)
 
 
-class ProduceAndCommit(ProcessingStrategy[TPayload]):
+class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     """
     For each message received, produces a message to the topic being passed in.
     Waits on the futures and only once completed, commits the offset of the message.
@@ -19,7 +24,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        producer: Producer[TPayload],
+        producer: Producer[KafkaPayload],
         topic: Topic,
         commit: Commit,
         max_buffer_size: int = 10000,
@@ -30,7 +35,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Message[TPayload], Future[Message[TPayload]]]
+            Tuple[Message[KafkaPayload], Future[Message[KafkaPayload]]]
         ] = deque()
 
         self.__closed = False
@@ -42,13 +47,31 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
             if not future.done():
                 break
 
+            exc = future.exception()
+
+            if exc is not None:
+                raise InvalidMessages(
+                    [
+                        InvalidKafkaMessage(
+                            payload=message.payload.value,
+                            timestamp=message.timestamp,
+                            topic=message.partition.topic.name,
+                            consumer_group="",
+                            partition=message.partition.index,
+                            offset=message.offset,
+                            headers=message.payload.headers,
+                            key=message.payload.key,
+                        )
+                    ]
+                )
+
             self.__queue.popleft()
 
             self.__commit(
                 {message.partition: Position(message.next_offset, message.timestamp)}
             )
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[KafkaPayload]) -> None:
         assert not self.__closed
 
         if len(self.__queue) >= self.__max_buffer_size:
