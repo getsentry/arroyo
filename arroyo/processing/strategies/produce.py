@@ -77,6 +77,7 @@ class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
                             offset=message.offset,
                             headers=message.payload.headers,
                             key=message.payload.key,
+                            reason=str(exc),
                         )
                     ]
                 )
