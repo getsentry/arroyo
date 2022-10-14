@@ -3,21 +3,15 @@ from typing import Callable, Mapping, Optional, Protocol, TypeVar
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy, ProcessingStrategyFactory
+from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
 from arroyo.processing.strategies.dead_letter_queue.dead_letter_queue import (
     DeadLetterQueue,
 )
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
 )
-from arroyo.processing.strategies.streaming.collect import (
-    CollectStep,
-    ParallelCollectStep,
-)
-from arroyo.processing.strategies.streaming.filter import FilterStep
-from arroyo.processing.strategies.streaming.transform import (
-    ParallelTransformStep,
-    TransformStep,
-)
+from arroyo.processing.strategies.filter import FilterStep
+from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
 from arroyo.types import Message, Partition, Position
 
 TPayload = TypeVar("TPayload")

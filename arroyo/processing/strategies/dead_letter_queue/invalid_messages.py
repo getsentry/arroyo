@@ -78,7 +78,7 @@ class InvalidKafkaMessage(InvalidMessage):
     payload: SerializedPayload
     timestamp: datetime
     topic: str
-    consumer_group: str
+    consumer_group: Optional[str]
     partition: int
     offset: int
     headers: Headers
@@ -94,7 +94,7 @@ class InvalidMessages(Exception):
 
     def __init__(self, messages: Sequence[InvalidMessage]):
         self.messages = messages
-        self.num_kafka_messages = 0
+        self.num_messages = 0
         self.topics: Set[str] = set()
         self.num_raw_messages = 0
         self.__generate_stats()
@@ -102,13 +102,13 @@ class InvalidMessages(Exception):
     def __generate_stats(self) -> Any:
         for message in self.messages:
             if isinstance(message, InvalidKafkaMessage):
-                self.num_kafka_messages += 1
+                self.num_messages += 1
                 self.topics.add(message.topic)
             else:
                 self.num_raw_messages += 1
 
     def __repr__(self) -> str:
         return (
-            f"InvalidMessages Exception containing: {self.num_kafka_messages} Kafka messages "
+            f"InvalidMessages Exception containing: {self.num_messages} messages "
             f"from topic(s): `{'`, `'.join(self.topics)}`. {self.num_raw_messages} Raw messages."
         )
