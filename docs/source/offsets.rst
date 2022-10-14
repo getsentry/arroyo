@@ -14,9 +14,9 @@ In Arroyo, this means you should commit `Message.next_offset` and never `Message
 that message. Arroyo exposes `Message.position_to_commit` to make this easier.
 
 It is not safe to commit every offset in a high throughput consumer as this will add a lot of load to the system.
-Commits should generally be throttled. In order to make this easier, Arroyo requires a `CommitPolicy` to be passed
-to the stream processor, which allows specifying a minimum commit frequency (or messages between commits). Commit
-throttling can be skipped when needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
+Commits should generally be throttled. `CommitPolicy` is the Arroyo way of specifying commit frequency. A `CommitPolicy`
+must be passed to the stream processor, which allows specifying a minimum commit frequency (or messages between commits).
+Commit throttling can be skipped when needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
 If you are not sure how often to commit, `ONCE_PER_SECOND` is a reasonable option.
 
 .. code-block:: Python
