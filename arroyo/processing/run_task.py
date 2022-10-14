@@ -43,9 +43,7 @@ class RunTask(ProcessingStrategy[TPayload]):
         while self.__futures and self.__futures[0][1].done():
             message, _ = self.__futures.popleft()
 
-            self.__commit(
-                {message.partition: Position(message.next_offset, message.timestamp)}
-            )
+            self.__commit({message.partition: message.position_to_commit})
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
