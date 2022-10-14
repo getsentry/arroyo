@@ -55,7 +55,7 @@ class RunTask(ProcessingStrategy[TPayload]):
 
     def poll(self) -> None:
         while self.__queue:
-            message, future = self.__queue.popleft()
+            message, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -64,6 +64,8 @@ class RunTask(ProcessingStrategy[TPayload]):
 
             if exc is not None:
                 raise exc
+
+            self.__queue.popleft()
 
             self.__commit({message.partition: message.position_to_commit})
 
