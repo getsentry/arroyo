@@ -6,7 +6,7 @@ from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Position, Topic, TPayload
+from arroyo.types import Commit, Message, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit(
-                {message.partition: Position(message.next_offset, message.timestamp)}
-            )
+            self.__commit({message.partition: message.position_to_commit})
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -101,7 +99,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             future.result(remaining)
 
-            offset = {message.partition: Position(message.offset, message.timestamp)}
+            offset = {message.partition: message.position_to_commit}
 
             logger.info("Committing offset: %r", offset)
             self.__commit(offset)

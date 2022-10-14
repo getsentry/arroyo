@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Deque, Optional, Tuple
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Position, TPayload
+from arroyo.types import Commit, Message, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class RunTask(ProcessingStrategy[TPayload]):
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__futures: Deque[Tuple[Message[TPayload], Future[None]]] = deque()
+        self.__queue: Deque[Tuple[Message[TPayload], Future[None]]] = deque()
         self.__max_pending_futures = concurrency * 2
         self.__commit = commit
         self.__closed = False
@@ -31,17 +31,22 @@ class RunTask(ProcessingStrategy[TPayload]):
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
         # The list of pending futures is too long, tell the stream processor to slow down
-        if len(self.__futures) > self.__max_pending_futures:
+        if len(self.__queue) > self.__max_pending_futures:
             raise MessageRejected
 
-        self.__futures.append(
-            (message, self.__executor.submit(self.__function, message))
-        )
+        self.__queue.append((message, self.__executor.submit(self.__function, message)))
 
     def poll(self) -> None:
-        # Remove completed futures in order
-        while self.__futures and self.__futures[0][1].done():
-            message, _ = self.__futures.popleft()
+        while self.__queue:
+            message, future = self.__queue.popleft()
+
+            if not future.done():
+                break
+
+            exc = future.exception()
+
+            if exc is not None:
+                raise exc
 
             self.__commit({message.partition: message.position_to_commit})
 
@@ -50,18 +55,18 @@ class RunTask(ProcessingStrategy[TPayload]):
 
         self.__commit({}, force=True)
 
-        while self.__futures:
+        while self.__queue:
             remaining = timeout - (time.time() - start) if timeout is not None else None
             if remaining is not None and remaining <= 0:
-                logger.warning(f"Timed out with {len(self.__futures)} futures in queue")
+                logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            message, future = self.__futures.popleft()
+            message, future = self.__queue.popleft()
 
             future.result(remaining)
 
             self.__commit(
-                {message.partition: Position(message.next_offset, message.timestamp)},
+                {message.partition: message.position_to_commit},
                 force=True,
             )
 
