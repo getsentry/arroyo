@@ -10,7 +10,7 @@ def test_run_task() -> None:
     mock_func = mock.Mock()
     commit_func = mock.Mock()
 
-    strategy = RunTask(mock_func, 2, commit_func)
+    strategy = RunTask(mock_func, 2, 4, commit_func)
     partition = Partition(Topic("topic"), 0)
 
     strategy.submit(Message(partition, 0, b"hello", datetime.now()))

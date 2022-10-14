@@ -35,12 +35,13 @@ class RunTask(ProcessingStrategy[TPayload]):
         self,
         processing_function: Callable[[Message[TPayload]], TOutput],
         concurrency: int,
+        max_pending_futures: int,
         commit: Commit,
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
         self.__queue: Deque[Tuple[Message[TPayload], Future[TOutput]]] = deque()
-        self.__max_pending_futures = concurrency * 2
+        self.__max_pending_futures = max_pending_futures
         self.__commit = commit
         self.__closed = False
 
