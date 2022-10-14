@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from unittest import mock
 
-from arroyo.processing.run_task import RunTask
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Message, Partition, Topic
 
 

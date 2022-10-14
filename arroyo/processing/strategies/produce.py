@@ -6,6 +6,7 @@ from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Commit, Message, Topic, TPayload
 
 logger = logging.getLogger(__name__)
