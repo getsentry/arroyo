@@ -22,8 +22,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
     stream processor to slow down.
 
     On poll we check for completion of the produced messages. If the message has been successfully
-    produced then the offset is committed. If an error occured the InvalidMessages exception will
-    be raised.
+    produced then the offset is committed. If an error occured the exception will be raised.
 
     Important: The destination topic is always the `topic` passed into the constructor and not the
     topic being referenced in the message itself (which typically refers to the original topic from

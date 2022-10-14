@@ -2,28 +2,44 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Deque, Optional, Tuple
+from typing import Callable, Deque, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Commit, Message, TPayload
 
 logger = logging.getLogger(__name__)
 
+TOutput = TypeVar("TOutput")
+
 
 class RunTask(ProcessingStrategy[TPayload]):
     """
-    Runs a task in a thread. Commits offsets once futures are done.
+    This strategy can be used to run IO-bound tasks in parallel, then commit offsets.
+
+    The user specifies a processing function (a callable that takes a message). For each message received
+    in the submit method, it runs that processing function. Once completed, offsets are committed.
+    Note that the return value of the processing function is discarded so this is not an appropriate
+    strategy if something else needs to happen after offsets are committed and the function returns.
+
+    If there are too many pending futures, we MessageRejected will be raised to notify the stream processor
+    to slow down.
+
+    On poll we check for completion of futures. If processing is done, we commit the offsetes.
+    If an error occured the original exception will be raised.
+
+    Caution: MessageRejected is not properly handled by the ParallelTransform step. Exercise
+    caution if chaining this step anywhere after a parallel transform.
     """
 
     def __init__(
         self,
-        processing_function: Callable[[Message[TPayload]], None],
+        processing_function: Callable[[Message[TPayload]], TOutput],
         concurrency: int,
         commit: Commit,
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Message[TPayload], Future[None]]] = deque()
+        self.__queue: Deque[Tuple[Message[TPayload], Future[TOutput]]] = deque()
         self.__max_pending_futures = concurrency * 2
         self.__commit = commit
         self.__closed = False
