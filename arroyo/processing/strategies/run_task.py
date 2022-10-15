@@ -60,10 +60,8 @@ class RunTask(ProcessingStrategy[TPayload]):
             if not future.done():
                 break
 
-            exc = future.exception()
-
-            if exc is not None:
-                raise exc
+            # Ensure exception gets raised
+            future.result()
 
             self.__queue.popleft()
 
