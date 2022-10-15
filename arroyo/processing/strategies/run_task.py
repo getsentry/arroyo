@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 TOutput = TypeVar("TOutput")
 
 
-class RunTask(ProcessingStrategy[TPayload]):
+class RunTaskInThreads(ProcessingStrategy[TPayload]):
     """
     This strategy can be used to run IO-bound tasks in parallel, then commit offsets.
 

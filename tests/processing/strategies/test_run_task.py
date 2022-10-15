@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from unittest import mock
 
-from arroyo.processing.strategies.run_task import RunTask
+from arroyo.processing.strategies.run_task import RunTaskInThreads
 from arroyo.types import Message, Partition, Topic
 
 
@@ -10,7 +10,7 @@ def test_run_task() -> None:
     mock_func = mock.Mock()
     commit_func = mock.Mock()
 
-    strategy = RunTask(mock_func, 2, 4, commit_func)
+    strategy = RunTaskInThreads(mock_func, 2, 4, commit_func)
     partition = Partition(Topic("topic"), 0)
 
     strategy.submit(Message(partition, 0, b"hello", datetime.now()))
