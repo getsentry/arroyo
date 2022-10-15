@@ -21,6 +21,9 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
     Note that the return value of the processing function is discarded so this is not an appropriate
     strategy if something else needs to happen after offsets are committed and the function returns.
 
+    Since the processing function will be run in threads, avoid using objects which can be modified
+    by different threads or protect it using locks.
+
     If there are too many pending futures, we MessageRejected will be raised to notify the stream processor
     to slow down.
 
