@@ -39,9 +39,8 @@ If you are not sure how often to commit, `ONCE_PER_SECOND` is a reasonable optio
                 {message.partition: message.position_to_commit}
             )
 
-
         def close(self) -> None:
-
+            pass
 
         def terminate(self) -> None:
             print("Terminating")
