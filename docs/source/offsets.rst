@@ -36,7 +36,7 @@ If you are not sure how often to commit, `ONCE_PER_SECOND` is a reasonable optio
             # do something (synchronous) with the message
             do_something()
             self.__commit(
-                {message.partition: message.offset_to_commit}
+                {message.partition: message.position_to_commit}
             )
 
 
