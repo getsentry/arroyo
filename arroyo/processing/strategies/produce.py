@@ -6,7 +6,7 @@ from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Position, Topic, TPayload
+from arroyo.types import Commit, Message, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
     stream processor to slow down.
 
     On poll we check for completion of the produced messages. If the message has been successfully
-    produced then the offset is committed. If an error occured the InvalidMessages exception will
-    be raised.
+    produced then the offset is committed. If an error occured the exception will be raised.
 
     Important: The destination topic is always the `topic` passed into the constructor and not the
     topic being referenced in the message itself (which typically refers to the original topic from
@@ -65,9 +64,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit(
-                {message.partition: Position(message.next_offset, message.timestamp)}
-            )
+            self.__commit({message.partition: message.position_to_commit})
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -101,7 +98,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             future.result(remaining)
 
-            offset = {message.partition: Position(message.offset, message.timestamp)}
+            offset = {message.partition: message.position_to_commit}
 
             logger.info("Committing offset: %r", offset)
             self.__commit(offset)
