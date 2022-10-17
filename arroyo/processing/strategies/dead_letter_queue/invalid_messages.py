@@ -78,7 +78,7 @@ class InvalidKafkaMessage(InvalidMessage):
     payload: SerializedPayload
     timestamp: datetime
     topic: str
-    consumer_group: str
+    consumer_group: Optional[str]
     partition: int
     offset: int
     headers: Headers
