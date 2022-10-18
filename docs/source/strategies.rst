@@ -23,7 +23,6 @@ function.
 .. automodule:: arroyo.processing.strategies.transform
    :members:
    :undoc-members:
-   :show-inheritance:
 
 Filters
 -----------------------------
@@ -31,7 +30,6 @@ Filters
 .. automodule:: arroyo.processing.strategies.filter
    :members:
    :undoc-members:
-   :show-inheritance:
 
 Collectors
 -----------------------------
@@ -41,7 +39,6 @@ Accumulate messages in  abuffer and execute an operation on the batch when full.
 .. automodule:: arroyo.processing.strategies.collect
    :members:
    :undoc-members:
-   :show-inheritance:
 
 Task Runners
 -----------------------------
@@ -49,7 +46,6 @@ Task Runners
 .. automodule:: arroyo.processing.strategies.run_task
    :members:
    :undoc-members:
-   :show-inheritance:
 
 Producers
 --------------------------
@@ -57,4 +53,3 @@ Producers
 .. automodule:: arroyo.processing.strategies.produce
    :members:
    :undoc-members:
-   :show-inheritance:
