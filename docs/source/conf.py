@@ -24,6 +24,8 @@ extensions = [
     "sphinx_autodoc_typehints",
 ]
 
+always_document_param_types = True
+
 # This is relative to this directory.
 templates_path = ["_templates"]
 
