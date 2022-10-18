@@ -8,3 +8,4 @@ Contents:
 
    getstarted
    what_for
+   architecture
