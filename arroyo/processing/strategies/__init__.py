@@ -6,6 +6,7 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
 from arroyo.processing.strategies.filter import FilterStep
 from arroyo.processing.strategies.produce import ProduceAndCommit
+from arroyo.processing.strategies.routing_producer import RoutingProducerStep
 from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "ProcessingStrategy",
     "ProcessingStrategyFactory",
     "ProduceAndCommit",
+    "RoutingProducerStep",
 ]
