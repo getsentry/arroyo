@@ -107,10 +107,8 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
 
-        :param commit: A function that accepts a mapping of ``Partition``
-        instances to offset values that should be committed.
+        :param commit: A function that accepts a mapping of ``Partition`` instances to offset values that should be committed.
 
-        :param partitions: A mapping of a ``Partition`` to it's most recent
-        offset.
+        :param partitions: A mapping of a ``Partition`` to it's most recent offset.
         """
         raise NotImplementedError
