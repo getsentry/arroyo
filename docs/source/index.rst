@@ -8,3 +8,5 @@ Contents:
 
    getstarted
    what_for
+   strategies
+   dlq

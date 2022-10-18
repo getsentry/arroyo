@@ -1,3 +1,6 @@
+import os
+import sys
+
 # Configuration file for the Sphinx documentation builder.
 #
 
@@ -9,6 +12,7 @@ author = "Sentry Team and Contributors"
 
 release = "0.0.20"
 
+sys.path.insert(0, os.path.abspath("../.."))
 
 # -- General configuration ---------------------------------------------------
 
@@ -16,6 +20,8 @@ extensions = [
     "sphinx.ext.githubpages",
     "sphinx.ext.intersphinx",
     "sphinxcontrib.mermaid",
+    "sphinx.ext.autodoc",
+    "sphinx_autodoc_typehints",
 ]
 
 # This is relative to this directory.
@@ -25,11 +31,13 @@ templates_path = ["_templates"]
 # directories to ignore when looking for source files.
 exclude_patterns = ["build"]
 
+pygments_style = "sphinx"
+
 source_suffix = ".rst"
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "alabaster"
+html_theme = "sphinx_rtd_theme"
 
 html_static_path = ["_static"]
 
