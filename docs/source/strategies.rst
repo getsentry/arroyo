@@ -53,3 +53,10 @@ Producers
 .. automodule:: arroyo.processing.strategies.produce
    :members:
    :undoc-members:
+
+Routing Producers
+--------------------------
+
+.. automodule:: arroyo.processing.strategies.routing_producer
+   :members:
+   :undoc-members:
