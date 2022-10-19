@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from arroyo.backends.local.backend import LocalBroker as Broker
 from arroyo.backends.local.backend import LocalConsumer
+from arroyo.commit import IMMEDIATE
 from arroyo.processing.processor import StreamProcessor
 from arroyo.processing.strategies.batching import (
     AbstractBatchWorker,
@@ -46,6 +47,7 @@ class TestConsumer(object):
                 max_batch_size=2,
                 max_batch_time=100,
             ),
+            IMMEDIATE,
         )
 
         for _ in range(3):
@@ -73,6 +75,7 @@ class TestConsumer(object):
             BatchProcessingStrategyFactory(
                 worker=worker, max_batch_size=100, max_batch_time=2000
             ),
+            IMMEDIATE,
         )
 
         mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 0).timetuple())

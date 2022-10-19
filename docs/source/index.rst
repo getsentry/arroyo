@@ -10,4 +10,5 @@ Contents:
    what_for
    architecture
    strategies
+   offsets
    dlq
