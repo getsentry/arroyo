@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-from arroyo.commit import CommitPolicy
+from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -27,7 +27,9 @@ def test_stream_processor_lifecycle() -> None:
     metrics = TestingMetricsBackend
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
+        processor: StreamProcessor[int] = StreamProcessor(
+            consumer, topic, factory, IMMEDIATE
+        )
 
     # The processor should accept heartbeat messages without an assignment or
     # active processor.
@@ -130,9 +132,7 @@ def test_stream_processor_termination_on_error() -> None:
     factory.create_with_partitions.return_value = strategy
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer,
-        topic,
-        factory,
+        consumer, topic, factory, IMMEDIATE
     )
 
     assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
@@ -155,7 +155,9 @@ def test_stream_processor_incremental_assignment_revocation() -> None:
     factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
+        processor: StreamProcessor[int] = StreamProcessor(
+            consumer, topic, factory, IMMEDIATE
+        )
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -209,7 +211,9 @@ def test_stream_processor_create_with_partitions() -> None:
     factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
+        processor: StreamProcessor[int] = StreamProcessor(
+            consumer, topic, factory, IMMEDIATE
+        )
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]

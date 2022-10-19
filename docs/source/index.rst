@@ -8,3 +8,7 @@ Contents:
 
    getstarted
    what_for
+   architecture
+   strategies
+   offsets
+   dlq

@@ -5,7 +5,7 @@ import time
 from typing import Generic, Mapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
-from arroyo.commit import IMMEDIATE, CommitPolicy
+from arroyo.commit import CommitPolicy
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -37,7 +37,7 @@ class StreamProcessor(Generic[TPayload]):
         consumer: Consumer[TPayload],
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TPayload],
-        commit_policy: Optional[CommitPolicy] = None,
+        commit_policy: CommitPolicy,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -52,7 +52,7 @@ class StreamProcessor(Generic[TPayload]):
         self.__paused_timestamp: Optional[float] = None
         self.__last_log_timestamp: Optional[float] = None
 
-        self.__commit_policy = commit_policy or IMMEDIATE
+        self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
         self.__messages_since_last_commit = 0
 
