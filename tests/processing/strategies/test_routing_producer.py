@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import MutableSequence
+from typing import MutableSequence, Optional
 from unittest import mock
 
 from confluent_kafka import Producer
@@ -22,8 +22,6 @@ class RoundRobinRouter(MessageRouter):
             MemoryMessageStorage[KafkaPayload]
         ] = []
         self.all_producers: MutableSequence[Producer] = []
-
-    def populate_routes(self) -> MutableSequence[Producer]:
         clock = TestingClock()
 
         for i in range(3):
@@ -33,14 +31,16 @@ class RoundRobinRouter(MessageRouter):
             self.all_broker_storages.append(broker_storage)
             self.all_producers.append(broker.get_producer())
 
-        return self.all_producers
-
     def get_route_for_message(self, message: Message[KafkaPayload]) -> MessageRoute:
         routing_key, routing_value = message.payload.headers[0]
         dest_id = int(routing_value) % len(self.all_producers)
         return MessageRoute(
             self.all_producers[dest_id], Topic(f"result-topic-{dest_id}")
         )
+
+    def shutdown(self, timeout: Optional[float] = None) -> None:
+        for producer in self.all_producers:
+            producer.flush()
 
 
 def test_routing_producer() -> None:
@@ -57,8 +57,6 @@ def test_routing_producer() -> None:
     router = RoundRobinRouter()
     strategy = RoutingProducerStep(
         commit_function=commit,
-        commit_max_batch_time=1000,
-        commit_max_batch_size=1,
         message_router=router,
     )
 
