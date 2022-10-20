@@ -36,8 +36,6 @@ segment is not supposed to execute small CPU work in a blocking way, IO in a non
 blocking way, we generally use futures for this, and heavier CPU work on a separate
 process.
 
-A lot of this could be supported by Async IO, which is a likely refactoring.
-
 Arroyo provides an interface to implement to write a pipeline segment.
 The segment interface is called *ProcessingStrategy* and is in
 `this module <https://github.com/getsentry/arroyo/blob/main/arroyo/processing/strategies/abstract.py>`_.
