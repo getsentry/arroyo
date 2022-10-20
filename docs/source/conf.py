@@ -10,8 +10,6 @@ project = "Arroyo"
 copyright = "2022, Sentry Team and Contributors"
 author = "Sentry Team and Contributors"
 
-release = "0.0.20"
-
 sys.path.insert(0, os.path.abspath("../.."))
 
 # -- General configuration ---------------------------------------------------
