@@ -17,11 +17,46 @@ from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
-LOG_THRESHOLD_TIME = 10  # In seconds
+LOG_THRESHOLD_TIME = 5  # In seconds
 
 
 class InvalidStateError(RuntimeError):
     pass
+
+
+class MetricsBuffer:
+    def __init__(self) -> None:
+        self.__metrics = get_metrics()
+        self.__metrics_frequency_sec = 1.0
+        self.__reset()
+
+    def add_poll_time(self, duration: float) -> None:
+        self.__consumer_poll_time += duration
+        self.__throttled_record()
+
+    def add_processing_time(self, duration: float) -> None:
+        self.__processing_time += duration
+        self.__throttled_record()
+
+    def add_pause_time(self, duration: float) -> None:
+        self.__paused_time += duration
+        self.__throttled_record()
+
+    def flush(self) -> None:
+        self.__metrics.timing("arroyo.consumer.poll.time", self.__consumer_poll_time)
+        self.__metrics.timing("arroyo.consumer.processing.time", self.__processing_time)
+        self.__metrics.timing("arroyo.consumer.paused.time", self.__paused_time)
+        self.__reset()
+
+    def __reset(self) -> None:
+        self.__consumer_poll_time = 0.0
+        self.__processing_time = 0.0
+        self.__paused_time = 0.0
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > self.__metrics_frequency_sec:
+            self.flush()
 
 
 class StreamProcessor(Generic[TPayload]):
@@ -41,7 +76,7 @@ class StreamProcessor(Generic[TPayload]):
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
-        self.__metrics = get_metrics()
+        self.__metrics_buffer = MetricsBuffer()
 
         self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
 
@@ -177,15 +212,23 @@ class StreamProcessor(Generic[TPayload]):
             # Otherwise, we need to try fetch a new message from the consumer,
             # even if there is no active assignment and/or processing strategy.
             try:
+                start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
+                self.__metrics_buffer.add_poll_time(time.time() - start_poll)
             except RecoverableError:
                 return
 
         if self.__processing_strategy is not None:
+            start_poll = time.time()
             self.__processing_strategy.poll()
+            self.__metrics_buffer.add_processing_time(time.time() - start_poll)
             if self.__message is not None:
                 try:
+                    start_submit = time.time()
                     self.__processing_strategy.submit(self.__message)
+                    self.__metrics_buffer.add_processing_time(
+                        time.time() - start_submit
+                    )
                 except MessageRejected as e:
                     # If the processing strategy rejected our message, we need
                     # to pause the consumer and hold the message until it is
@@ -218,6 +261,10 @@ class StreamProcessor(Generic[TPayload]):
                             logger.info(
                                 "Paused for longer than %d seconds", LOG_THRESHOLD_TIME
                             )
+
+                        if paused_duration is not None:
+                            self.__metrics_buffer.add_pause_time(paused_duration)
+
                 else:
                     # If we were trying to submit a message that failed to be
                     # submitted on a previous run, we can resume accepting new
@@ -225,17 +272,25 @@ class StreamProcessor(Generic[TPayload]):
                     if message_carried_over:
                         assert self.__paused_timestamp is not None
                         paused_duration = time.time() - self.__paused_timestamp
-                        self.__paused_timestamp = None
-                        self.__last_log_timestamp = None
                         logger.debug(
                             "Successfully submitted %r, resuming consumer after %0.4f seconds...",
                             self.__message,
                             paused_duration,
                         )
                         self.__consumer.resume([*self.__consumer.tell().keys()])
-                        self.__metrics.timing(
-                            "pause_duration_ms", paused_duration * 1000
+                        last_recorded = (
+                            self.__last_log_timestamp
+                            if self.__last_log_timestamp is not None
+                            else self.__paused_timestamp
                         )
+
+                        self.__metrics_buffer.add_pause_time(
+                            time.time() - last_recorded
+                        )
+
+                        self.__paused_timestamp = None
+                        self.__last_log_timestamp = None
+
                     self.__message = None
         else:
             if self.__message is not None:
