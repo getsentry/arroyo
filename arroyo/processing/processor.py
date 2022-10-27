@@ -312,6 +312,7 @@ class StreamProcessor(Generic[TPayload]):
     def _shutdown(self) -> None:
         # close the consumer
         logger.debug("Stopping consumer")
+        self.__metrics_buffer.flush()
         self.__consumer.close()
         logger.debug("Stopped")
 
