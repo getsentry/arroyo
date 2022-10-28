@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Generic, Mapping, Optional, Sequence
+from collections import defaultdict
+from enum import Enum
+from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
@@ -24,33 +26,28 @@ class InvalidStateError(RuntimeError):
     pass
 
 
+class ConsumerTiming(Enum):
+    CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
+    CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
+    CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
+
+
 class MetricsBuffer:
     def __init__(self) -> None:
         self.__metrics = get_metrics()
         self.__reset()
 
-    def add_poll_time(self, duration: float) -> None:
-        self.__consumer_poll_time += duration
-        self.__throttled_record()
-
-    def add_processing_time(self, duration: float) -> None:
-        self.__processing_time += duration
-        self.__throttled_record()
-
-    def add_pause_time(self, duration: float) -> None:
-        self.__paused_time += duration
+    def increment(self, metric: ConsumerTiming, duration: float) -> None:
+        self.__data[metric] += duration
         self.__throttled_record()
 
     def flush(self) -> None:
-        self.__metrics.timing("arroyo.consumer.poll.time", self.__consumer_poll_time)
-        self.__metrics.timing("arroyo.consumer.processing.time", self.__processing_time)
-        self.__metrics.timing("arroyo.consumer.paused.time", self.__paused_time)
+        for (metric, value) in self.__data.items():
+            self.__metrics.timing(metric.value, value)
         self.__reset()
 
     def __reset(self) -> None:
-        self.__consumer_poll_time = 0.0
-        self.__processing_time = 0.0
-        self.__paused_time = 0.0
+        self.__data: MutableMapping[ConsumerTiming, float] = defaultdict(float)
         self.__last_record_time = time.time()
 
     def __throttled_record(self) -> None:
@@ -212,20 +209,25 @@ class StreamProcessor(Generic[TPayload]):
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
-                self.__metrics_buffer.add_poll_time(time.time() - start_poll)
+                self.__metrics_buffer.increment(
+                    ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
+                )
             except RecoverableError:
                 return
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
             self.__processing_strategy.poll()
-            self.__metrics_buffer.add_processing_time(time.time() - start_poll)
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
+            )
             if self.__message is not None:
                 try:
                     start_submit = time.time()
                     self.__processing_strategy.submit(self.__message)
-                    self.__metrics_buffer.add_processing_time(
-                        time.time() - start_submit
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_PROCESSING_TIME,
+                        time.time() - start_submit,
                     )
                 except MessageRejected as e:
                     # If the processing strategy rejected our message, we need
@@ -243,8 +245,9 @@ class StreamProcessor(Generic[TPayload]):
                     else:
                         current_time = time.time()
                         if self.__paused_timestamp:
-                            self.__metrics_buffer.add_pause_time(
-                                current_time - self.__paused_timestamp
+                            self.__metrics_buffer.increment(
+                                ConsumerTiming.CONSUMER_PAUSED_TIME,
+                                current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
 
@@ -256,8 +259,9 @@ class StreamProcessor(Generic[TPayload]):
                         assert self.__paused_timestamp is not None
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
-                        self.__metrics_buffer.add_pause_time(
-                            time.time() - self.__paused_timestamp
+                        self.__metrics_buffer.increment(
+                            ConsumerTiming.CONSUMER_PAUSED_TIME,
+                            time.time() - self.__paused_timestamp,
                         )
 
                         self.__paused_timestamp = None
