@@ -3,8 +3,17 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Generic, Mapping, MutableMapping, Optional
+from typing import (
+    Callable,
+    Generic,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    Sequence,
+)
 
+from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
@@ -19,6 +28,173 @@ class OffsetRange:
     lo: int  # inclusive
     hi: int  # exclusive
     timestamp: datetime
+
+
+@dataclass(frozen=True)
+class MessageBatch(Generic[TPayload]):
+    messages: Sequence[Message[TPayload]]
+    offsets: Mapping[Partition, OffsetRange]
+    duration: float
+
+    def __len__(self) -> int:
+        return len(self.messages)
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__}: {len(self)} message{'s' if len(self) != 1 else ''}, open for {self.duration:0.2f} seconds>"
+
+    def get_last(self) -> Optional[Message[TPayload]]:
+        return self.messages[-1] if len(self) > 0 else None
+
+
+class BatchBuilder(Generic[TPayload]):
+    def __init__(
+        self,
+        max_batch_time: float,
+        max_batch_size: int,
+    ) -> None:
+        self.__max_batch_time = max_batch_time
+        self.__max_batch_size = max_batch_size
+        self.__messages: MutableSequence[Message[TPayload]] = []
+        self.__offsets: MutableMapping[Partition, OffsetRange] = {}
+        self.__init_time = time.time()
+
+    def is_ready(self) -> bool:
+        return len(self.__messages) >= self.__max_batch_size or (
+            time.time() > self.__init_time + self.__max_batch_time
+        )
+
+    def append(self, message: Message[TPayload]) -> None:
+        if message.partition in self.__offsets:
+            self.__offsets[message.partition].hi = message.next_offset
+            self.__offsets[message.partition].timestamp = message.timestamp
+        else:
+            self.__offsets[message.partition] = OffsetRange(
+                message.offset, message.next_offset, message.timestamp
+            )
+
+        self.__messages.append(message)
+
+    def flush(self) -> MessageBatch[TPayload]:
+        return MessageBatch(
+            messages=self.__messages,
+            offsets=self.__offsets,
+            duration=time.time() - self.__init_time,
+        )
+
+
+class BatchStep(ProcessingStep[TPayload]):
+    def __init__(
+        self,
+        max_batch_time: float,
+        max_batch_size: int,
+        next_step: ProcessingStep[MessageBatch[TPayload]],
+    ) -> None:
+        self.__max_batch_time = max_batch_time
+        self.__max_batch_size = max_batch_size
+        self.__next_step = next_step
+        self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
+        self.__closed = False
+
+    def __flush(self) -> None:
+        assert self.__batch_builder is not None
+        batch = self.__batch_builder.flush()
+        if len(batch) > 0:
+            last_msg = batch.get_last()
+            assert last_msg is not None
+            self.__next_step.submit(
+                Message(
+                    partition=last_msg.partition,
+                    offset=last_msg.offset,
+                    timestamp=last_msg.timestamp,
+                    payload=batch,
+                )
+            )
+        self.__batch_builder = None
+
+    def submit(self, message: Message[TPayload]) -> None:
+        assert not self.__closed
+
+        if self.__batch_builder is not None and self.__batch_builder.is_ready():
+            self.__flush()
+
+        if self.__batch_builder is None:
+            self.__batch_builder = BatchBuilder(
+                max_batch_time=self.__max_batch_time,
+                max_batch_size=self.__max_batch_size,
+            )
+
+        self.__batch_builder.append(message)
+
+    def poll(self) -> None:
+        assert not self.__closed
+
+        if self.__batch_builder is not None and self.__batch_builder.is_ready():
+            self.__flush()
+
+        self.__next_step.poll()
+
+    def close(self) -> None:
+        self.__closed = True
+
+    def terminate(self) -> None:
+        self.__closed = True
+        self.__batch_builder = None
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        deadline = time.time() + timeout if timeout is not None else None
+        if self.__batch_builder is not None:
+            self.__flush()
+
+        self.__next_step.join(
+            timeout=max(deadline - time.time(), 0) if deadline is not None else None
+        )
+
+
+class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
+    def __init__(
+        self,
+        next_step: ProcessingStep[TPayload],
+    ) -> None:
+        self.__next_step = next_step
+        self.__current_batch: Optional[MessageBatch[TPayload]] = None
+        self.__closed = False
+
+    def __flush(self) -> None:
+        if self.__current_batch is not None:
+            for msg in self.__current_batch.messages:
+                self.__next_step.submit(msg)
+            self.__current_batch = None
+
+    def submit(self, message: Message[MessageBatch[TPayload]]) -> None:
+        assert not self.__closed
+
+        if self.__current_batch is not None:
+            raise MessageRejected
+
+        self.__current_batch = message.payload
+        self.__flush()
+
+    def poll(self) -> None:
+        assert not self.__closed
+
+        self.__flush()
+
+        self.__next_step.poll()
+
+    def close(self) -> None:
+        self.__closed = True
+
+    def terminate(self) -> None:
+        self.__closed = True
+        self.__current_batch = None
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        deadline = time.time() + timeout if timeout is not None else None
+        self.__flush()
+
+        self.__next_step.join(
+            timeout=max(deadline - time.time(), 0) if deadline is not None else None
+        )
 
 
 class Batch(Generic[TPayload]):
