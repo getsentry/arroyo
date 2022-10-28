@@ -17,7 +17,7 @@ from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
-LOG_THRESHOLD_TIME = 5  # In seconds
+METRICS_FREQUENCY_SEC = 1.0  # In seconds
 
 
 class InvalidStateError(RuntimeError):
@@ -27,7 +27,6 @@ class InvalidStateError(RuntimeError):
 class MetricsBuffer:
     def __init__(self) -> None:
         self.__metrics = get_metrics()
-        self.__metrics_frequency_sec = 1.0
         self.__reset()
 
     def add_poll_time(self, duration: float) -> None:
@@ -55,7 +54,7 @@ class MetricsBuffer:
         self.__last_record_time = time.time()
 
     def __throttled_record(self) -> None:
-        if time.time() - self.__last_record_time > self.__metrics_frequency_sec:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
             self.flush()
 
 
@@ -83,9 +82,8 @@ class StreamProcessor(Generic[TPayload]):
         self.__message: Optional[Message[TPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
-        # ``pause`` occurred.
+        # ``pause`` occurred or the time the pause metric was last recorded.
         self.__paused_timestamp: Optional[float] = None
-        self.__last_log_timestamp: Optional[float] = None
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
@@ -240,28 +238,15 @@ class StreamProcessor(Generic[TPayload]):
                             self.__message,
                         )
                         self.__consumer.pause([*self.__consumer.tell().keys()])
+
                         self.__paused_timestamp = time.time()
                     else:
-                        # Log paused condition every 5 seconds at most
                         current_time = time.time()
-                        if self.__last_log_timestamp:
-                            paused_duration: Optional[float] = (
-                                current_time - self.__last_log_timestamp
+                        if self.__paused_timestamp:
+                            self.__metrics_buffer.add_pause_time(
+                                current_time - self.__paused_timestamp
                             )
-                        elif self.__paused_timestamp:
-                            paused_duration = current_time - self.__paused_timestamp
-                        else:
-                            paused_duration = None
-
-                        if (
-                            paused_duration is not None
-                            and paused_duration > LOG_THRESHOLD_TIME
-                        ):
-                            self.__last_log_timestamp = current_time
-                            logger.info(
-                                "Paused for longer than %d seconds", LOG_THRESHOLD_TIME
-                            )
-                            self.__metrics_buffer.add_pause_time(paused_duration)
+                            self.__paused_timestamp = current_time
 
                 else:
                     # If we were trying to submit a message that failed to be
@@ -269,25 +254,13 @@ class StreamProcessor(Generic[TPayload]):
                     # messages.
                     if message_carried_over:
                         assert self.__paused_timestamp is not None
-                        paused_duration = time.time() - self.__paused_timestamp
-                        logger.debug(
-                            "Successfully submitted %r, resuming consumer after %0.4f seconds...",
-                            self.__message,
-                            paused_duration,
-                        )
                         self.__consumer.resume([*self.__consumer.tell().keys()])
-                        last_recorded = (
-                            self.__last_log_timestamp
-                            if self.__last_log_timestamp is not None
-                            else self.__paused_timestamp
-                        )
 
                         self.__metrics_buffer.add_pause_time(
-                            time.time() - last_recorded
+                            time.time() - self.__paused_timestamp
                         )
 
                         self.__paused_timestamp = None
-                        self.__last_log_timestamp = None
 
                     self.__message = None
         else:
