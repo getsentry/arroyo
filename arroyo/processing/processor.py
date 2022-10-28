@@ -261,8 +261,6 @@ class StreamProcessor(Generic[TPayload]):
                             logger.info(
                                 "Paused for longer than %d seconds", LOG_THRESHOLD_TIME
                             )
-
-                        if paused_duration is not None:
                             self.__metrics_buffer.add_pause_time(paused_duration)
 
                 else:
