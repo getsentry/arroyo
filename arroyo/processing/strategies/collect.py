@@ -42,9 +42,6 @@ class MessageBatch(Generic[TPayload]):
     def __repr__(self) -> str:
         return f"<{type(self).__name__}: {len(self)} message{'s' if len(self) != 1 else ''}, open for {self.duration:0.2f} seconds>"
 
-    def get_last(self) -> Optional[Message[TPayload]]:
-        return self.messages[-1] if len(self) > 0 else None
-
 
 class BatchBuilder(Generic[TPayload]):
     def __init__(
@@ -99,8 +96,7 @@ class BatchStep(ProcessingStep[TPayload]):
         assert self.__batch_builder is not None
         batch = self.__batch_builder.flush()
         if len(batch) > 0:
-            last_msg = batch.get_last()
-            assert last_msg is not None
+            last_msg = batch.messages[-1]
             self.__next_step.submit(
                 Message(
                     partition=last_msg.partition,
