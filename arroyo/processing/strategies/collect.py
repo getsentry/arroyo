@@ -1,10 +1,12 @@
 import logging
 import time
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import (
     Callable,
+    Deque,
     Generic,
     Mapping,
     MutableMapping,
@@ -109,10 +111,6 @@ class BatchStep(ProcessingStep[TPayload]):
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
-
-        if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            self.__flush()
-
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
                 max_batch_time=self.__max_batch_time,
@@ -120,6 +118,9 @@ class BatchStep(ProcessingStep[TPayload]):
             )
 
         self.__batch_builder.append(message)
+
+        if self.__batch_builder is not None and self.__batch_builder.is_ready():
+            self.__flush()
 
     def poll(self) -> None:
         assert not self.__closed
@@ -152,28 +153,31 @@ class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
         next_step: ProcessingStep[TPayload],
     ) -> None:
         self.__next_step = next_step
-        self.__current_batch: Optional[MessageBatch[TPayload]] = None
+        self.__batch_to_send: Deque[Message[TPayload]] = deque()
         self.__closed = False
 
     def __flush(self) -> None:
-        if self.__current_batch is not None:
-            for msg in self.__current_batch.messages:
-                self.__next_step.submit(msg)
-            self.__current_batch = None
+        while self.__batch_to_send:
+            msg = self.__batch_to_send[0]
+            self.__next_step.submit(msg)
+            self.__batch_to_send.popleft()
 
     def submit(self, message: Message[MessageBatch[TPayload]]) -> None:
         assert not self.__closed
 
-        if self.__current_batch is not None:
+        if self.__batch_to_send:
             raise MessageRejected
 
-        self.__current_batch = message.payload
+        self.__batch_to_send.extend(message.payload.messages)
         self.__flush()
 
     def poll(self) -> None:
         assert not self.__closed
 
-        self.__flush()
+        try:
+            self.__flush()
+        except MessageRejected:
+            pass
 
         self.__next_step.poll()
 
