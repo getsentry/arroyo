@@ -34,6 +34,14 @@ class OffsetRange:
 
 @dataclass(frozen=True)
 class MessageBatch(Generic[TPayload]):
+    """
+    Represents a batch of messages with the range of offsets covered.
+    The range of offsets is represented as a mapping between partitions
+    and offset ranges.
+    The lowest offset in each offset range is inclusize. The highest is
+    esclusive.
+    """
+
     messages: Sequence[Message[TPayload]]
     offsets: Mapping[Partition, OffsetRange]
     duration: float
@@ -82,6 +90,17 @@ class BatchBuilder(Generic[TPayload]):
 
 
 class BatchStep(ProcessingStep[TPayload]):
+    """
+    Accumulates messages into a batch. When the batch is full this
+    strategy submits it to the next step.
+
+    A batch is represented as a `MessageBatch` object, which includes
+    both the messages and the offset ranges.
+
+    A message is closed and submitted when the maximum number of messages
+    is received or when the deadline has passed.
+    """
+
     def __init__(
         self,
         max_batch_time: float,
@@ -94,20 +113,24 @@ class BatchStep(ProcessingStep[TPayload]):
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
         self.__closed = False
 
-    def __flush(self) -> None:
+    def __flush(self, robust: bool) -> None:
         assert self.__batch_builder is not None
         batch = self.__batch_builder.flush()
-        if len(batch) > 0:
-            last_msg = batch.messages[-1]
-            self.__next_step.submit(
-                Message(
-                    partition=last_msg.partition,
-                    offset=last_msg.offset,
-                    timestamp=last_msg.timestamp,
-                    payload=batch,
+        try:
+            if len(batch) > 0:
+                last_msg = batch.messages[-1]
+                self.__next_step.submit(
+                    Message(
+                        partition=last_msg.partition,
+                        offset=last_msg.offset,
+                        timestamp=last_msg.timestamp,
+                        payload=batch,
+                    )
                 )
-            )
-        self.__batch_builder = None
+            self.__batch_builder = None
+        except MessageRejected:
+            if not robust:
+                raise
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -120,13 +143,13 @@ class BatchStep(ProcessingStep[TPayload]):
         self.__batch_builder.append(message)
 
         if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            self.__flush()
+            self.__flush(robust=False)
 
     def poll(self) -> None:
         assert not self.__closed
 
         if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            self.__flush()
+            self.__flush(robust=True)
 
         self.__next_step.poll()
 
@@ -140,7 +163,7 @@ class BatchStep(ProcessingStep[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
         if self.__batch_builder is not None:
-            self.__flush()
+            self.__flush(robust=False)
 
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
@@ -148,6 +171,17 @@ class BatchStep(ProcessingStep[TPayload]):
 
 
 class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
+    """
+    This processing step receives batches and explodes them sending
+    the content message by message to the next step.
+
+    A batch is represented as a `MessageBatch` object.
+
+    If this step receives a `MessageRejected` exception from the next
+    step it would keep the remaining messages and attempt to submit
+    them at the following call to `poll`
+    """
+
     def __init__(
         self,
         next_step: ProcessingStep[TPayload],
@@ -198,6 +232,10 @@ class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
 
 
 class Batch(Generic[TPayload]):
+    """
+    Use MessageBatch instead.
+    """
+
     def __init__(
         self,
         step: ProcessingStep[TPayload],
@@ -259,6 +297,8 @@ class Batch(Generic[TPayload]):
 
 class CollectStep(ProcessingStep[TPayload]):
     """
+    DEPRECATED: Use BatchStep instead and add the step_factory logic as a next step.
+
     Collects messages into batches, periodically closing the batch and
     committing the offsets once the batch has successfully been closed.
     """
@@ -345,6 +385,8 @@ class CollectStep(ProcessingStep[TPayload]):
 
 class ParallelCollectStep(CollectStep[TPayload]):
     """
+    DEPRECATED: Use BatchStep instead and add the step_factory logic as a next step.
+
     ParallelCollectStep is similar to CollectStep except it allows the closing and reset of the
     batch to happen in a threadpool. What this allows for is the next batch to start getting
     filled in while the previous batch is still being processed.
