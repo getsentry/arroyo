@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Generic, Mapping, Optional, Sequence
+from collections import defaultdict
+from enum import Enum
+from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
@@ -17,11 +19,40 @@ from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
-LOG_THRESHOLD_TIME = 10  # In seconds
+METRICS_FREQUENCY_SEC = 1.0  # In seconds
 
 
 class InvalidStateError(RuntimeError):
     pass
+
+
+class ConsumerTiming(Enum):
+    CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
+    CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
+    CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
+
+
+class MetricsBuffer:
+    def __init__(self) -> None:
+        self.__metrics = get_metrics()
+        self.__reset()
+
+    def increment(self, metric: ConsumerTiming, duration: float) -> None:
+        self.__data[metric] += duration
+        self.__throttled_record()
+
+    def flush(self) -> None:
+        for (metric, value) in self.__data.items():
+            self.__metrics.timing(metric.value, value)
+        self.__reset()
+
+    def __reset(self) -> None:
+        self.__data: MutableMapping[ConsumerTiming, float] = defaultdict(float)
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
+            self.flush()
 
 
 class StreamProcessor(Generic[TPayload]):
@@ -41,16 +72,15 @@ class StreamProcessor(Generic[TPayload]):
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
-        self.__metrics = get_metrics()
+        self.__metrics_buffer = MetricsBuffer()
 
         self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
 
         self.__message: Optional[Message[TPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
-        # ``pause`` occurred.
+        # ``pause`` occurred or the time the pause metric was last recorded.
         self.__paused_timestamp: Optional[float] = None
-        self.__last_log_timestamp: Optional[float] = None
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
@@ -177,15 +207,28 @@ class StreamProcessor(Generic[TPayload]):
             # Otherwise, we need to try fetch a new message from the consumer,
             # even if there is no active assignment and/or processing strategy.
             try:
+                start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
+                self.__metrics_buffer.increment(
+                    ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
+                )
             except RecoverableError:
                 return
 
         if self.__processing_strategy is not None:
+            start_poll = time.time()
             self.__processing_strategy.poll()
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
+            )
             if self.__message is not None:
                 try:
+                    start_submit = time.time()
                     self.__processing_strategy.submit(self.__message)
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_PROCESSING_TIME,
+                        time.time() - start_submit,
+                    )
                 except MessageRejected as e:
                     # If the processing strategy rejected our message, we need
                     # to pause the consumer and hold the message until it is
@@ -197,45 +240,32 @@ class StreamProcessor(Generic[TPayload]):
                             self.__message,
                         )
                         self.__consumer.pause([*self.__consumer.tell().keys()])
+
                         self.__paused_timestamp = time.time()
                     else:
-                        # Log paused condition every 5 seconds at most
                         current_time = time.time()
-                        if self.__last_log_timestamp:
-                            paused_duration: Optional[float] = (
-                                current_time - self.__last_log_timestamp
+                        if self.__paused_timestamp:
+                            self.__metrics_buffer.increment(
+                                ConsumerTiming.CONSUMER_PAUSED_TIME,
+                                current_time - self.__paused_timestamp,
                             )
-                        elif self.__paused_timestamp:
-                            paused_duration = current_time - self.__paused_timestamp
-                        else:
-                            paused_duration = None
+                            self.__paused_timestamp = current_time
 
-                        if (
-                            paused_duration is not None
-                            and paused_duration > LOG_THRESHOLD_TIME
-                        ):
-                            self.__last_log_timestamp = current_time
-                            logger.info(
-                                "Paused for longer than %d seconds", LOG_THRESHOLD_TIME
-                            )
                 else:
                     # If we were trying to submit a message that failed to be
                     # submitted on a previous run, we can resume accepting new
                     # messages.
                     if message_carried_over:
                         assert self.__paused_timestamp is not None
-                        paused_duration = time.time() - self.__paused_timestamp
-                        self.__paused_timestamp = None
-                        self.__last_log_timestamp = None
-                        logger.debug(
-                            "Successfully submitted %r, resuming consumer after %0.4f seconds...",
-                            self.__message,
-                            paused_duration,
-                        )
                         self.__consumer.resume([*self.__consumer.tell().keys()])
-                        self.__metrics.timing(
-                            "pause_duration_ms", paused_duration * 1000
+
+                        self.__metrics_buffer.increment(
+                            ConsumerTiming.CONSUMER_PAUSED_TIME,
+                            time.time() - self.__paused_timestamp,
                         )
+
+                        self.__paused_timestamp = None
+
                     self.__message = None
         else:
             if self.__message is not None:
@@ -257,6 +287,7 @@ class StreamProcessor(Generic[TPayload]):
     def _shutdown(self) -> None:
         # close the consumer
         logger.debug("Stopping consumer")
+        self.__metrics_buffer.flush()
         self.__consumer.close()
         logger.debug("Stopped")
 
