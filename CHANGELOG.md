@@ -1,5 +1,21 @@
 # Changelog and versioning
 
+## 1.1.0
+
+### Various fixes & improvements
+
+- Update actions/upload-artifact to v3.1.1 (#128) by @mattgauntseo-sentry
+- feat: Add stream processor metrics (#124) by @lynnagara
+- docs: Remove comment about asyncio in architecture (#121) by @lynnagara
+- docs: Remove the big pointless black square (#120) by @lynnagara
+- docs: Remove invalid release number (#122) by @lynnagara
+- feat: Make commit policy a required argument (#116) by @lynnagara
+- docs(autodocs) Adds autodoc support and import docstrings in the sphinx doc (#118) by @fpacifici
+- Add architecture page (#117) by @fpacifici
+- feat: Add RunTaskInThreads strategy (#111) by @lynnagara
+- feat: Add produce step to library (#109) by @lynnagara
+- ref: Rename variable (#115) by @lynnagara
+
 ## 1.0.7
 
 ### Various fixes & improvements
