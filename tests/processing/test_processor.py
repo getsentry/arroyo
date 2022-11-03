@@ -87,9 +87,6 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
-    metric = metrics.calls[0]
-    assert isinstance(metric, Timing)
-    assert metric.name == "pause_duration_ms"
 
     # Strategy should be closed and recreated if it already exists and
     # we got another partition assigned.
@@ -115,6 +112,14 @@ def test_stream_processor_lifecycle() -> None:
 
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
         processor._shutdown()
+
+    poll_metric, processing_metric, pause_metric = metrics.calls
+    assert isinstance(poll_metric, Timing)
+    assert poll_metric.name == "arroyo.consumer.poll.time"
+    assert isinstance(processing_metric, Timing)
+    assert processing_metric.name == "arroyo.consumer.processing.time"
+    assert isinstance(pause_metric, Timing)
+    assert pause_metric.name == "arroyo.consumer.paused.time"
 
 
 def test_stream_processor_termination_on_error() -> None:

@@ -68,6 +68,7 @@ class TestConsumer(object):
         consumer = broker.get_consumer("group")
         assert isinstance(consumer, LocalConsumer)
 
+        mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 0).timetuple())
         worker = FakeWorker()
         batching_consumer = StreamProcessor(
             consumer,
@@ -77,8 +78,6 @@ class TestConsumer(object):
             ),
             IMMEDIATE,
         )
-
-        mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 0).timetuple())
 
         for i in [1, 2, 3]:
             producer.produce(topic, i).result()
