@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Deque,
     Generic,
+    Iterator,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -15,8 +16,7 @@ from typing import (
     Sequence,
 )
 
-from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
@@ -44,16 +44,31 @@ class MessageBatch(Generic[TPayload]):
 
     messages: Sequence[Message[TPayload]]
     offsets: Mapping[Partition, OffsetRange]
-    duration: float
 
     def __len__(self) -> int:
         return len(self.messages)
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}: {len(self)} message{'s' if len(self) != 1 else ''}, open for {self.duration:0.2f} seconds>"
+        return f"<{type(self).__name__}: {len(self)} message{'s' if len(self) != 1 else ''}>"
+
+    def __iter__(self) -> Iterator[Message[TPayload]]:
+        for m in self.messages:
+            yield m
+
+    def __getitem__(self, index: int) -> Message[TPayload]:
+        return self.messages[index]
+
+
+class OutOfOrderMessage(Exception):
+    pass
 
 
 class BatchBuilder(Generic[TPayload]):
+    """
+    Accumulates messages in a `MessageBatch` object.
+    It requires offsets to be in monotonic order in each partition.
+    """
+
     def __init__(
         self,
         max_batch_time: float,
@@ -72,6 +87,11 @@ class BatchBuilder(Generic[TPayload]):
 
     def append(self, message: Message[TPayload]) -> None:
         if message.partition in self.__offsets:
+            if self.__offsets[message.partition].hi >= message.next_offset:
+                raise OutOfOrderMessage(
+                    f"Received offset {message.next_offset}. Current watermark {self.__offsets[message.partition].hi}"
+                )
+
             self.__offsets[message.partition].hi = message.next_offset
             self.__offsets[message.partition].timestamp = message.timestamp
         else:
@@ -81,15 +101,14 @@ class BatchBuilder(Generic[TPayload]):
 
         self.__messages.append(message)
 
-    def flush(self) -> MessageBatch[TPayload]:
+    def build(self) -> MessageBatch[TPayload]:
         return MessageBatch(
             messages=self.__messages,
             offsets=self.__offsets,
-            duration=time.time() - self.__init_time,
         )
 
 
-class BatchStep(ProcessingStep[TPayload]):
+class BatchStep(ProcessingStrategy[TPayload]):
     """
     Accumulates messages into a batch. When the batch is full this
     strategy submits it to the next step.
@@ -98,58 +117,66 @@ class BatchStep(ProcessingStep[TPayload]):
     both the messages and the offset ranges.
 
     A message is closed and submitted when the maximum number of messages
-    is received or when the deadline has passed.
+    is received or when the max_batch_time has passed since the first
+    message was received.
+
+    This step does not allow out of order processing. The batch can only
+    be built with monotonically increasing offsets per partition.
+    If messages out of order are spot, this strategy will raise an
+    `OutOfOrderMessage` exception.
     """
 
     def __init__(
         self,
-        max_batch_time: float,
+        max_batch_time_sec: float,
         max_batch_size: int,
-        next_step: ProcessingStep[MessageBatch[TPayload]],
+        next_step: ProcessingStrategy[MessageBatch[TPayload]],
     ) -> None:
-        self.__max_batch_time = max_batch_time
+        self.__max_batch_time_sec = max_batch_time_sec
         self.__max_batch_size = max_batch_size
         self.__next_step = next_step
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
         self.__closed = False
 
-    def __flush(self, robust: bool) -> None:
+    def __flush(self) -> None:
         assert self.__batch_builder is not None
-        batch = self.__batch_builder.flush()
-        try:
-            if len(batch) > 0:
-                last_msg = batch.messages[-1]
-                self.__next_step.submit(
-                    Message(
-                        partition=last_msg.partition,
-                        offset=last_msg.offset,
-                        timestamp=last_msg.timestamp,
-                        payload=batch,
-                    )
+        batch = self.__batch_builder.build()
+        if len(batch) > 0:
+            last_msg = batch.messages[-1]
+            self.__next_step.submit(
+                Message(
+                    partition=last_msg.partition,
+                    offset=last_msg.offset,
+                    timestamp=last_msg.timestamp,
+                    payload=batch,
                 )
-            self.__batch_builder = None
-        except MessageRejected:
-            if not robust:
-                raise
+            )
+        self.__batch_builder = None
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
-                max_batch_time=self.__max_batch_time,
+                max_batch_time=self.__max_batch_time_sec,
                 max_batch_size=self.__max_batch_size,
             )
 
         self.__batch_builder.append(message)
 
         if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            self.__flush(robust=False)
+            try:
+                self.__flush()
+            except MessageRejected:
+                pass
 
     def poll(self) -> None:
         assert not self.__closed
 
         if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            self.__flush(robust=True)
+            try:
+                self.__flush()
+            except MessageRejected:
+                pass
 
         self.__next_step.poll()
 
@@ -163,14 +190,14 @@ class BatchStep(ProcessingStep[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
         if self.__batch_builder is not None:
-            self.__flush(robust=False)
+            self.__flush()
 
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
         )
 
 
-class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
+class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
     """
     This processing step receives batches and explodes them sending
     the content message by message to the next step.
@@ -184,7 +211,7 @@ class UnbatchStep(ProcessingStep[MessageBatch[TPayload]]):
 
     def __init__(
         self,
-        next_step: ProcessingStep[TPayload],
+        next_step: ProcessingStrategy[TPayload],
     ) -> None:
         self.__next_step = next_step
         self.__batch_to_send: Deque[Message[TPayload]] = deque()
@@ -238,7 +265,7 @@ class Batch(Generic[TPayload]):
 
     def __init__(
         self,
-        step: ProcessingStep[TPayload],
+        step: ProcessingStrategy[TPayload],
         commit_function: Callable[[Mapping[Partition, Position]], None],
     ) -> None:
         self.__step = step
@@ -295,17 +322,15 @@ class Batch(Generic[TPayload]):
         self.__commit_function(offsets)
 
 
-class CollectStep(ProcessingStep[TPayload]):
+class CollectStep(ProcessingStrategy[TPayload]):
     """
-    DEPRECATED: Use BatchStep instead and add the step_factory logic as a next step.
-
     Collects messages into batches, periodically closing the batch and
     committing the offsets once the batch has successfully been closed.
     """
 
     def __init__(
         self,
-        step_factory: Callable[[], ProcessingStep[TPayload]],
+        step_factory: Callable[[], ProcessingStrategy[TPayload]],
         commit_function: Callable[[Mapping[Partition, Position]], None],
         max_batch_size: int,
         max_batch_time: float,
@@ -385,8 +410,6 @@ class CollectStep(ProcessingStep[TPayload]):
 
 class ParallelCollectStep(CollectStep[TPayload]):
     """
-    DEPRECATED: Use BatchStep instead and add the step_factory logic as a next step.
-
     ParallelCollectStep is similar to CollectStep except it allows the closing and reset of the
     batch to happen in a threadpool. What this allows for is the next batch to start getting
     filled in while the previous batch is still being processed.
@@ -397,7 +420,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
 
     def __init__(
         self,
-        step_factory: Callable[[], ProcessingStep[TPayload]],
+        step_factory: Callable[[], ProcessingStrategy[TPayload]],
         commit_function: Callable[[Mapping[Partition, Position]], None],
         max_batch_size: int,
         max_batch_time: float,

@@ -111,10 +111,9 @@ def test_batch_builder(
     mock_time.return_value = flush
     assert batch_builder.is_ready() == expected_ready
 
-    batch = batch_builder.flush()
+    batch = batch_builder.build()
     assert len(batch) == len(messages_in)
     assert batch.offsets == expected_offsets
-    assert batch.duration == flush - start
 
 
 test_batch = [
@@ -151,7 +150,6 @@ test_batch = [
                                 1, 4, datetime(2022, 1, 1, 0, 0, 1)
                             )
                         },
-                        duration=0.0,
                     ),
                 )
             )
@@ -185,7 +183,6 @@ test_batch = [
                                 1, 4, datetime(2022, 1, 1, 0, 0, 1)
                             )
                         },
-                        duration=0.0,
                     ),
                 )
             ),
@@ -205,7 +202,6 @@ test_batch = [
                                 1, 4, datetime(2022, 1, 1, 0, 0, 1)
                             )
                         },
-                        duration=0.0,
                     ),
                 )
             ),
@@ -253,7 +249,6 @@ def test_unbatch_step() -> None:
                     1, 4, datetime(2022, 1, 1, 0, 0, 1)
                 )
             },
-            duration=0.0,
         ),
     )
 
