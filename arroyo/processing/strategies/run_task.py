@@ -2,7 +2,7 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Deque, Optional, Tuple, TypeVar
+from typing import Callable, Deque, Mapping, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Commit, Message, Partition, Position, TPayload
@@ -43,7 +43,9 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Partition, Position, Future[TOutput]]] = deque()
+        self.__queue: Deque[
+            Tuple[Mapping[Partition, Position], Future[TOutput]]
+        ] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__commit = commit
         self.__closed = False
@@ -56,15 +58,14 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
         self.__queue.append(
             (
-                message.partition,
-                message.position_to_commit,
+                message.committable,
                 self.__executor.submit(self.__function, message),
             )
         )
 
     def poll(self) -> None:
         while self.__queue:
-            partition, position, future = self.__queue[0]
+            committable, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -74,7 +75,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit({partition: position})
+            self.__commit(committable)
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
@@ -87,14 +88,11 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            partition, position, future = self.__queue.popleft()
+            committable, future = self.__queue.popleft()
 
             future.result(remaining)
 
-            self.__commit(
-                {partition: position},
-                force=True,
-            )
+            self.__commit(committable, force=True)
 
         self.__executor.shutdown()
 

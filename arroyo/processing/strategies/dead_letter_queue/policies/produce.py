@@ -12,7 +12,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
 )
-from arroyo.types import Message, Topic
+from arroyo.types import BrokerPayload, Topic
 from arroyo.utils.metrics import get_metrics
 
 MAX_QUEUE_SIZE = 5000
@@ -30,7 +30,7 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
         self.__metrics = get_metrics()
         self.__dead_letter_topic = dead_letter_topic
         self.__producer = producer
-        self.__futures: Deque[Future[Message[KafkaPayload]]] = deque()
+        self.__futures: Deque[Future[BrokerPayload[KafkaPayload]]] = deque()
 
     def handle_invalid_messages(self, e: InvalidMessages) -> None:
         """

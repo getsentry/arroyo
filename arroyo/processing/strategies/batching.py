@@ -143,15 +143,6 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         start = time.time()
 
-        self.__metrics.timing(
-            "receive_latency",
-            (start - message.timestamp.timestamp()) * 1000,
-            tags={
-                "topic": message.partition.topic.name,
-                "partition": str(message.partition.index),
-            },
-        )
-
         # Create the batch only after the first message is seen.
         if self.__batch is None:
             self.__batch = Batch()
@@ -168,15 +159,16 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__batch.processing_time_ms += duration
         self.__metrics.timing("process_message", duration)
 
-        if message.partition in self.__batch.offsets:
-            self.__batch.offsets[message.partition].hi = message.next_offset
-            self.__batch.offsets[message.partition].timestamp = message.timestamp
-        else:
-            self.__batch.offsets[message.partition] = Offsets(
-                message.offset,
-                message.next_offset,
-                message.timestamp,
-            )
+        for (partition, position) in message.committable.items():
+            if partition in self.__batch.offsets:
+                self.__batch.offsets[partition].hi = position.offset
+                self.__batch.offsets[partition].timestamp = position.timestamp
+            else:
+                self.__batch.offsets[partition] = Offsets(
+                    position.offset,
+                    position.offset,
+                    position.timestamp,
+                )
 
     def close(self) -> None:
         self.__closed = True

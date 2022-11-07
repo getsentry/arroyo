@@ -11,7 +11,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, Position, Topic
+from arroyo.types import BrokerPayload, Commit, Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -36,7 +36,15 @@ def test_stream_processor_lifecycle() -> None:
     consumer.poll.return_value = None
     processor._run_once()
 
-    message = Message(Partition(topic, 0), 0, 0, datetime.now())
+    partition = Partition(topic, 0)
+    offset = 0
+    now = datetime.now()
+    payload = 0
+
+    message = Message(
+        BrokerPayload(partition, offset, now, payload),
+        {partition: Position(offset, now)},
+    )
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -126,7 +134,14 @@ def test_stream_processor_termination_on_error() -> None:
     topic = Topic("test")
 
     consumer = mock.Mock()
-    consumer.poll.return_value = Message(Partition(topic, 0), 0, 0, datetime.now())
+    partition = Partition(topic, 0)
+    offset = 0
+    now = datetime.now()
+
+    consumer.poll.return_value = Message(
+        BrokerPayload(partition, offset, now, 0),
+        {partition: Position(offset + 1, now)},
+    )
 
     exception = NotImplementedError("error")
 
@@ -261,20 +276,20 @@ def test_stream_processor_create_with_partitions() -> None:
     assert factory.create_with_partitions.call_count == 3
 
 
-class CommitOffsets(ProcessingStrategy[int]):
+class CommitOffsets(ProcessingStrategy[BrokerPayload[int]]):
     def __init__(self, commit: Commit) -> None:
         self.__commit = commit
 
-    def submit(self, message: Message[int]) -> None:
+    def submit(self, message: Message[BrokerPayload[int]]) -> None:
         # If we get a message with value of 1, force commit
-        if message.payload == 1:
+        if message.payload.payload == 1:
             self.__commit(
-                {message.partition: Position(message.next_offset, message.timestamp)},
+                message.committable,
                 force=True,
             )
 
         self.__commit(
-            {message.partition: Position(message.next_offset, message.timestamp)}
+            message.committable,
         )
 
     def poll(self) -> None:
@@ -290,12 +305,12 @@ class CommitOffsets(ProcessingStrategy[int]):
         pass
 
 
-class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
+class CommitOffsetsFactory(ProcessingStrategyFactory[BrokerPayload[int]]):
     def create_with_partitions(
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[int]:
+    ) -> ProcessingStrategy[BrokerPayload[int]]:
         return CommitOffsets(commit)
 
 
@@ -323,19 +338,33 @@ def test_stream_processor_commit_policy() -> None:
     assert commit.call_count == 0
 
     # Does not commit first message
-    message = Message(Partition(topic, 0), 0, 0, datetime.now())
+    partition = Partition(topic, 0)
+    position = Position(0, datetime.now())
+
+    message = Message(
+        BrokerPayload(partition, position.offset, position.timestamp, 0),
+        {partition: position},
+    )
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 0
 
     # Commits second message
-    message = Message(Partition(topic, 0), 1, 0, datetime.now())
+    position = Position(1, datetime.now())
+    message = Message(
+        BrokerPayload(partition, position.offset, position.timestamp, 0),
+        {partition: position},
+    )
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 1
 
     # Test force flag
-    message = Message(Partition(topic, 0), 1, 0, datetime.now())
+    position = Position(2, datetime.now())
+    message = Message(
+        BrokerPayload(partition, position.offset, position.timestamp, 0),
+        {partition: position},
+    )
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 1

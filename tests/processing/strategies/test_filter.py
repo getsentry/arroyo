@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest.mock import Mock, call
 
 from arroyo.processing.strategies.filter import FilterStep
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -14,12 +14,16 @@ def test_filter() -> None:
 
     filter_step = FilterStep(test_function, next_step)
 
-    fail_message = Message(Partition(Topic("topic"), 0), 0, False, datetime.now())
+    fail_message = Message(
+        False, {Partition(Topic("topic"), 0): Position(0, datetime.now())}
+    )
 
     with assert_does_not_change(lambda: int(next_step.submit.call_count), 0):
         filter_step.submit(fail_message)
 
-    pass_message = Message(Partition(Topic("topic"), 0), 0, True, datetime.now())
+    pass_message = Message(
+        True, {Partition(Topic("topic"), 0): Position(0, datetime.now())}
+    )
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
         filter_step.submit(pass_message)

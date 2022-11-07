@@ -9,14 +9,14 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, Topic
+from arroyo.types import BrokerPayload, Commit, Message, Partition, Topic
 
 logger = logging.getLogger(__name__)
 
 
-def hash_password(message: Message[KafkaPayload]) -> KafkaPayload:
+def hash_password(message: Message[BrokerPayload[KafkaPayload]]) -> KafkaPayload:
     # Expected format of the message is {"username": "<username>", "password": "<password>"}
-    auth = json.loads(message.payload.value)
+    auth = json.loads(message.payload.payload.value)
     hashed = hashlib.sha256(auth["password"].encode("utf-8")).hexdigest()
     data = json.dumps({"username": auth["username"], "password": hashed}).encode(
         "utf-8"
@@ -24,7 +24,9 @@ def hash_password(message: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(key=None, value=data, headers=[])
 
 
-class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+class HashPasswordAndProduceStrategyFactory(
+    ProcessingStrategyFactory[BrokerPayload[KafkaPayload]]
+):
     """
     A factory which builds the strategy.
 
@@ -44,7 +46,7 @@ class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPaylo
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[KafkaPayload]:
+    ) -> ProcessingStrategy[BrokerPayload[KafkaPayload]]:
 
         return TransformStep(
             function=hash_password,

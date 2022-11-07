@@ -30,7 +30,7 @@ from arroyo.processing.strategies.dead_letter_queue.policies.produce import (
 from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
     RaiseInvalidMessagePolicy,
 )
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import BrokerPayload, Message, Partition, Position, Topic
 
 NO_KEY = "No key"
 BAD_PAYLOAD = "Bad payload"
@@ -38,21 +38,22 @@ NOW = datetime.now()
 
 
 def kafka_message_to_invalid_kafka_message(
-    message: Message[KafkaPayload], reason: str
+    message: Message[BrokerPayload[KafkaPayload]], reason: str
 ) -> InvalidKafkaMessage:
+    consumer_payload = message.payload
     return InvalidKafkaMessage(
-        payload=message.payload.value,
-        timestamp=message.timestamp,
-        topic=message.partition.topic.name,
+        payload=consumer_payload.payload.value,
+        timestamp=consumer_payload.timestamp,
+        topic=consumer_payload.partition.topic.name,
         consumer_group="",
-        partition=message.partition.index,
-        offset=message.offset,
-        headers=message.payload.headers,
+        partition=consumer_payload.partition.index,
+        offset=consumer_payload.offset,
+        headers=consumer_payload.payload.headers,
         reason=reason,
     )
 
 
-class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
+class FakeProcessingStep(ProcessingStrategy[BrokerPayload[KafkaPayload]]):
     """
     Raises InvalidMessages if a submitted message has no key in payload.
     """
@@ -85,18 +86,18 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     def close(self) -> None:
         pass
 
-    def submit(self, message: Message[KafkaPayload]) -> None:
+    def submit(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
         """
         Valid message is one with a key and decodable value.
         """
         reason: str = ""
 
         try:
-            message.payload.value.decode("utf-8")
+            message.payload.payload.value.decode("utf-8")
         except UnicodeDecodeError:
             reason = BAD_PAYLOAD
         else:
-            if message.payload.key is None:
+            if message.payload.payload.key is None:
                 reason = NO_KEY
 
         if reason:
@@ -111,18 +112,18 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
     """
 
     def __init__(self) -> None:
-        self._batch: MutableSequence[Message[KafkaPayload]] = []
+        self._batch: MutableSequence[Message[BrokerPayload[KafkaPayload]]] = []
 
-    def submit(self, message: Message[KafkaPayload]) -> None:
+    def submit(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
         self._batch.append(message)
         if len(self._batch) > 4:
             self._submit_multiple()
 
-    def _process_message(self, message: Message[KafkaPayload]) -> None:
+    def _process_message(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
         """
         Some processing we want to happen per message.
         """
-        if message.payload.key is None:
+        if message.payload.payload.key is None:
             raise InvalidMessages(
                 [kafka_message_to_invalid_kafka_message(message, NO_KEY)]
             )
@@ -145,36 +146,53 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
 
 
 @pytest.fixture
-def processing_step() -> ProcessingStrategy[KafkaPayload]:
+def processing_step() -> ProcessingStrategy[BrokerPayload[KafkaPayload]]:
     return FakeProcessingStep()
 
 
 @pytest.fixture
-def valid_message() -> Message[KafkaPayload]:
-    valid_payload = KafkaPayload(b"Key", b"Value", [])
-    return Message(Partition(Topic(""), 0), 0, valid_payload, NOW)
+def valid_message() -> Message[BrokerPayload[KafkaPayload]]:
+    partition = Partition(Topic(""), 0)
+    position = Position(0, NOW)
+    valid_payload = BrokerPayload(
+        partition,
+        position.offset,
+        position.timestamp,
+        KafkaPayload(b"Key", b"Value", []),
+    )
+    return Message(valid_payload, {partition: position})
 
 
 @pytest.fixture
-def invalid_message_no_key() -> Message[KafkaPayload]:
-    invalid_payload = KafkaPayload(None, b"Value", [])
-    return Message(Partition(Topic(""), 0), 0, invalid_payload, NOW)
+def invalid_message_no_key() -> Message[BrokerPayload[KafkaPayload]]:
+    partition = Partition(Topic(""), 0)
+    position = Position(0, NOW)
+    invalid_payload = BrokerPayload(
+        partition, position.offset, position.timestamp, KafkaPayload(None, b"Value", [])
+    )
+    return Message(invalid_payload, {partition: position})
 
 
 @pytest.fixture
-def invalid_message_bad_value() -> Message[KafkaPayload]:
-    invalid_payload = KafkaPayload(key=b"Key", value=b"\xff", headers=[])
-    return Message(Partition(Topic(""), 0), 0, invalid_payload, NOW)
+def invalid_message_bad_value() -> Message[BrokerPayload[KafkaPayload]]:
+    partition = Partition(Topic(""), 0)
+    position = Position(0, NOW)
+
+    invalid_payload = BrokerPayload(
+        partition,
+        position.offset,
+        position.timestamp,
+        KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
+    )
+    return Message(invalid_payload, {partition: position})
 
 
 def test_raise(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_raise: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, RaiseInvalidMessagePolicy()
-    )
+    dlq_raise = DeadLetterQueue(processing_step, RaiseInvalidMessagePolicy())
     dlq_raise.submit(valid_message)
     with pytest.raises(InvalidMessages):
         dlq_raise.submit(invalid_message_no_key)
@@ -183,13 +201,11 @@ def test_raise(
 
 
 def test_ignore(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, IgnoreInvalidMessagePolicy()
-    )
+    dlq_ignore = DeadLetterQueue(processing_step, IgnoreInvalidMessagePolicy())
     dlq_ignore.submit(valid_message)
     dlq_ignore.submit(invalid_message_no_key)
 
@@ -197,18 +213,18 @@ def test_ignore(
 def test_dlq_join(processing_step: FakeProcessingStep) -> None:
     # processing step should raise, dlq should handle within join
     policy = IgnoreInvalidMessagePolicy()
-    dlq_ignore: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(processing_step, policy)
+    dlq_ignore = DeadLetterQueue(processing_step, policy)
     with patch.object(policy, "handle_invalid_messages") as mock:
         dlq_ignore.join()
     mock.assert_called_once()
 
 
 def test_count(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_count: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+    dlq_count = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(next_policy=IgnoreInvalidMessagePolicy(), limit=5),
     )
@@ -220,11 +236,11 @@ def test_count(
 
 
 def test_count_short(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
 ) -> None:
-    dlq_count_short: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+    dlq_count_short = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(
             next_policy=IgnoreInvalidMessagePolicy(), limit=5, seconds=1
@@ -240,8 +256,8 @@ def test_count_short(
 
 
 def test_stateful_count(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
 ) -> None:
 
@@ -249,7 +265,7 @@ def test_stateful_count(
     state: MutableSequence[Tuple[int, int]] = [(now - 1, 2), (now, 2)]
 
     # Stateful count DLQ intialized with 4 hits in the state
-    dlq_count_load_state: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
+    dlq_count_load_state = DeadLetterQueue(
         processing_step,
         CountInvalidMessagePolicy(
             next_policy=IgnoreInvalidMessagePolicy(),
@@ -269,16 +285,14 @@ def test_stateful_count(
 
 
 def test_invalid_batched_messages(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
 ) -> None:
     fake_batching_processor = FakeBatchingProcessingStep()
     count_policy = CountInvalidMessagePolicy(
         next_policy=IgnoreInvalidMessagePolicy(), limit=5
     )
-    dlq_count: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        fake_batching_processor, count_policy
-    )
+    dlq_count = DeadLetterQueue(fake_batching_processor, count_policy)
 
     """
     Batch submits on 5th message, count policy raises on 6th invalid message processed.
@@ -310,9 +324,9 @@ def test_invalid_batched_messages(
 
 
 def test_produce_invalid_messages(
-    valid_message: Message[KafkaPayload],
-    invalid_message_no_key: Message[KafkaPayload],
-    invalid_message_bad_value: Message[KafkaPayload],
+    valid_message: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    invalid_message_bad_value: Message[BrokerPayload[KafkaPayload]],
     processing_step: FakeProcessingStep,
     broker: LocalBroker[KafkaPayload],
 ) -> None:
@@ -322,9 +336,7 @@ def test_produce_invalid_messages(
     produce_policy = ProduceInvalidMessagePolicy(
         producer, Topic("test-dead-letter-topic")
     )
-    dlq_produce: DeadLetterQueue[KafkaPayload] = DeadLetterQueue(
-        processing_step, produce_policy
-    )
+    dlq_produce = DeadLetterQueue(processing_step, produce_policy)
 
     consumer = broker.get_consumer("test-group")
     consumer.subscribe([topic])
@@ -371,10 +383,11 @@ def test_produce_invalid_messages(
 
 
 def assert_produced_message_is_expected(
-    produced_message: Optional[Message[KafkaPayload]], expected_dict: Mapping[str, Any]
+    produced_message: Optional[Message[BrokerPayload[KafkaPayload]]],
+    expected_dict: Mapping[str, Any],
 ) -> None:
     assert produced_message is not None
     # produced message should have appropriate info
-    dead_letter_payload = produced_message.payload.value
+    dead_letter_payload = produced_message.payload.payload.value
     dead_letter_dict = json.loads(dead_letter_payload)
     assert dead_letter_dict == expected_dict

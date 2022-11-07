@@ -67,10 +67,8 @@ class TransformStep(ProcessingStep[TPayload]):
 
         self.__next_step.submit(
             Message(
-                message.partition,
-                message.offset,
                 self.__transform_function(message),
-                message.timestamp,
+                message.committable,
             )
         )
 
@@ -278,9 +276,7 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            valid_messages_transformed.append(
-                Message(message.partition, message.offset, result, message.timestamp)
-            )
+            valid_messages_transformed.append(Message(result, message.committable))
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
             # the batch is empty, we'll never be able to write it and should

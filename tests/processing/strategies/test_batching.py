@@ -11,17 +11,17 @@ from arroyo.processing.strategies.batching import (
     AbstractBatchWorker,
     BatchProcessingStrategyFactory,
 )
-from arroyo.types import Message, Topic
+from arroyo.types import BrokerPayload, Message, Topic
 
 
-class FakeWorker(AbstractBatchWorker[int, int]):
+class FakeWorker(AbstractBatchWorker[BrokerPayload[int], int]):
     def __init__(self) -> None:
         self.processed: MutableSequence[int] = []
         self.flushed: MutableSequence[Sequence[int]] = []
 
-    def process_message(self, message: Message[int]) -> int:
-        self.processed.append(message.payload)
-        return message.payload
+    def process_message(self, message: Message[BrokerPayload[int]]) -> int:
+        self.processed.append(message.payload.payload)
+        return message.payload.payload
 
     def flush_batch(self, batch: Sequence[int]) -> None:
         self.flushed.append(batch)

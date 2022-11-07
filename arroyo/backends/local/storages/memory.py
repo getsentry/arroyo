@@ -8,7 +8,7 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import BrokerPayload, Message, Partition, Position, Topic, TPayload
 
 
 class MemoryMessageStorage(MessageStorage[TPayload]):
@@ -52,7 +52,9 @@ class MemoryMessageStorage(MessageStorage[TPayload]):
         except IndexError as e:
             raise PartitionDoesNotExist(partition) from e
 
-    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
+    def consume(
+        self, partition: Partition, offset: int
+    ) -> Optional[Message[BrokerPayload[TPayload]]]:
         messages = self.__get_messages(partition)
 
         try:
@@ -63,13 +65,17 @@ class MemoryMessageStorage(MessageStorage[TPayload]):
             else:
                 raise OffsetOutOfRange()
 
-        return Message(partition, offset, payload, timestamp)
+        return Message(
+            BrokerPayload(partition, offset, timestamp, payload),
+            {partition: Position(offset, timestamp)},
+        )
 
     def produce(
         self, partition: Partition, payload: TPayload, timestamp: datetime
-    ) -> Message[TPayload]:
+    ) -> BrokerPayload[TPayload]:
         messages = self.__get_messages(partition)
 
         offset = len(messages)
         messages.append((payload, timestamp))
-        return Message(partition, offset, payload, timestamp)
+
+        return BrokerPayload(partition, offset, timestamp, payload)

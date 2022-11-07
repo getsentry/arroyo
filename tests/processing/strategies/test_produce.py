@@ -5,7 +5,7 @@ from arroyo.backends.kafka import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.processing.strategies.produce import ProduceAndCommit
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import Message, Partition, Position, Topic
 from arroyo.utils.clock import TestingClock
 
 
@@ -27,17 +27,15 @@ def test_produce_result() -> None:
     data = KafkaPayload(None, value, [])
 
     message = Message(
-        Partition(orig_topic, 0),
-        1,
         data,
-        epoch,
+        {Partition(orig_topic, 0): Position(1, epoch)},
     )
 
     strategy.submit(message)
 
     produced_message = broker_storage.consume(Partition(result_topic, 0), 0)
     assert produced_message is not None
-    assert produced_message.payload.value == value
+    assert produced_message.payload.payload.value == value
     assert broker_storage.consume(Partition(result_topic, 0), 1) is None
     assert commit.call_count == 0
     strategy.poll()

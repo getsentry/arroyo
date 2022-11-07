@@ -119,7 +119,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
                 message = consumer.poll(10.0)
                 assert isinstance(message, Message)
-                assert message.offset == 0
+                assert message.payload.payload.value == b"0"
 
     def test_auto_offset_reset_latest(self) -> None:
         with self.get_topic() as topic:
@@ -141,18 +141,17 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
         payload = KafkaPayload(b"a", b"0", [])
         with self.get_topic() as topic:
             with closing(self.get_producer()) as producer:
-                message = producer.produce(topic, payload).result(5.0)
+                _ = producer.produce(topic, payload).result(5.0)
 
             # write a nonsense offset
             with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
                 consumer.poll(10.0)  # Wait for assignment
+
+                partition = Partition(topic, 0)
+
                 consumer.stage_positions(
-                    {
-                        message.partition: Position(
-                            offset=message.offset + 1000, timestamp=message.timestamp
-                        )
-                    },
+                    {partition: Position(offset=1000000, timestamp=datetime.now())},
                 )
                 consumer.commit_positions()
 
@@ -160,8 +159,8 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 consumer.subscribe([topic])
                 result_message = consumer.poll(10.0)
                 assert result_message is not None
-                assert result_message.payload.key == b"a"
-                assert result_message.payload.value == b"0"
+                assert result_message.payload.payload.key == b"a"
+                assert result_message.payload.payload.value == b"0"
 
                 # make sure we reset our offset now
                 consumer.commit_positions()
