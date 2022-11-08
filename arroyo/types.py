@@ -67,7 +67,7 @@ class Message(Generic[TPayload]):
         return Position(self.next_offset, self.timestamp)
 
 
-@dataclass(frozen=True)
+@dataclass(order=True, unsafe_hash=True)
 class Position:
     __slots__ = ["offset", "timestamp"]
     offset: int
