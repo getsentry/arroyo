@@ -2,18 +2,13 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, NamedTuple, Optional, Tuple
+from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import Commit, Message, Partition, Position, Topic, TPayload
 
 logger = logging.getLogger(__name__)
-
-
-class Committable(NamedTuple):
-    partition: Partition
-    position: Position
 
 
 class ProduceAndCommit(ProcessingStrategy[TPayload]):
@@ -49,13 +44,15 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
         self.__commit = commit
         self.__max_buffer_size = max_buffer_size
 
-        self.__queue: Deque[Tuple[Committable, Future[Message[TPayload]]]] = deque()
+        self.__queue: Deque[
+            Tuple[Partition, Position, Future[Message[TPayload]]]
+        ] = deque()
 
         self.__closed = False
 
     def poll(self) -> None:
         while self.__queue:
-            committable, future = self.__queue[0]
+            partition, position, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -67,7 +64,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit({committable.partition: committable.position})
+            self.__commit({partition: position})
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -77,7 +74,8 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
         self.__queue.append(
             (
-                Committable(message.partition, message.position_to_commit),
+                message.partition,
+                message.position_to_commit,
                 self.__producer.produce(self.__topic, message.payload),
             )
         )
@@ -100,11 +98,11 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            committable, future = self.__queue.popleft()
+            partition, position, future = self.__queue.popleft()
 
             future.result(remaining)
 
-            offset = {committable.partition: committable.position}
+            offset = {partition: position}
 
             logger.info("Committing offset: %r", offset)
             self.__commit(offset)
