@@ -6,7 +6,7 @@ from typing import Deque, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Topic, TPayload
+from arroyo.types import Commit, Message, Partition, Position, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +45,14 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Message[TPayload], Future[Message[TPayload]]]
+            Tuple[Partition, Position, Future[Message[TPayload]]]
         ] = deque()
 
         self.__closed = False
 
     def poll(self) -> None:
         while self.__queue:
-            message, future = self.__queue[0]
+            partition, position, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -64,7 +64,7 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit({message.partition: message.position_to_commit})
+            self.__commit({partition: position})
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -73,7 +73,11 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
             raise MessageRejected
 
         self.__queue.append(
-            (message, self.__producer.produce(self.__topic, message.payload))
+            (
+                message.partition,
+                message.position_to_commit,
+                self.__producer.produce(self.__topic, message.payload),
+            )
         )
 
     def close(self) -> None:
@@ -94,11 +98,11 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            message, future = self.__queue.popleft()
+            partition, position, future = self.__queue.popleft()
 
             future.result(remaining)
 
-            offset = {message.partition: message.position_to_commit}
+            offset = {partition: position}
 
             logger.info("Committing offset: %r", offset)
             self.__commit(offset)
