@@ -15,6 +15,12 @@ def test_message_pickling() -> None:
     assert pickle.loads(pickle.dumps(message)) == message
 
 
-def test_position_pickling() -> None:
+def test_position() -> None:
     position = Position(1, datetime.now())
+
+    # Pickleable
     assert pickle.loads(pickle.dumps(position)) == position
+
+    # Hashable
+    test = {}
+    test[position] = 1
