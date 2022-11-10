@@ -84,7 +84,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
-        self.__messages_since_last_commit = 0
+        self.__previous_offsets_sum = 0
 
         self.__shutdown_requested = False
 
@@ -156,10 +156,11 @@ class StreamProcessor(Generic[TPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         self.__consumer.stage_positions(positions)
-        self.__messages_since_last_commit += 1
+        offsets_sum = sum(pos.offset for pos in positions.values())
+        messages_since_last_commit = offsets_sum - self.__previous_offsets_sum
 
         if force or self.__commit_policy.should_commit(
-            self.__last_committed_time, self.__messages_since_last_commit
+            self.__last_committed_time, messages_since_last_commit
         ):
             start = time.time()
             self.__consumer.commit_positions()
@@ -169,7 +170,7 @@ class StreamProcessor(Generic[TPayload]):
                 self.__consumer,
             )
             self.__last_committed_time = start
-            self.__messages_since_last_commit = 0
+            self.__previous_offsets_sum = offsets_sum
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

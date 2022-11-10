@@ -334,8 +334,19 @@ def test_stream_processor_commit_policy() -> None:
     processor._run_once()
     assert commit.call_count == 1
 
-    # Test force flag
+    # Does not commit third message
     message = Message(Partition(topic, 0), 1, 0, datetime.now())
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 1
+
+    # Should always commit if we are committing more than 2 messages at once.
+    message = Message(Partition(topic, 0), 4, 0, datetime.now())
+    consumer.poll.return_value = message
+    processor._run_once()
+    assert commit.call_count == 2
+
+    message = Message(Partition(topic, 0), 8, 0, datetime.now())
+    consumer.poll.return_value = message
+    processor._run_once()
+    assert commit.call_count == 3
