@@ -36,3 +36,6 @@ def test_broker_payload() -> None:
     assert broker_payload.position_to_commit == Position(offset + 1, now)
 
     assert pickle.loads(pickle.dumps(broker_payload)) == broker_payload
+
+    # Hashable
+    _ = {broker_payload}

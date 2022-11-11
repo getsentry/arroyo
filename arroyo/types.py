@@ -60,7 +60,7 @@ class Position:
     timestamp: datetime
 
 
-@dataclass(order=True)
+@dataclass(unsafe_hash=True)
 class BrokerPayload(Generic[TPayload]):
     """
     A payload received from the consumer or producer after it is done producing.
