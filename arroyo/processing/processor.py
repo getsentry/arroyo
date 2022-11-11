@@ -84,7 +84,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
-        self.__comitted_offsets: MutableMapping[Partition, int] = {}
+        self.__committed_offsets: MutableMapping[Partition, int] = {}
 
         self.__shutdown_requested = False
 
@@ -159,8 +159,10 @@ class StreamProcessor(Generic[TPayload]):
 
         messages_since_last_commit = 0
         for partition, pos in positions.items():
-            messages_since_last_commit += pos.offset
-            messages_since_last_commit -= self.__comitted_offsets.get(partition, 0)
+            if partition in self.__committed_offsets:
+                messages_since_last_commit += (
+                    pos.offset - self.__committed_offsets[partition]
+                )
 
         if force or self.__commit_policy.should_commit(
             self.__last_committed_time, messages_since_last_commit
@@ -174,7 +176,7 @@ class StreamProcessor(Generic[TPayload]):
             )
             self.__last_committed_time = start
             for partition, pos in positions.items():
-                self.__comitted_offsets[partition] = pos.offset
+                self.__committed_offsets[partition] = pos.offset
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
