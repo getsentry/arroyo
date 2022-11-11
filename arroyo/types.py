@@ -53,11 +53,22 @@ class Message(Generic[TPayload]):
         return f"{type(self).__name__}({self.committable!r})"
 
 
-@dataclass(order=True, unsafe_hash=True)
+@dataclass(frozen=True)
 class Position:
     __slots__ = ["offset", "timestamp"]
     offset: int
     timestamp: datetime
+
+    def __getstate__(self) -> dict[str, int | datetime]:
+        return dict(
+            (slot, getattr(self, slot))
+            for slot in self.__slots__
+            if hasattr(self, slot)
+        )
+
+    def __setstate__(self, state: dict[str, int | datetime]) -> None:
+        for slot, value in state.items():
+            object.__setattr__(self, slot, value)
 
 
 @dataclass(unsafe_hash=True)

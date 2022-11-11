@@ -39,3 +39,13 @@ def test_broker_payload() -> None:
 
     # Hashable
     _ = {broker_payload}
+
+
+def test_position() -> None:
+    position = Position(1, datetime.now())
+
+    # Pickleable
+    assert pickle.loads(pickle.dumps(position)) == position
+
+    # Hashable
+    _ = {position}
