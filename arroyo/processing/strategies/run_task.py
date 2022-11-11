@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Deque, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, TPayload
+from arroyo.types import Commit, Message, Partition, Position, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Message[TPayload], Future[TOutput]]] = deque()
+        self.__queue: Deque[Tuple[Partition, Position, Future[TOutput]]] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__commit = commit
         self.__closed = False
@@ -54,11 +54,17 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
         if len(self.__queue) > self.__max_pending_futures:
             raise MessageRejected
 
-        self.__queue.append((message, self.__executor.submit(self.__function, message)))
+        self.__queue.append(
+            (
+                message.partition,
+                message.position_to_commit,
+                self.__executor.submit(self.__function, message),
+            )
+        )
 
     def poll(self) -> None:
         while self.__queue:
-            message, future = self.__queue[0]
+            partition, position, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -68,7 +74,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            self.__commit({message.partition: message.position_to_commit})
+            self.__commit({partition: position})
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
@@ -81,12 +87,12 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            message, future = self.__queue.popleft()
+            partition, position, future = self.__queue.popleft()
 
             future.result(remaining)
 
             self.__commit(
-                {message.partition: message.position_to_commit},
+                {partition: position},
                 force=True,
             )
 

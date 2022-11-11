@@ -73,6 +73,17 @@ class Position:
     offset: int
     timestamp: datetime
 
+    def __getstate__(self) -> dict[str, int | datetime]:
+        return dict(
+            (slot, getattr(self, slot))
+            for slot in self.__slots__
+            if hasattr(self, slot)
+        )
+
+    def __setstate__(self, state: dict[str, int | datetime]) -> None:
+        for slot, value in state.items():
+            object.__setattr__(self, slot, value)
+
 
 class Commit(Protocol):
     def __call__(
