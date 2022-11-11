@@ -20,6 +20,16 @@ def test_message_pickling() -> None:
     assert pickle.loads(pickle.dumps(message)) == message
 
 
+def test_position() -> None:
+    position = Position(1, datetime.now())
+
+    # Pickleable
+    assert pickle.loads(pickle.dumps(position)) == position
+
+    # Hashable
+    _ = {position}
+
+
 def test_broker_payload() -> None:
     partition = Partition(Topic("topic"), 0)
     offset = 5
@@ -39,13 +49,3 @@ def test_broker_payload() -> None:
 
     # Hashable
     _ = {broker_payload}
-
-
-def test_position() -> None:
-    position = Position(1, datetime.now())
-
-    # Pickleable
-    assert pickle.loads(pickle.dumps(position)) == position
-
-    # Hashable
-    _ = {position}
