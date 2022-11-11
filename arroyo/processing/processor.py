@@ -159,10 +159,8 @@ class StreamProcessor(Generic[TPayload]):
 
         messages_since_last_commit = 0
         for partition, pos in positions.items():
-            if partition in self.__committed_offsets:
-                messages_since_last_commit += (
-                    pos.offset - self.__committed_offsets[partition]
-                )
+            prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
+            messages_since_last_commit += pos.offset - prev_offset
 
         if force or self.__commit_policy.should_commit(
             self.__last_committed_time, messages_since_last_commit

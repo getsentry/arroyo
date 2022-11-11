@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -299,18 +299,20 @@ class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
         return CommitOffsets(commit)
 
 
-def test_stream_processor_commit_policy() -> None:
-    topic = Topic("topic")
+def run_commit_policy_test(
+    topic: Topic, given_messages: Sequence[Message[int]], policy: CommitPolicy
+) -> Sequence[int]:
     commit = mock.Mock()
     consumer = mock.Mock()
     consumer.commit_positions = commit
 
     factory = CommitOffsetsFactory()
 
-    commit_every_second_message = CommitPolicy(None, 2)
-
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, commit_every_second_message
+        consumer,
+        topic,
+        factory,
+        policy,
     )
 
     # Assignment
@@ -322,31 +324,80 @@ def test_stream_processor_commit_policy() -> None:
 
     assert commit.call_count == 0
 
-    # Does not commit first message
-    message = Message(Partition(topic, 0), 0, 0, datetime.now())
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 0
+    commit_calls = []
 
-    # Commits second message
-    message = Message(Partition(topic, 0), 1, 0, datetime.now())
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 1
+    for message in given_messages:
+        consumer.poll.return_value = message
+        processor._run_once()
+        commit_calls.append(commit.call_count)
 
-    # Does not commit third message
-    message = Message(Partition(topic, 0), 1, 0, datetime.now())
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 1
+    return commit_calls
 
-    # Should always commit if we are committing more than 2 messages at once.
-    message = Message(Partition(topic, 0), 4, 0, datetime.now())
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 2
 
-    message = Message(Partition(topic, 0), 8, 0, datetime.now())
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 3
+def test_stream_processor_commit_policy() -> None:
+    topic = Topic("topic")
+
+    commit_every_second_message = CommitPolicy(None, 2)
+
+    assert run_commit_policy_test(
+        topic,
+        [
+            Message(Partition(topic, 0), 0, 0, datetime.now()),
+            Message(Partition(topic, 0), 1, 0, datetime.now()),
+            Message(Partition(topic, 0), 2, 0, datetime.now()),
+            Message(Partition(topic, 0), 5, 0, datetime.now()),
+            Message(Partition(topic, 0), 10, 0, datetime.now()),
+        ],
+        commit_every_second_message,
+    ) == [
+        # Does not commit first message
+        0,
+        # Does commit second message
+        1,
+        # Does not commit third message
+        1,
+        # Should always commit if we are committing more than 2 messages at once.
+        2,
+        3,
+    ]
+
+
+def test_stream_processor_commit_policy_multiple_partitions() -> None:
+    topic = Topic("topic")
+
+    commit_every_second_message = CommitPolicy(None, 2)
+
+    assert run_commit_policy_test(
+        topic,
+        [
+            Message(Partition(topic, 0), 200, 0, datetime.now()),
+            Message(Partition(topic, 1), 400, 0, datetime.now()),
+            Message(Partition(topic, 0), 400, 0, datetime.now()),
+            Message(Partition(topic, 1), 400, 0, datetime.now()),
+        ],
+        commit_every_second_message,
+    ) == [
+        # Does not commit first message even if the offset is super large
+        0,
+        # Does not commit first message on other partition even if the offset is super large
+        0,
+        # Does commit second message on first partition since the offset delta is super large
+        1,
+        # Does not commit second message on second partition since the offset delta is zero
+        1,
+    ]
+
+
+def test_stream_processor_commit_policy_always() -> None:
+    topic = Topic("topic")
+
+    assert run_commit_policy_test(
+        topic, [Message(Partition(topic, 0), 200, 0, datetime.now())], IMMEDIATE
+    ) == [
+        # IMMEDIATE policy can commit on the first message (even
+        # though there is no previous offset stored)
+        #
+        # Indirectly assert that an offset delta of 1 is passed to
+        # the commit policy, not 0
+        1
+    ]
