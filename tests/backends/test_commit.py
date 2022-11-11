@@ -7,7 +7,6 @@ from arroyo.types import Partition, Topic
 
 def test_encode_decode() -> None:
     topic = Topic("topic")
-
     commit_codec = CommitCodec()
 
     offset_to_commit = 5

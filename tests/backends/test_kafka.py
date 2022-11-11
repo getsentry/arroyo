@@ -141,7 +141,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
         payload = KafkaPayload(b"a", b"0", [])
         with self.get_topic() as topic:
             with closing(self.get_producer()) as producer:
-                _ = producer.produce(topic, payload).result(5.0)
+                message = producer.produce(topic, payload).result(5.0)
 
             # write a nonsense offset
             with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
@@ -151,7 +151,11 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 partition = Partition(topic, 0)
 
                 consumer.stage_positions(
-                    {partition: Position(offset=1000000, timestamp=datetime.now())},
+                    {
+                        partition: Position(
+                            offset=message.offset + 1000, timestamp=message.timestamp
+                        )
+                    },
                 )
                 consumer.commit_positions()
 
