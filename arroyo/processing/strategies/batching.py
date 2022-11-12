@@ -344,12 +344,6 @@ class BatchBuilder(Generic[TPayload]):
         else:
             return None
 
-    def force_build(self) -> MessageBatch[TPayload]:
-        return MessageBatch(
-            messages=self.__messages,
-            offsets=self.__offsets,
-        )
-
 
 class BatchStep(ProcessingStrategy[TPayload]):
     """
@@ -388,14 +382,9 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
         self.__closed = False
 
-    def __flush(self, force: bool) -> None:
+    def __flush(self) -> None:
         assert self.__batch_builder is not None
-        batch = (
-            self.__batch_builder.build_if_ready()
-            if not force
-            else self.__batch_builder.force_build()
-        )
-
+        batch = self.__batch_builder.build_if_ready()
         if batch is None:
             return
 
@@ -434,7 +423,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         assert not self.__closed
 
         if self.__batch_builder is not None:
-            self.__flush(force=False)
+            self.__flush()
 
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
@@ -449,7 +438,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
 
         if self.__batch_builder is not None:
             try:
-                self.__flush(force=False)
+                self.__flush()
             except MessageRejected:
                 pass
 
@@ -519,7 +508,6 @@ class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
 
     def terminate(self) -> None:
         self.__closed = True
-        self.__current_batch = None
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None

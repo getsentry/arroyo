@@ -212,12 +212,10 @@ def test_batch_builder(
     batch = batch_builder.build_if_ready()
     if expected_ready:
         assert batch is not None
+        assert len(batch.messages) == len(messages_in)
+        assert batch.offsets == expected_offsets
     else:
         assert batch is None
-
-    batch = batch_builder.force_build()
-    assert len(batch.messages) == len(messages_in)
-    assert batch.offsets == expected_offsets
 
 
 test_batch = [
