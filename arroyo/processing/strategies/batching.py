@@ -10,7 +10,6 @@ from typing import (
     Callable,
     Deque,
     Generic,
-    Iterator,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -24,7 +23,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, OffsetRange, Partition, Position, TPayload
+from arroyo.types import Message, OffsetRange, Partition, Position, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -276,23 +275,24 @@ class MessageBatch(Generic[TPayload]):
     and offset ranges.
     The lowest offset in each offset range is inclusize. The highest is
     esclusive.
+
+    This class intentionally does not implement __len__ or __iter__ as
+    generally, when using it, we want to deal with None batch and empty
+    batches differently. This way it is less likely to make mistakes
+    when checking for an empty batch.
     """
 
     messages: Sequence[Message[TPayload]]
     offsets: Mapping[Partition, OffsetRange]
 
-    def __len__(self) -> int:
-        return len(self.messages)
-
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}: {len(self)} message{'s' if len(self) != 1 else ''}>"
+        return f"<{type(self).__name__}: {len(self.messages)} message{'s' if len(self.messages) != 1 else ''}>"
 
-    def __iter__(self) -> Iterator[Message[TPayload]]:
-        for m in self.messages:
-            yield m
+    def last(self) -> Optional[Message[TPayload]]:
+        return self.messages[-1] if self.messages else None
 
-    def __getitem__(self, index: int) -> Message[TPayload]:
-        return self.messages[index]
+    def is_empty(self) -> bool:
+        return len(self.messages) == 0
 
 
 class OutOfOrderMessage(Exception):
@@ -316,11 +316,6 @@ class BatchBuilder(Generic[TPayload]):
         self.__offsets: MutableMapping[Partition, OffsetRange] = {}
         self.__init_time = time.time()
 
-    def is_ready(self) -> bool:
-        return len(self.__messages) >= self.__max_batch_size or (
-            time.time() > self.__init_time + self.__max_batch_time
-        )
-
     def append(self, message: Message[TPayload]) -> None:
         if message.partition in self.__offsets:
             if self.__offsets[message.partition].hi >= message.next_offset:
@@ -337,7 +332,19 @@ class BatchBuilder(Generic[TPayload]):
 
         self.__messages.append(message)
 
-    def build(self) -> MessageBatch[TPayload]:
+    def build_if_ready(self) -> Optional[MessageBatch[TPayload]]:
+        if (
+            len(self.__messages) >= self.__max_batch_size
+            or time.time() > self.__init_time + self.__max_batch_time
+        ):
+            return MessageBatch(
+                messages=self.__messages,
+                offsets=self.__offsets,
+            )
+        else:
+            return None
+
+    def force_build(self) -> MessageBatch[TPayload]:
         return MessageBatch(
             messages=self.__messages,
             offsets=self.__offsets,
@@ -360,6 +367,13 @@ class BatchStep(ProcessingStrategy[TPayload]):
     be built with monotonically increasing offsets per partition.
     If messages out of order are spot, this strategy will raise an
     `OutOfOrderMessage` exception.
+
+    If a batch is closed empty (no message received within `max_batch_time_sec`)
+    An empty batch is submitted to the following step. The following step,
+    thus needs to know how to deal with empty batches.
+
+    This strategy propagates `MessageRejected` exceptions from the
+    downstream steps if they are thrown.
     """
 
     def __init__(
@@ -374,23 +388,54 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
         self.__closed = False
 
-    def __flush(self) -> None:
+    def __flush(self, force: bool) -> None:
         assert self.__batch_builder is not None
-        batch = self.__batch_builder.build()
-        if len(batch) > 0:
-            last_msg = batch.messages[-1]
-            self.__next_step.submit(
-                Message(
-                    partition=last_msg.partition,
-                    offset=last_msg.offset,
-                    timestamp=last_msg.timestamp,
-                    payload=batch,
-                )
+        batch = (
+            self.__batch_builder.build_if_ready()
+            if not force
+            else self.__batch_builder.force_build()
+        )
+
+        if batch is None:
+            return
+
+        last_msg = batch.last()
+        if last_msg is None:
+            # TODO: PR #134 will fix this problem and make it unnecessary
+            # to hack partition id = 0 and offset = 0 for empty batches.
+            batch_msg = Message(
+                partition=Partition(Topic(""), 0),
+                offset=0,
+                timestamp=datetime.now(),
+                payload=batch,
             )
+        else:
+            batch_msg = Message(
+                partition=last_msg.partition,
+                offset=last_msg.offset,
+                timestamp=last_msg.timestamp,
+                payload=batch,
+            )
+        self.__next_step.submit(batch_msg)
         self.__batch_builder = None
 
     def submit(self, message: Message[TPayload]) -> None:
+        """
+        Accumulates messages in the current batch.
+        A new batch is created at the first message received.
+
+        This method tries to flush before adding the message
+        to the current batch. This is so that, if we receive
+        `MessageRejected` exception from the following step,
+        we can propagate the exception without processing the
+        new message. This allows the previous step to try again
+        without introducing duplications.
+        """
         assert not self.__closed
+
+        if self.__batch_builder is not None:
+            self.__flush(force=False)
+
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
                 max_batch_time=self.__max_batch_time_sec,
@@ -399,18 +444,12 @@ class BatchStep(ProcessingStrategy[TPayload]):
 
         self.__batch_builder.append(message)
 
-        if self.__batch_builder is not None and self.__batch_builder.is_ready():
-            try:
-                self.__flush()
-            except MessageRejected:
-                pass
-
     def poll(self) -> None:
         assert not self.__closed
 
-        if self.__batch_builder is not None and self.__batch_builder.is_ready():
+        if self.__batch_builder is not None:
             try:
-                self.__flush()
+                self.__flush(force=False)
             except MessageRejected:
                 pass
 
@@ -426,7 +465,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
         if self.__batch_builder is not None:
-            self.__flush()
+            self.__flush(force=True)
 
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None

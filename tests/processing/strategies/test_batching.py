@@ -209,10 +209,14 @@ def test_batch_builder(
 
     flush = time.mktime(time_end.timetuple())
     mock_time.return_value = flush
-    assert batch_builder.is_ready() == expected_ready
+    batch = batch_builder.build_if_ready()
+    if expected_ready:
+        assert batch is not None
+    else:
+        assert batch is None
 
-    batch = batch_builder.build()
-    assert len(batch) == len(messages_in)
+    batch = batch_builder.force_build()
+    assert len(batch.messages) == len(messages_in)
     assert batch.offsets == expected_offsets
 
 
