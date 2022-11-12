@@ -495,7 +495,12 @@ class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
             raise MessageRejected
 
         self.__batch_to_send.extend(message.payload.messages)
-        self.__flush()
+        try:
+            self.__flush()
+        except MessageRejected:
+            # The messages are stored in self.__batch_to_send ready for
+            # the next call to `poll`.
+            pass
 
     def poll(self) -> None:
         assert not self.__closed
