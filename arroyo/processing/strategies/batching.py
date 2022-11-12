@@ -452,6 +452,10 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self.__batch_builder = None
 
     def join(self, timeout: Optional[float] = None) -> None:
+        """
+        Terminates the strategy by joining the following step.
+        This method throws away the current batch.
+        """
         deadline = time.time() + timeout if timeout is not None else None
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
@@ -507,6 +511,10 @@ class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
         self.__closed = True
 
     def terminate(self) -> None:
+        """
+        Terminates the strategy by joining the following step.
+        This method throws away the current batch if any.
+        """
         self.__closed = True
 
     def join(self, timeout: Optional[float] = None) -> None:
