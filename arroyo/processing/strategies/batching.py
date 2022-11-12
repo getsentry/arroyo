@@ -490,7 +490,6 @@ class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
 
     def submit(self, message: Message[MessageBatch[TPayload]]) -> None:
         assert not self.__closed
-
         if self.__batch_to_send:
             raise MessageRejected
 

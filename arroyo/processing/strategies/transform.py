@@ -43,7 +43,7 @@ class ChildProcessTerminated(RuntimeError):
     pass
 
 
-class TransformStep(ProcessingStep[TPayload]):
+class TransformStep(ProcessingStep[TPayload], Generic[TPayload, TTransformed]):
     """
     Transforms a message and submits the transformed value to the next
     processing step.
@@ -64,7 +64,6 @@ class TransformStep(ProcessingStep[TPayload]):
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
-
         self.__next_step.submit(
             Message(
                 message.partition,

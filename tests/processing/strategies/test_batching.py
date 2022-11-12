@@ -18,6 +18,7 @@ from arroyo.processing.strategies.batching import (
     MessageBatch,
     UnbatchStep,
 )
+from arroyo.processing.strategies.transform import TransformStep
 from arroyo.types import Message, OffsetRange, Partition, Topic
 
 
@@ -383,5 +384,52 @@ def test_unbatch_step() -> None:
             call(message(1, 1, "Message 1")),
             call(message(1, 2, "Message 2")),
             call(message(1, 3, "Message 3")),
+        ]
+    )
+
+
+def test_batch_unbatch() -> None:
+    """
+    Tests a full end to end batch and unbatch pipeline.
+    """
+
+    def transform_msg(msg: Message[str]) -> Message[str]:
+        return Message[str](
+            partition=msg.partition,
+            offset=msg.offset,
+            timestamp=msg.timestamp,
+            payload="Transformed",
+        )
+
+    def transformer(msg: Message[MessageBatch[str]]) -> MessageBatch[str]:
+        return MessageBatch(
+            messages=[transform_msg(sub_msg) for sub_msg in msg.payload.messages],
+            offsets=msg.payload.offsets,
+        )
+
+    final_step = Mock()
+    next_step: TransformStep[MessageBatch[str], MessageBatch[str]] = TransformStep(
+        function=transformer, next_step=UnbatchStep(final_step)
+    )
+
+    pipeline = BatchStep[str](
+        max_batch_size=3, max_batch_time_sec=10, next_step=next_step
+    )
+
+    input_msgs = [
+        message(1, 1, "Message 1"),
+        message(1, 2, "Message 2"),
+        message(1, 3, "Message 3"),
+    ]
+    for m in input_msgs:
+        pipeline.submit(m)
+        final_step.submit.assert_not_called()
+        pipeline.poll()
+
+    final_step.submit.assert_has_calls(
+        [
+            call(message(1, 1, "Transformed")),
+            call(message(1, 2, "Transformed")),
+            call(message(1, 3, "Transformed")),
         ]
     )
