@@ -368,6 +368,10 @@ def test_unbatch_step() -> None:
     next_step.reset_mock(side_effect=True)
     next_step.submit.side_effect = MessageRejected()
     unbatch_step = UnbatchStep[str](next_step)
+    # The first submit should succeed. The step accumulates the
+    # messages. The following one fails as messages are already
+    # pending.
+    unbatch_step.submit(msg)
     with pytest.raises(MessageRejected):
         unbatch_step.submit(msg)
 
