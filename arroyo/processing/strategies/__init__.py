@@ -3,6 +3,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
+from arroyo.processing.strategies.batching import BatchStep, MessageBatch, UnbatchStep
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
 from arroyo.processing.strategies.filter import FilterStep
 from arroyo.processing.strategies.produce import ProduceAndCommit
@@ -20,4 +21,7 @@ __all__ = [
     "ProcessingStrategyFactory",
     "ProduceAndCommit",
     "RunTaskInThreads",
+    "MessageBatch",
+    "BatchStep",
+    "UnbatchStep",
 ]
