@@ -100,6 +100,8 @@ class BatchPayload(Committable[TPayload]):
     """
 
     __slots__ = ["__payload", "__committable"]
+    __payload: TPayload
+    __committable: Mapping[Partition, Position]
 
     def __init__(
         self, payload: TPayload, committable: Mapping[Partition, Position]
@@ -124,6 +126,7 @@ class BrokerPayload(Committable[TPayload]):
     """
 
     __slots__ = ["__payload", "partition", "offset", "timestamp"]
+    __payload: TPayload
     partition: Partition
     offset: int
     timestamp: datetime

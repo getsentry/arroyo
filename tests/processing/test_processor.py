@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -11,7 +11,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerPayload, Commit, Message, Partition, Position, Topic
+from arroyo.types import BrokerPayload, Commit, Message, Partition, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -308,18 +308,20 @@ class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
         return CommitOffsets(commit)
 
 
-def test_stream_processor_commit_policy() -> None:
-    topic = Topic("topic")
+def run_commit_policy_test(
+    topic: Topic, given_messages: Sequence[Message[int]], policy: CommitPolicy
+) -> Sequence[int]:
     commit = mock.Mock()
     consumer = mock.Mock()
     consumer.commit_positions = commit
 
     factory = CommitOffsetsFactory()
 
-    commit_every_second_message = CommitPolicy(None, 2)
-
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, commit_every_second_message
+        consumer,
+        topic,
+        factory,
+        policy,
     )
 
     # Assignment
@@ -331,25 +333,82 @@ def test_stream_processor_commit_policy() -> None:
 
     assert commit.call_count == 0
 
-    # Does not commit first message
-    partition = Partition(topic, 0)
-    position = Position(0, datetime.now())
+    commit_calls = []
 
-    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 0
+    for message in given_messages:
+        consumer.poll.return_value = message
+        processor._run_once()
+        commit_calls.append(commit.call_count)
 
-    # Commits second message
-    position = Position(1, datetime.now())
-    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 1
+    return commit_calls
 
-    # Test force flag
-    position = Position(2, datetime.now())
-    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
-    consumer.poll.return_value = message
-    processor._run_once()
-    assert commit.call_count == 1
+
+def test_stream_processor_commit_policy() -> None:
+    topic = Topic("topic")
+
+    commit_every_second_message = CommitPolicy(None, 2)
+
+    assert run_commit_policy_test(
+        topic,
+        [
+            Message(BrokerPayload(0, Partition(topic, 0), 0, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 0), 1, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 0), 2, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 0), 5, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 0), 10, datetime.now())),
+        ],
+        commit_every_second_message,
+    ) == [
+        # Does not commit first message
+        0,
+        # Does commit second message
+        1,
+        # Does not commit third message
+        1,
+        # Should always commit if we are committing more than 2 messages at once.
+        2,
+        3,
+    ]
+
+
+def test_stream_processor_commit_policy_multiple_partitions() -> None:
+    topic = Topic("topic")
+
+    commit_every_second_message = CommitPolicy(None, 2)
+
+    assert run_commit_policy_test(
+        topic,
+        [
+            Message(BrokerPayload(0, Partition(topic, 0), 200, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 1), 400, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 0), 400, datetime.now())),
+            Message(BrokerPayload(0, Partition(topic, 1), 400, datetime.now())),
+        ],
+        commit_every_second_message,
+    ) == [
+        # Does not commit first message even if the offset is super large
+        0,
+        # Does not commit first message on other partition even if the offset is super large
+        0,
+        # Does commit second message on first partition since the offset delta is super large
+        1,
+        # Does not commit second message on second partition since the offset delta is zero
+        1,
+    ]
+
+
+def test_stream_processor_commit_policy_always() -> None:
+    topic = Topic("topic")
+
+    assert run_commit_policy_test(
+        topic,
+        [Message(BrokerPayload(0, Partition(topic, 0), 200, datetime.now()))],
+        IMMEDIATE,
+    ) == [
+        # IMMEDIATE policy can commit on the first message (even
+        # though there is no previous offset stored)
+        #
+        # Indirectly assert that an offset delta of 1 is passed to
+        # the commit policy, not 0
+        1
+    ]
