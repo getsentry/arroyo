@@ -394,9 +394,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__consumer.unsubscribe()
 
-    def poll(
-        self, timeout: Optional[float] = None
-    ) -> Optional[Message[BrokerPayload[KafkaPayload]]]:
+    def poll(self, timeout: Optional[float] = None) -> Optional[Message[KafkaPayload]]:
         """
         Return the next message available to be consumed, if one is
         available. If no message is available, this method will block up to
@@ -453,25 +451,18 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         headers: Optional[Headers] = message.headers()
         consumer_payload = BrokerPayload(
-            Partition(Topic(message.topic()), message.partition()),
-            message.offset(),
-            datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
             KafkaPayload(
                 message.key(),
                 message.value(),
                 headers if headers is not None else [],
             ),
+            Partition(Topic(message.topic()), message.partition()),
+            message.offset(),
+            datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
-        result = Message(
-            consumer_payload,
-            {
-                consumer_payload.partition: Position(
-                    consumer_payload.offset, consumer_payload.timestamp
-                )
-            },
-        )
+        result = Message(consumer_payload)
 
-        self.__offsets[result.payload.partition] = result.payload.next_offset
+        self.__offsets[consumer_payload.partition] = consumer_payload.next_offset
 
         return result
 
@@ -724,10 +715,10 @@ class KafkaProducer(Producer[KafkaPayload]):
 
                 future.set_result(
                     BrokerPayload(
+                        payload,
                         Partition(Topic(message.topic()), message.partition()),
                         message.offset(),
                         datetime.utcfromtimestamp(timestamp_value / 1000.0),
-                        payload,
                     ),
                 )
             except Exception as error:

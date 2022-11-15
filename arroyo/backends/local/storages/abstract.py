@@ -59,9 +59,7 @@ class MessageStorage(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def consume(
-        self, partition: Partition, offset: int
-    ) -> Optional[Message[BrokerPayload[TPayload]]]:
+    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
         """
         Consume a message from the provided partition, reading from the given
         offset. If no message exists at the given offset when reading from

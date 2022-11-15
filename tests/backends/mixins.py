@@ -10,7 +10,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerPayload, Message, Partition, Position, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -84,6 +84,8 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 message = consumer.poll(10.0)  # XXX: getting the subcription is slow
 
             assert isinstance(message, Message)
+            assert isinstance(message.payload, BrokerPayload)
+            assert message.committable == messages[1].committable
             assert message.payload.partition == Partition(topic, 0)
             assert message.payload.offset == messages[1].offset
             assert message.payload == messages[1]
@@ -106,15 +108,14 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             message = consumer.poll(5.0)
             assert isinstance(message, Message)
-            assert message.payload.partition == Partition(topic, 0)
-            assert message.payload.offset == messages[0].offset
-            assert message.payload.payload == messages[0].payload
+            assert isinstance(message.data, BrokerPayload)
+            assert message.data.partition == Partition(topic, 0)
+            assert message.data.offset == messages[0].offset
+            assert message.data.payload == messages[0].payload
 
             assert consumer.commit_positions() == {}
 
-            consumer.stage_positions(
-                {message.payload.partition: message.payload.position_to_commit}
-            )
+            consumer.stage_positions(message.committable)
 
             with pytest.raises(ConsumerError):
                 consumer.stage_positions(
@@ -127,7 +128,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             assert consumer.commit_positions() == {
                 Partition(topic, 0): Position(
-                    message.payload.next_offset, message.payload.timestamp
+                    message.data.next_offset, message.data.timestamp
                 )
             }
 
@@ -193,16 +194,17 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             message = consumer.poll(10.0)  # XXX: getting the subscription is slow
             assert isinstance(message, Message)
-            assert message.payload.partition == Partition(topic, 0)
-            assert message.payload.offset == messages[1].offset
-            assert message.payload.payload == messages[1].payload
-            assert message.payload == messages[1]
+            assert isinstance(message.data, BrokerPayload)
+            assert message.data.partition == Partition(topic, 0)
+            assert message.data.offset == messages[1].offset
+            assert message.data.payload == messages[1].payload
+            assert message.data == messages[1]
 
             try:
                 assert consumer.poll(1.0) is None
             except EndOfPartition as error:
                 assert error.partition == Partition(topic, 0)
-                assert error.offset == message.payload.next_offset
+                assert error.offset == message.data.next_offset
             else:
                 raise AssertionError("expected EndOfPartition error")
 
@@ -268,6 +270,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             else:
                 raise Exception("assignment never received")
 
+            assert isinstance(message.payload, BrokerPayload)
             assert message.payload == messages[0]
 
             # The first call to ``poll`` should raise ``EndOfPartition``. It
@@ -304,6 +307,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             # Seeking beyond the first missing index should work but subsequent
             # reads should error. (We don't know if this offset is valid or not
             # until we try to fetch a message.)
+            assert isinstance(message.payload, BrokerPayload)
             with assert_changes(
                 consumer.tell,
                 {message.payload.partition: message.payload.next_offset},

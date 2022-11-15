@@ -41,10 +41,7 @@ def test_stream_processor_lifecycle() -> None:
     now = datetime.now()
     payload = 0
 
-    message = Message(
-        BrokerPayload(partition, offset, now, payload),
-        {partition: Position(offset, now)},
-    )
+    message = Message(BrokerPayload(payload, partition, offset, now))
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -138,10 +135,7 @@ def test_stream_processor_termination_on_error() -> None:
     offset = 0
     now = datetime.now()
 
-    consumer.poll.return_value = Message(
-        BrokerPayload(partition, offset, now, 0),
-        {partition: Position(offset + 1, now)},
-    )
+    consumer.poll.return_value = Message(BrokerPayload(0, partition, offset, now))
 
     exception = NotImplementedError("error")
 
@@ -276,13 +270,13 @@ def test_stream_processor_create_with_partitions() -> None:
     assert factory.create_with_partitions.call_count == 3
 
 
-class CommitOffsets(ProcessingStrategy[BrokerPayload[int]]):
+class CommitOffsets(ProcessingStrategy[int]):
     def __init__(self, commit: Commit) -> None:
         self.__commit = commit
 
-    def submit(self, message: Message[BrokerPayload[int]]) -> None:
+    def submit(self, message: Message[int]) -> None:
         # If we get a message with value of 1, force commit
-        if message.payload.payload == 1:
+        if message.payload == 1:
             self.__commit(
                 message.committable,
                 force=True,
@@ -305,12 +299,12 @@ class CommitOffsets(ProcessingStrategy[BrokerPayload[int]]):
         pass
 
 
-class CommitOffsetsFactory(ProcessingStrategyFactory[BrokerPayload[int]]):
+class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
     def create_with_partitions(
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[BrokerPayload[int]]:
+    ) -> ProcessingStrategy[int]:
         return CommitOffsets(commit)
 
 
@@ -341,30 +335,21 @@ def test_stream_processor_commit_policy() -> None:
     partition = Partition(topic, 0)
     position = Position(0, datetime.now())
 
-    message = Message(
-        BrokerPayload(partition, position.offset, position.timestamp, 0),
-        {partition: position},
-    )
+    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 0
 
     # Commits second message
     position = Position(1, datetime.now())
-    message = Message(
-        BrokerPayload(partition, position.offset, position.timestamp, 0),
-        {partition: position},
-    )
+    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 1
 
     # Test force flag
     position = Position(2, datetime.now())
-    message = Message(
-        BrokerPayload(partition, position.offset, position.timestamp, 0),
-        {partition: position},
-    )
+    message = Message(BrokerPayload(0, partition, position.offset, position.timestamp))
     consumer.poll.return_value = message
     processor._run_once()
     assert commit.call_count == 1

@@ -38,9 +38,10 @@ NOW = datetime.now()
 
 
 def kafka_message_to_invalid_kafka_message(
-    message: Message[BrokerPayload[KafkaPayload]], reason: str
+    message: Message[KafkaPayload], reason: str
 ) -> InvalidKafkaMessage:
-    consumer_payload = message.payload
+    consumer_payload = message.data
+    assert isinstance(consumer_payload, BrokerPayload)
     return InvalidKafkaMessage(
         payload=consumer_payload.payload.value,
         timestamp=consumer_payload.timestamp,
@@ -53,7 +54,7 @@ def kafka_message_to_invalid_kafka_message(
     )
 
 
-class FakeProcessingStep(ProcessingStrategy[BrokerPayload[KafkaPayload]]):
+class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
     """
     Raises InvalidMessages if a submitted message has no key in payload.
     """
@@ -86,18 +87,18 @@ class FakeProcessingStep(ProcessingStrategy[BrokerPayload[KafkaPayload]]):
     def close(self) -> None:
         pass
 
-    def submit(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
+    def submit(self, message: Message[KafkaPayload]) -> None:
         """
         Valid message is one with a key and decodable value.
         """
         reason: str = ""
 
         try:
-            message.payload.payload.value.decode("utf-8")
+            message.payload.value.decode("utf-8")
         except UnicodeDecodeError:
             reason = BAD_PAYLOAD
         else:
-            if message.payload.payload.key is None:
+            if message.payload.key is None:
                 reason = NO_KEY
 
         if reason:
@@ -112,18 +113,18 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
     """
 
     def __init__(self) -> None:
-        self._batch: MutableSequence[Message[BrokerPayload[KafkaPayload]]] = []
+        self._batch: MutableSequence[Message[KafkaPayload]] = []
 
-    def submit(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
+    def submit(self, message: Message[KafkaPayload]) -> None:
         self._batch.append(message)
         if len(self._batch) > 4:
             self._submit_multiple()
 
-    def _process_message(self, message: Message[BrokerPayload[KafkaPayload]]) -> None:
+    def _process_message(self, message: Message[KafkaPayload]) -> None:
         """
         Some processing we want to happen per message.
         """
-        if message.payload.payload.key is None:
+        if message.payload.key is None:
             raise InvalidMessages(
                 [kafka_message_to_invalid_kafka_message(message, NO_KEY)]
             )
@@ -146,50 +147,50 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
 
 
 @pytest.fixture
-def processing_step() -> ProcessingStrategy[BrokerPayload[KafkaPayload]]:
+def processing_step() -> ProcessingStrategy[KafkaPayload]:
     return FakeProcessingStep()
 
 
 @pytest.fixture
-def valid_message() -> Message[BrokerPayload[KafkaPayload]]:
+def valid_message() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
     position = Position(0, NOW)
     valid_payload = BrokerPayload(
-        partition,
-        position.offset,
-        position.timestamp,
         KafkaPayload(b"Key", b"Value", []),
-    )
-    return Message(valid_payload, {partition: position})
-
-
-@pytest.fixture
-def invalid_message_no_key() -> Message[BrokerPayload[KafkaPayload]]:
-    partition = Partition(Topic(""), 0)
-    position = Position(0, NOW)
-    invalid_payload = BrokerPayload(
-        partition, position.offset, position.timestamp, KafkaPayload(None, b"Value", [])
-    )
-    return Message(invalid_payload, {partition: position})
-
-
-@pytest.fixture
-def invalid_message_bad_value() -> Message[BrokerPayload[KafkaPayload]]:
-    partition = Partition(Topic(""), 0)
-    position = Position(0, NOW)
-
-    invalid_payload = BrokerPayload(
         partition,
         position.offset,
         position.timestamp,
-        KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
     )
-    return Message(invalid_payload, {partition: position})
+    return Message(valid_payload)
+
+
+@pytest.fixture
+def invalid_message_no_key() -> Message[KafkaPayload]:
+    partition = Partition(Topic(""), 0)
+    position = Position(0, NOW)
+    invalid_payload = BrokerPayload(
+        KafkaPayload(None, b"Value", []), partition, position.offset, position.timestamp
+    )
+    return Message(invalid_payload)
+
+
+@pytest.fixture
+def invalid_message_bad_value() -> Message[KafkaPayload]:
+    partition = Partition(Topic(""), 0)
+    position = Position(0, NOW)
+
+    invalid_payload = BrokerPayload(
+        KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
+        partition,
+        position.offset,
+        position.timestamp,
+    )
+    return Message(invalid_payload)
 
 
 def test_raise(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_raise = DeadLetterQueue(processing_step, RaiseInvalidMessagePolicy())
@@ -201,8 +202,8 @@ def test_raise(
 
 
 def test_ignore(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_ignore = DeadLetterQueue(processing_step, IgnoreInvalidMessagePolicy())
@@ -220,8 +221,8 @@ def test_dlq_join(processing_step: FakeProcessingStep) -> None:
 
 
 def test_count(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_count = DeadLetterQueue(
@@ -236,8 +237,8 @@ def test_count(
 
 
 def test_count_short(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
     dlq_count_short = DeadLetterQueue(
@@ -256,8 +257,8 @@ def test_count_short(
 
 
 def test_stateful_count(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
 ) -> None:
 
@@ -285,8 +286,8 @@ def test_stateful_count(
 
 
 def test_invalid_batched_messages(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
 ) -> None:
     fake_batching_processor = FakeBatchingProcessingStep()
     count_policy = CountInvalidMessagePolicy(
@@ -324,9 +325,9 @@ def test_invalid_batched_messages(
 
 
 def test_produce_invalid_messages(
-    valid_message: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_no_key: Message[BrokerPayload[KafkaPayload]],
-    invalid_message_bad_value: Message[BrokerPayload[KafkaPayload]],
+    valid_message: Message[KafkaPayload],
+    invalid_message_no_key: Message[KafkaPayload],
+    invalid_message_bad_value: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
     broker: LocalBroker[KafkaPayload],
 ) -> None:
@@ -383,11 +384,11 @@ def test_produce_invalid_messages(
 
 
 def assert_produced_message_is_expected(
-    produced_message: Optional[Message[BrokerPayload[KafkaPayload]]],
+    produced_message: Optional[Message[KafkaPayload]],
     expected_dict: Mapping[str, Any],
 ) -> None:
     assert produced_message is not None
     # produced message should have appropriate info
-    dead_letter_payload = produced_message.payload.payload.value
+    dead_letter_payload = produced_message.payload.value
     dead_letter_dict = json.loads(dead_letter_payload)
     assert dead_letter_dict == expected_dict

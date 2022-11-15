@@ -29,7 +29,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import Message, TPayload
+from arroyo.types import BatchPayload, BrokerPayload, Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -65,12 +65,18 @@ class TransformStep(ProcessingStep[TPayload]):
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
 
-        self.__next_step.submit(
-            Message(
-                self.__transform_function(message),
-                message.committable,
+        result = self.__transform_function(message)
+        if isinstance(message.data, BrokerPayload):
+            broker_payload = BrokerPayload(
+                result,
+                message.data.partition,
+                message.data.offset,
+                message.data.timestamp,
             )
-        )
+            self.__next_step.submit(Message(broker_payload))
+        else:
+            batch_payload = BatchPayload(result, message.committable)
+            self.__next_step.submit(Message(batch_payload))
 
     def close(self) -> None:
         self.__closed = True
@@ -276,7 +282,10 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            valid_messages_transformed.append(Message(result, message.committable))
+            payload_copy = message.payload
+            payload_copy.payload = result
+
+            valid_messages_transformed.append(Message(payload_copy))
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
             # the batch is empty, we'll never be able to write it and should

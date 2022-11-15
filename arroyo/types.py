@@ -23,27 +23,40 @@ class Partition:
     index: int
 
 
+T = TypeVar("T", covariant=True)
+
+
+class Committable(Protocol[T]):
+    @property
+    def payload(self) -> T:
+        pass
+
+    @property
+    def committable(self) -> Mapping[Partition, Position]:
+        pass
+
+
 TPayload = TypeVar("TPayload")
 
 
 @dataclass(unsafe_hash=True)
 class Message(Generic[TPayload]):
     """
-    Represents a single message within a partition.
+    Contains a payload and partitions to be committed after processing.
+    Can either represent a single message from a Kafka broker (BrokerPayload)
+    or a number of messages grouped together for a batch processing step
+    (BatchPayload).
     """
 
-    __slots__ = ["payload", "committable"]
+    __slots__ = ["data"]
 
-    payload: TPayload
-    committable: Mapping[Partition, Position]
+    data: Committable[TPayload]
 
     def __init__(
         self,
-        payload: TPayload,
-        committable: Mapping[Partition, Position],
+        data: Committable[TPayload],
     ) -> None:
-        self.payload = payload
-        self.committable = committable
+        self.data = data
 
     def __repr__(self) -> str:
         # XXX: Field values can't be excluded from ``__repr__`` with
@@ -51,6 +64,14 @@ class Message(Generic[TPayload]):
         # ``__slots__`` for performance reasons. The class variable names
         # would conflict with the instance slot names, causing an error.
         return f"{type(self).__name__}({self.committable!r})"
+
+    @property
+    def payload(self) -> TPayload:
+        return self.data.payload
+
+    @property
+    def committable(self) -> Mapping[Partition, Position]:
+        return self.data.committable
 
 
 @dataclass(frozen=True)
@@ -72,25 +93,60 @@ class Position:
 
 
 @dataclass(unsafe_hash=True)
-class BrokerPayload(Generic[TPayload]):
+class BatchPayload(Committable[TPayload]):
+    """
+    Any other payload that may not map 1:1 to a single message from a
+    consumer. May represent a batch spanning many partitions.
+    """
+
+    __slots__ = ["__payload", "__committable"]
+
+    def __init__(
+        self, payload: TPayload, committable: Mapping[Partition, Position]
+    ) -> None:
+        self.__payload = payload
+        self.__committable = committable
+
+    @property
+    def payload(self) -> TPayload:
+        return self.__payload
+
+    @property
+    def committable(self) -> Mapping[Partition, Position]:
+        return self.__committable
+
+
+@dataclass(unsafe_hash=True)
+class BrokerPayload(Committable[TPayload]):
     """
     A payload received from the consumer or producer after it is done producing.
     Partition, offset, and timestamp values are present.
     """
 
-    __slots__ = ["partition", "offset", "timestamp", "payload"]
+    __slots__ = ["__payload", "partition", "offset", "timestamp"]
     partition: Partition
     offset: int
     timestamp: datetime
-    payload: TPayload
+
+    def __init__(
+        self, payload: TPayload, partition: Partition, offset: int, timestamp: datetime
+    ):
+        self.__payload = payload
+        self.partition = partition
+        self.offset = offset
+        self.timestamp = timestamp
+
+    @property
+    def payload(self) -> TPayload:
+        return self.__payload
+
+    @property
+    def committable(self) -> Mapping[Partition, Position]:
+        return {self.partition: Position(self.next_offset, self.timestamp)}
 
     @property
     def next_offset(self) -> int:
         return self.offset + 1
-
-    @property
-    def position_to_commit(self) -> Position:
-        return Position(self.next_offset, self.timestamp)
 
 
 class Commit(Protocol):

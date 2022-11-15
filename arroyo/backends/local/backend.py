@@ -115,9 +115,7 @@ class LocalBroker(Generic[TPayload]):
                 )
             return partitions
 
-    def consume(
-        self, partition: Partition, offset: int
-    ) -> Optional[Message[BrokerPayload[TPayload]]]:
+    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
         with self.__lock:
             return self.__message_storage.consume(partition, offset)
 
@@ -224,9 +222,7 @@ class LocalConsumer(Consumer[TPayload]):
             self.__staged_positions.clear()
             self.__last_eof_at.clear()
 
-    def poll(
-        self, timeout: Optional[float] = None
-    ) -> Optional[Message[BrokerPayload[TPayload]]]:
+    def poll(self, timeout: Optional[float] = None) -> Optional[Message[TPayload]]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -254,7 +250,8 @@ class LocalConsumer(Consumer[TPayload]):
                         self.__last_eof_at[partition] = offset
                         raise EndOfPartition(partition, offset)
                 else:
-                    self.__offsets[partition] = message.payload.next_offset
+                    assert isinstance(message.data, BrokerPayload)
+                    self.__offsets[partition] = message.data.next_offset
 
                     return message
 

@@ -10,7 +10,7 @@ import pytest
 
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
-from arroyo.types import Message, Partition, Position, Topic
+from arroyo.types import BrokerPayload, Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -18,7 +18,7 @@ def message_generator(
     partition: Partition, starting_offset: int = 0
 ) -> Iterator[Message[int]]:
     for i in itertools.count(starting_offset):
-        yield Message(i, {partition: Position(i + 1, datetime.now())})
+        yield Message(BrokerPayload(i, partition, i, datetime.utcnow()))
 
 
 @pytest.mark.parametrize("parallel", [0, 1])

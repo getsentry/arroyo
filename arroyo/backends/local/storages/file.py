@@ -10,6 +10,7 @@ from typing import (
     Any,
     BinaryIO,
     Iterator,
+    Mapping,
     MutableMapping,
     MutableSequence,
     Optional,
@@ -32,9 +33,20 @@ from arroyo.utils.codecs import Codec
 class FilePayload(BrokerPayload[TPayload]):
     _next_offset: int
 
+    def __init__(
+        self,
+        payload: TPayload,
+        partition: Partition,
+        offset: int,
+        timestamp: datetime,
+        next_offset: int,
+    ) -> None:
+        super().__init__(payload, partition, offset, timestamp)
+        self._next_offset = next_offset
+
     @property
-    def next_offset(self) -> int:
-        return self._next_offset
+    def committable(self) -> Mapping[Partition, Position]:
+        return {self.partition: Position(self._next_offset, self.timestamp)}
 
 
 class PickleCodec(Codec[bytes, Tuple[TPayload, datetime]]):
@@ -157,11 +169,9 @@ class FileMessageStorage(MessageStorage[TPayload]):
         file.write(encoded)
         file.flush()
 
-        return FilePayload(partition, offset, timestamp, payload, file.tell())
+        return FilePayload(payload, partition, offset, timestamp, file.tell())
 
-    def consume(
-        self, partition: Partition, offset: int
-    ) -> Optional[Message[BrokerPayload[TPayload]]]:
+    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
         file_partition = self.__get_file_partition(partition)
         file = file_partition.reader
 
@@ -185,6 +195,5 @@ class FileMessageStorage(MessageStorage[TPayload]):
         payload, timestamp = self.__codec.decode(encoded)
 
         return Message(
-            FilePayload(partition, offset, timestamp, payload, file.tell()),
-            {partition: Position(file.tell(), datetime.now())},
+            FilePayload(payload, partition, offset, timestamp, file.tell()),
         )

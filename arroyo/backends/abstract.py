@@ -62,9 +62,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(
-        self, timeout: Optional[float] = None
-    ) -> Optional[Message[BrokerPayload[TPayload]]]:
+    def poll(self, timeout: Optional[float] = None) -> Optional[Message[TPayload]]:
         """
         Fetch a message from the consumer. If no message is available before
         the timeout, ``None`` is returned.
