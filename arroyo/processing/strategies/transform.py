@@ -29,7 +29,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import BatchPayload, BrokerPayload, Committable, Message, TPayload
+from arroyo.types import BatchPayload, BrokerPayload, Message, Payload, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -282,7 +282,7 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            payload: Committable[TTransformed]
+            payload: Payload[TTransformed]
             if isinstance(message.data, BrokerPayload):
                 payload = BrokerPayload(
                     result,

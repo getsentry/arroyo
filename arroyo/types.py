@@ -26,7 +26,7 @@ class Partition:
 T = TypeVar("T", covariant=True)
 
 
-class Committable(Protocol[T]):
+class Payload(Protocol[T]):
     @property
     def payload(self) -> T:
         pass
@@ -50,11 +50,11 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["data"]
 
-    data: Committable[TPayload]
+    data: Payload[TPayload]
 
     def __init__(
         self,
-        data: Committable[TPayload],
+        data: Payload[TPayload],
     ) -> None:
         self.data = data
 
@@ -93,7 +93,7 @@ class Position:
 
 
 @dataclass(unsafe_hash=True)
-class BatchPayload(Committable[TPayload]):
+class BatchPayload(Payload[TPayload]):
     """
     Any other payload that may not map 1:1 to a single message from a
     consumer. May represent a batch spanning many partitions.
@@ -119,7 +119,7 @@ class BatchPayload(Committable[TPayload]):
 
 
 @dataclass(unsafe_hash=True)
-class BrokerPayload(Committable[TPayload]):
+class BrokerPayload(Payload[TPayload]):
     """
     A payload received from the consumer or producer after it is done producing.
     Partition, offset, and timestamp values are present.
