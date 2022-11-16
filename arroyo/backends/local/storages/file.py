@@ -10,7 +10,6 @@ from typing import (
     Any,
     BinaryIO,
     Iterator,
-    Mapping,
     MutableMapping,
     MutableSequence,
     Optional,
@@ -25,7 +24,7 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import BrokerPayload, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerPayload, Partition, Topic, TPayload
 from arroyo.utils.codecs import Codec
 
 
@@ -45,8 +44,8 @@ class FilePayload(BrokerPayload[TPayload]):
         self._next_offset = next_offset
 
     @property
-    def committable(self) -> Mapping[Partition, Position]:
-        return {self.partition: Position(self._next_offset, self.timestamp)}
+    def next_offset(self) -> int:
+        return self._next_offset
 
 
 class PickleCodec(Codec[bytes, Tuple[TPayload, datetime]]):
