@@ -350,7 +350,9 @@ def test_produce_invalid_messages(
     dlq_produce.submit(invalid_message_no_key)
     dlq_produce.submit(invalid_message_bad_value)
 
-    produced_message = consumer.poll()
+    payload = consumer.poll()
+    assert payload is not None
+    produced_message = Message(payload)
     assert_produced_message_is_expected(
         produced_message,
         {
@@ -366,7 +368,9 @@ def test_produce_invalid_messages(
         },
     )
 
-    produced_message = consumer.poll()
+    payload = consumer.poll()
+    assert payload is not None
+    produced_message = Message(payload)
     assert_produced_message_is_expected(
         produced_message,
         {

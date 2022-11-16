@@ -43,7 +43,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import BrokerPayload, Message, Partition, Position, Topic
+from arroyo.types import BrokerPayload, Partition, Position, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -394,7 +394,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__consumer.unsubscribe()
 
-    def poll(self, timeout: Optional[float] = None) -> Optional[Message[KafkaPayload]]:
+    def poll(
+        self, timeout: Optional[float] = None
+    ) -> Optional[BrokerPayload[KafkaPayload]]:
         """
         Return the next message available to be consumed, if one is
         available. If no message is available, this method will block up to
@@ -460,11 +462,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             message.offset(),
             datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
-        result = Message(consumer_payload)
-
         self.__offsets[consumer_payload.partition] = consumer_payload.next_offset
 
-        return result
+        return consumer_payload
 
     def tell(self) -> Mapping[Partition, int]:
         """

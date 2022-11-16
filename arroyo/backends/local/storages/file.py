@@ -25,7 +25,7 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import BrokerPayload, Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerPayload, Partition, Position, Topic, TPayload
 from arroyo.utils.codecs import Codec
 
 
@@ -171,7 +171,9 @@ class FileMessageStorage(MessageStorage[TPayload]):
 
         return FilePayload(payload, partition, offset, timestamp, file.tell())
 
-    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
+    def consume(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerPayload[TPayload]]:
         file_partition = self.__get_file_partition(partition)
         file = file_partition.reader
 
@@ -194,6 +196,4 @@ class FileMessageStorage(MessageStorage[TPayload]):
             )
         payload, timestamp = self.__codec.decode(encoded)
 
-        return Message(
-            FilePayload(payload, partition, offset, timestamp, file.tell()),
-        )
+        return FilePayload(payload, partition, offset, timestamp, file.tell())
