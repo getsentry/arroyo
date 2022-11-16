@@ -23,20 +23,17 @@ class Partition:
     index: int
 
 
-T = TypeVar("T", covariant=True)
+TPayload = TypeVar("TPayload")
 
 
-class Payload(Protocol[T]):
+class Payload(Generic[TPayload]):
     @property
-    def payload(self) -> T:
+    def payload(self) -> TPayload:
         pass
 
     @property
     def committable(self) -> Mapping[Partition, Position]:
         pass
-
-
-TPayload = TypeVar("TPayload")
 
 
 @dataclass(unsafe_hash=True)
