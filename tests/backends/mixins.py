@@ -425,9 +425,8 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             # It doesn't really matter which message is fetched first -- we
             # just want to know the assignment occurred.
-            message = consumer_a.poll(10.0)
-            assert message is not None
-            assert message.payload in messages  # XXX: getting the subcription is slow
+            payload = consumer_a.poll(10.0)
+            assert payload in messages  # XXX: getting the subcription is slow
 
             assert len(consumer_a.tell()) == 2
             assert len(consumer_b.tell()) == 0
