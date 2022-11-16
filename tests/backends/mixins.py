@@ -82,6 +82,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 {Partition(topic, 0): messages[1].next_offset},
             ):
                 payload = consumer.poll(10.0)  # XXX: getting the subcription is slow
+
             assert isinstance(payload, BrokerPayload)
             assert payload.committable == messages[1].committable
             assert payload.partition == Partition(topic, 0)
@@ -342,8 +343,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             consumer.subscribe([topic])
 
-            payload = consumer.poll(10.0)
-            assert payload == messages[0]
+            assert consumer.poll(10.0) == messages[0]
             assert consumer.paused() == []
 
             # XXX: Unfortunately, there is really no way to prove that this
@@ -357,8 +357,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with assert_changes(consumer.paused, [Partition(topic, 0)], []):
                 consumer.resume([Partition(topic, 0)])
 
-            payload = consumer.poll(5.0)
-            assert payload == messages[1]
+            assert consumer.poll(5.0) == messages[1]
 
             # Calling ``seek`` should have a side effect, even if no messages
             # are consumed before calling ``pause``.
@@ -372,8 +371,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 assert consumer.poll(1.0) is None
                 consumer.resume([Partition(topic, 0)])
 
-            payload = consumer.poll(5.0)
-            assert payload == messages[3]
+            assert consumer.poll(5.0) == messages[3]
 
             # It is still allowable to call ``seek`` on a paused partition.
             # When consumption resumes, we would expect to see the side effect
@@ -388,8 +386,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 assert consumer.poll(1.0) is None
                 consumer.resume([Partition(topic, 0)])
 
-            payload = consumer.poll(5.0)
-            assert payload == messages[0]
+            assert consumer.poll(5.0) == messages[0]
 
             with assert_does_not_change(consumer.paused, []), pytest.raises(
                 ConsumerError
@@ -425,8 +422,9 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             # It doesn't really matter which message is fetched first -- we
             # just want to know the assignment occurred.
-            payload = consumer_a.poll(10.0)
-            assert payload in messages  # XXX: getting the subcription is slow
+            assert (
+                consumer_a.poll(10.0) in messages
+            )  # XXX: getting the subcription is slow
 
             assert len(consumer_a.tell()) == 2
             assert len(consumer_b.tell()) == 0
