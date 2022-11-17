@@ -20,14 +20,7 @@ from arroyo.processing.strategies.transform import (
     ValueTooLarge,
     parallel_transform_worker_apply,
 )
-from arroyo.types import (
-    BatchPayload,
-    BrokerPayload,
-    Message,
-    Partition,
-    Position,
-    Topic,
-)
+from arroyo.types import BrokerPayload, Message, Partition, Payload, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -43,7 +36,7 @@ def test_transform() -> None:
     transform_step = TransformStep(transform_function, next_step)
 
     original_message = Message(
-        BatchPayload(1, {Partition(Topic("topic"), 0): Position(1, datetime.now())})
+        Payload(1, {Partition(Topic("topic"), 0): Position(1, datetime.now())})
     )
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
@@ -51,9 +44,7 @@ def test_transform() -> None:
 
     assert next_step.submit.call_args == call(
         Message(
-            BatchPayload(
-                transform_function(original_message), original_message.committable
-            )
+            Payload(transform_function(original_message), original_message.committable)
         )
     )
 
@@ -121,7 +112,7 @@ def test_message_batch() -> None:
     assert block.size == 16384
 
     message = Message(
-        BatchPayload(
+        Payload(
             KafkaPayload(None, b"\x00" * 16000, []),
             {partition: Position(0, datetime.now())},
         )
@@ -151,7 +142,7 @@ def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
 def test_parallel_transform_worker_apply() -> None:
     messages = [
         Message(
-            BatchPayload(
+            Payload(
                 KafkaPayload(None, b"\x00" * size, []),
                 {Partition(Topic("test"), 0): Position(i, datetime.now())},
             )
@@ -230,7 +221,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
     # every other message has a key
     messages = [
         Message(
-            BatchPayload(
+            Payload(
                 KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
                 {Partition(Topic("test"), 0): Position(i, datetime.now())},
             )
@@ -277,7 +268,7 @@ def test_parallel_transform_step() -> None:
 
     messages = [
         Message(
-            BatchPayload(
+            Payload(
                 KafkaPayload(None, b"\x00" * size, []),
                 {Partition(Topic("test"), 0): Position(i, datetime.now())},
             )
@@ -380,7 +371,7 @@ def test_parallel_transform_step_bad_messages() -> None:
     # every other message has a key
     messages = [
         Message(
-            BatchPayload(
+            Payload(
                 KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
                 {Partition(Topic("test"), 0): Position(0, datetime.now())},
             )

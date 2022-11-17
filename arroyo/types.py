@@ -26,23 +26,13 @@ class Partition:
 TPayload = TypeVar("TPayload")
 
 
-class Payload(Generic[TPayload]):
-    @property
-    def payload(self) -> TPayload:
-        pass
-
-    @property
-    def committable(self) -> Mapping[Partition, Position]:
-        pass
-
-
 @dataclass(unsafe_hash=True)
 class Message(Generic[TPayload]):
     """
     Contains a payload and partitions to be committed after processing.
     Can either represent a single message from a Kafka broker (BrokerPayload)
-    or a number of messages grouped together for a batch processing step
-    (BatchPayload).
+    or something else, such as a number of messages grouped together for a
+    batch processing step (Payload).
     """
 
     __slots__ = ["data"]
@@ -90,7 +80,7 @@ class Position:
 
 
 @dataclass(unsafe_hash=True)
-class BatchPayload(Payload[TPayload]):
+class Payload(Generic[TPayload]):
     """
     Any other payload that may not map 1:1 to a single message from a
     consumer. May represent a batch spanning many partitions.

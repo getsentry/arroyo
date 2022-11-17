@@ -29,7 +29,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import BatchPayload, BrokerPayload, Message, Payload, TPayload
+from arroyo.types import BrokerPayload, Message, Payload, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ class TransformStep(ProcessingStep[TPayload]):
             )
             self.__next_step.submit(Message(broker_payload))
         else:
-            batch_payload = BatchPayload(result, message.committable)
-            self.__next_step.submit(Message(batch_payload))
+            payload = Payload(result, message.committable)
+            self.__next_step.submit(Message(payload))
 
     def close(self) -> None:
         self.__closed = True
@@ -291,7 +291,7 @@ def parallel_transform_worker_apply(
                     message.data.timestamp,
                 )
             else:
-                payload = BatchPayload(result, message.committable)
+                payload = Payload(result, message.committable)
 
             valid_messages_transformed.append(Message(payload))
         except ValueTooLarge:

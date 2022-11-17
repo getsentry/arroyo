@@ -1,14 +1,7 @@
 import pickle
 from datetime import datetime
 
-from arroyo.types import (
-    BatchPayload,
-    BrokerPayload,
-    Message,
-    Partition,
-    Position,
-    Topic,
-)
+from arroyo.types import BrokerPayload, Message, Partition, Payload, Position, Topic
 
 
 def test_topic_contains_partition() -> None:
@@ -25,8 +18,8 @@ def test_message() -> None:
     message = Message(BrokerPayload(b"", partition, 0, now))
     assert pickle.loads(pickle.dumps(message)) == message
 
-    # Batch payload
-    message = Message(BatchPayload(b"", {partition: Position(1, now)}))
+    # Generic payload
+    message = Message(Payload(b"", {partition: Position(1, now)}))
     assert pickle.loads(pickle.dumps(message)) == message
 
 
