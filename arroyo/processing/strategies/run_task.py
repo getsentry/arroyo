@@ -2,24 +2,25 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime
 from typing import Callable, Deque, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Commit, Message, Partition, Position, TPayload
+from arroyo.types import Message, Partition
 
 logger = logging.getLogger(__name__)
 
-TOutput = TypeVar("TOutput")
+TPayload = TypeVar("TPayload")
+TResult = TypeVar("TResult")
 
 
 class RunTaskInThreads(ProcessingStrategy[TPayload]):
     """
-    This strategy can be used to run IO-bound tasks in parallel, then commit offsets.
+    This strategy can be used to run IO-bound tasks in parallel.
 
     The user specifies a processing function (a callable that takes a message). For each message received
-    in the submit method, it runs that processing function. Once completed, offsets are committed.
-    Note that the return value of the processing function is discarded so this is not an appropriate
-    strategy if something else needs to happen after offsets are committed and the function returns.
+    in the submit method, it runs that processing function. Once completed, the message is submitted
+    to the next step (with the payload containing the result of the processing function).
 
     Since the processing function will be run in threads, avoid using objects which can be modified
     by different threads or protect it using locks.
@@ -27,7 +28,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
     If there are too many pending futures, we MessageRejected will be raised to notify the stream processor
     to slow down.
 
-    On poll we check for completion of futures. If processing is done, we commit the offsetes.
+    On poll we check for completion of futures. If processing is done, we submit to the next step.
     If an error occured the original exception will be raised.
 
     Caution: MessageRejected is not properly handled by the ParallelTransform step. Exercise
@@ -36,16 +37,16 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        processing_function: Callable[[Message[TPayload]], TOutput],
+        processing_function: Callable[[Message[TPayload]], TResult],
         concurrency: int,
         max_pending_futures: int,
-        commit: Commit,
+        next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Partition, Position, Future[TOutput]]] = deque()
+        self.__queue: Deque[Tuple[Partition, int, datetime, Future[TResult]]] = deque()
         self.__max_pending_futures = max_pending_futures
-        self.__commit = commit
+        self.__next_step = next_step
         self.__closed = False
 
     def submit(self, message: Message[TPayload]) -> None:
@@ -57,29 +58,31 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
         self.__queue.append(
             (
                 message.partition,
-                message.position_to_commit,
+                message.offset,
+                message.timestamp,
                 self.__executor.submit(self.__function, message),
             )
         )
 
     def poll(self) -> None:
         while self.__queue:
-            partition, position, future = self.__queue[0]
+            partition, offset, timestamp, future = self.__queue[0]
 
             if not future.done():
                 break
 
-            # Ensure exception gets raised
-            future.result()
+            # Will raise if the future errored
+            result = future.result()
 
             self.__queue.popleft()
 
-            self.__commit({partition: position})
+            message = Message(partition, offset, result, timestamp)
+
+            self.__next_step.poll()
+            self.__next_step.submit(message)
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
-
-        self.__commit({}, force=True)
 
         while self.__queue:
             remaining = timeout - (time.time() - start) if timeout is not None else None
@@ -87,20 +90,22 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            partition, position, future = self.__queue.popleft()
+            partition, offset, timetsamp, future = self.__queue.popleft()
 
-            future.result(remaining)
+            result = future.result(remaining)
 
-            self.__commit(
-                {partition: position},
-                force=True,
-            )
+            message = Message(partition, offset, result, timetsamp)
+            self.__next_step.poll()
+            self.__next_step.submit(message)
 
         self.__executor.shutdown()
+        self.__next_step.join(timeout)
 
     def close(self) -> None:
         self.__closed = True
+        self.__next_step.close()
 
     def terminate(self) -> None:
         self.__closed = True
         self.__executor.shutdown()
+        self.__next_step.terminate()
