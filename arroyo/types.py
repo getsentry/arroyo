@@ -37,11 +37,11 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["data"]
 
-    data: Payload[TPayload]
+    data: BasePayload[TPayload]
 
     def __init__(
         self,
-        data: Payload[TPayload],
+        data: BasePayload[TPayload],
     ) -> None:
         self.data = data
 
@@ -79,8 +79,18 @@ class Position:
             object.__setattr__(self, slot, value)
 
 
+class BasePayload(Generic[TPayload]):
+    @property
+    def payload(self) -> TPayload:
+        pass
+
+    @property
+    def committable(self) -> Mapping[Partition, Position]:
+        pass
+
+
 @dataclass(unsafe_hash=True)
-class Payload(Generic[TPayload]):
+class Payload(BasePayload[TPayload]):
     """
     Any other payload that may not map 1:1 to a single message from a
     consumer. May represent a batch spanning many partitions.
@@ -106,7 +116,7 @@ class Payload(Generic[TPayload]):
 
 
 @dataclass(unsafe_hash=True)
-class BrokerPayload(Payload[TPayload]):
+class BrokerPayload(BasePayload[TPayload]):
     """
     A payload received from the consumer or producer after it is done producing.
     Partition, offset, and timestamp values are present.
