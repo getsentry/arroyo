@@ -1,48 +1,13 @@
 import time
 from datetime import datetime
-from typing import Any, Callable, Mapping, MutableSequence, Sequence, TypeVar
-from unittest.mock import patch
+from typing import Any, MutableSequence, Sequence
+from unittest.mock import Mock, patch
 
-from arroyo.backends.local.backend import LocalBroker as Broker
-from arroyo.backends.local.backend import LocalConsumer
-from arroyo.commit import IMMEDIATE
-from arroyo.processing.processor import StreamProcessor
-from arroyo.processing.strategies.abstract import (
-    ProcessingStrategy,
-    ProcessingStrategyFactory,
-)
 from arroyo.processing.strategies.batching import (
     AbstractBatchWorker,
     BatchProcessingStrategy,
 )
-from arroyo.types import Message, Partition, Position, Topic
-
-TPayload = TypeVar("TPayload")
-TResult = TypeVar("TResult")
-
-
-class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
-    def __init__(
-        self,
-        worker: AbstractBatchWorker[TPayload, TResult],
-        max_batch_size: int,
-        max_batch_time: int,
-    ) -> None:
-        self.__worker = worker
-        self.__max_batch_size = max_batch_size
-        self.__max_batch_time = max_batch_time
-
-    def create_with_partitions(
-        self,
-        commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TPayload]:
-        return BatchProcessingStrategy(
-            commit,
-            self.__worker,
-            self.__max_batch_size,
-            self.__max_batch_time,
-        )
+from arroyo.types import Message, Partition, Topic
 
 
 class FakeWorker(AbstractBatchWorker[int, int]):
@@ -59,82 +24,65 @@ class FakeWorker(AbstractBatchWorker[int, int]):
 
 
 class TestConsumer(object):
-    def test_batch_size(self, broker: Broker[int]) -> None:
+    def test_batch_size(self) -> None:
         topic = Topic("topic")
-        broker.create_topic(topic, partitions=1)
-        producer = broker.get_producer()
-        for i in [1, 2, 3]:
-            producer.produce(topic, i).result()
-
-        consumer = broker.get_consumer("group")
-        assert isinstance(consumer, LocalConsumer)
-
         worker = FakeWorker()
-        batching_consumer = StreamProcessor(
-            consumer,
-            topic,
-            BatchProcessingStrategyFactory(
-                worker=worker,
-                max_batch_size=2,
-                max_batch_time=100,
-            ),
-            IMMEDIATE,
+        commit_func = Mock()
+
+        strategy = BatchProcessingStrategy(
+            commit_func, worker, max_batch_size=2, max_batch_time=100
         )
 
-        for _ in range(3):
-            batching_consumer._run_once()
+        for i in [1, 2, 3]:
+            message = Message(Partition(topic, 0), i, i, datetime.utcnow())
+            strategy.submit(message)
+            strategy.poll()
 
-        batching_consumer._shutdown()
+        strategy.close()
+        strategy.join()
 
         assert worker.processed == [1, 2, 3]
         assert worker.flushed == [[1, 2]]
-        assert consumer.commit_offsets_calls == 1
-        assert consumer.close_calls == 1
+        assert commit_func.call_count == 1
 
     @patch("time.time")
-    def test_batch_time(self, mock_time: Any, broker: Broker[int]) -> None:
+    def test_batch_time(self, mock_time: Any) -> None:
         topic = Topic("topic")
-        broker.create_topic(topic, partitions=1)
-        producer = broker.get_producer()
-        consumer = broker.get_consumer("group")
-        assert isinstance(consumer, LocalConsumer)
 
-        mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 0).timetuple())
+        t1 = datetime(2018, 1, 1, 0, 0, 0)
+        t2 = datetime(2018, 1, 1, 0, 0, 1)
+        t3 = datetime(2018, 1, 1, 0, 0, 5)
+
+        mock_time.return_value = time.mktime(t1.timetuple())
         worker = FakeWorker()
-        batching_consumer = StreamProcessor(
-            consumer,
-            topic,
-            BatchProcessingStrategyFactory(
-                worker=worker, max_batch_size=100, max_batch_time=2000
-            ),
-            IMMEDIATE,
+        commit_func = Mock()
+
+        strategy = BatchProcessingStrategy(
+            commit_func, worker, max_batch_size=100, max_batch_time=2000
         )
 
         for i in [1, 2, 3]:
-            producer.produce(topic, i).result()
+            message = Message(Partition(topic, 0), i, i, t1)
+            strategy.submit(message)
 
-        for _ in range(3):
-            batching_consumer._run_once()
-
-        mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 1).timetuple())
+        mock_time.return_value = time.mktime(t2.timetuple())
+        strategy.poll()
 
         for i in [4, 5, 6]:
-            producer.produce(topic, i).result()
+            message = Message(Partition(topic, 0), i, i, t2)
+            strategy.submit(message)
 
-        for _ in range(3):
-            batching_consumer._run_once()
-
-        mock_time.return_value = time.mktime(datetime(2018, 1, 1, 0, 0, 5).timetuple())
+        mock_time.return_value = time.mktime(t3.timetuple())
+        strategy.poll()
 
         for i in [7, 8, 9]:
-            producer.produce(topic, i).result()
-
-        for _ in range(3):
-            batching_consumer._run_once()
-
-        batching_consumer._shutdown()
+            message = Message(Partition(topic, 0), i, i, t3)
+            strategy.submit(message)
+            strategy.poll()
 
         assert worker.processed == [1, 2, 3, 4, 5, 6, 7, 8, 9]
         assert worker.flushed == [[1, 2, 3, 4, 5, 6]]
-        assert consumer.commit_offsets_calls == 1
-        assert consumer.close_calls == 1
+        assert commit_func.call_count == 1
+
+        strategy.close()
+        strategy.join()
