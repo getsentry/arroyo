@@ -31,6 +31,9 @@ class StreamMessageFilter(Protocol[TPayload]):
 
 class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
     """
+    Do not use for new consumers.
+    This is deprecated and will be removed in a future version.
+
     Builds a four step consumer strategy consisting of dead letter queue,
     filter, transform, and collect phases.
 
@@ -155,4 +158,9 @@ class ConsumerStrategyFactory(ProcessingStrategyFactory[TPayload]):
 
 
 class KafkaConsumerStrategyFactory(ConsumerStrategyFactory[KafkaPayload]):
+    """
+    Do not use for new consumers.
+    This is deprecated and will be removed in a future version.
+    """
+
     pass
