@@ -6,11 +6,13 @@ from typing import Deque, Mapping, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.types import (
     BrokerPayload,
     Commit,
     Message,
     Partition,
+    Payload,
     Position,
     Topic,
     TPayload,
@@ -19,7 +21,7 @@ from arroyo.types import (
 logger = logging.getLogger(__name__)
 
 
-class ProduceAndCommit(ProcessingStrategy[TPayload]):
+class Produce(ProcessingStrategy[TPayload]):
     """
     This strategy can be used to produce Kafka messages to a destination topic. A typical use
     case could be to consume messages from one topic, apply some transformations and then output
@@ -30,7 +32,8 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
     stream processor to slow down.
 
     On poll we check for completion of the produced messages. If the message has been successfully
-    produced then the offset is committed. If an error occured the exception will be raised.
+    produced then the message is submitted to the next step. If an error occured the exception will
+    be raised.
 
     Important: The destination topic is always the `topic` passed into the constructor and not the
     topic being referenced in the message itself (which typically refers to the original topic from
@@ -44,12 +47,12 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
         self,
         producer: Producer[TPayload],
         topic: Topic,
-        commit: Commit,
+        next_step: ProcessingStrategy[TPayload],
         max_buffer_size: int = 10000,
     ):
         self.__producer = producer
         self.__topic = topic
-        self.__commit = commit
+        self.__next_step = next_step
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
@@ -65,14 +68,11 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
             if not future.done():
                 break
 
-            exc = future.exception()
-
-            if exc is not None:
-                raise exc
+            message = Message(Payload(future.result().payload, committable))
 
             self.__queue.popleft()
-
-            self.__commit(committable)
+            self.__next_step.poll()
+            self.__next_step.submit(message)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -89,15 +89,16 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
     def close(self) -> None:
         self.__closed = True
+        self.__next_step.close()
 
     def terminate(self) -> None:
         self.__closed = True
+        self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
 
-        # Commit all previously staged offsets
-        self.__commit({}, force=True)
+        remaining = timeout
 
         while self.__queue:
             remaining = timeout - (time.time() - start) if timeout is not None else None
@@ -107,7 +108,46 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
             committable, future = self.__queue.popleft()
 
-            future.result(remaining)
+            message = Message(Payload(future.result().payload, committable))
 
-            logger.info("Committing offset:s %r", committable)
-            self.__commit(committable)
+            self.__next_step.poll()
+            self.__next_step.submit(message)
+
+        self.__next_step.join(remaining)
+
+
+class ProduceAndCommit(ProcessingStrategy[TPayload]):
+    """
+    This strategy produces then commits offsets. It doesn't do much on
+    on it's own since it is simply the Produce and CommitOffsets strategies
+    chained together.
+
+    This is provided for convenience and backwards compatibility. Will be
+    removed in a future version.
+    """
+
+    def __init__(
+        self,
+        producer: Producer[TPayload],
+        topic: Topic,
+        commit: Commit,
+        max_buffer_size: int = 10000,
+    ):
+        self.__strategy: Produce[TPayload] = Produce(
+            producer, topic, CommitOffsets(commit), max_buffer_size
+        )
+
+    def poll(self) -> None:
+        self.__strategy.poll()
+
+    def submit(self, message: Message[TPayload]) -> None:
+        self.__strategy.submit(message)
+
+    def close(self) -> None:
+        self.__strategy.close()
+
+    def terminate(self) -> None:
+        self.__strategy.terminate()
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        self.__strategy.join(timeout)
