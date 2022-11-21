@@ -16,10 +16,7 @@ from typing import (
     TypeVar,
 )
 
-from arroyo.processing.strategies.abstract import (
-    ProcessingStrategy,
-    ProcessingStrategyFactory,
-)
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
@@ -233,32 +230,3 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         logger.debug("Offset commit took %dms", commit_duration)
 
         self.__batch = None
-
-
-class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
-    """
-    Do not use for new consumers.
-    This is deprecated and will be removed in a future version.
-    """
-
-    def __init__(
-        self,
-        worker: AbstractBatchWorker[TPayload, TResult],
-        max_batch_size: int,
-        max_batch_time: int,
-    ) -> None:
-        self.__worker = worker
-        self.__max_batch_size = max_batch_size
-        self.__max_batch_time = max_batch_time
-
-    def create_with_partitions(
-        self,
-        commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TPayload]:
-        return BatchProcessingStrategy(
-            commit,
-            self.__worker,
-            self.__max_batch_size,
-            self.__max_batch_time,
-        )
