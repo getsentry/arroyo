@@ -5,6 +5,12 @@ from arroyo.types import Commit, Message, Partition, TPayload
 
 
 class MessageRejected(Exception):
+    """
+    MessageRejected should be raised in a processing strategy's submit method
+    if it is unable to keep up with the rate of incoming messages. It tells
+    the consumer to slow down and retry the message later.
+    """
+
     pass
 
 
