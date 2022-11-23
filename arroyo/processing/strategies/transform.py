@@ -294,8 +294,8 @@ def parallel_transform_worker_apply(
 class ParallelTransformStep(ProcessingStep[TPayload]):
     """
     Caution: MessageRejected is not properly handled by the ParallelTransform step. Exercise
-    caution if chaining this step before a strategy like `ProduceAndCommit` which raises
-    MessageRejected in order to apply backpressure.
+    caution if chaining this step before a strategy like `Produce` or `RunTaskInThreads` which
+    raise MessageRejected in order to apply backpressure.
     """
 
     def __init__(

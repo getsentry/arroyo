@@ -94,13 +94,13 @@ class StreamProcessor(Generic[TPayload]):
                     "received unexpected revocation without active processing strategy"
                 )
 
-            logger.debug("Closing %r...", self.__processing_strategy)
+            logger.info("Closing %r...", self.__processing_strategy)
             self.__processing_strategy.close()
 
-            logger.debug("Waiting for %r to exit...", self.__processing_strategy)
+            logger.info("Waiting for %r to exit...", self.__processing_strategy)
             self.__processing_strategy.join()
 
-            logger.debug(
+            logger.info(
                 "%r exited successfully, releasing assignment.",
                 self.__processing_strategy,
             )
