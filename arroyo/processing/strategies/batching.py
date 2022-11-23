@@ -17,7 +17,7 @@ from typing import (
 )
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message, Partition, Position, TPayload
+from arroyo.types import BrokerPayload, Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,17 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         assert not self.__closed
 
         start = time.time()
+
+        payload = message.data
+        if isinstance(payload, BrokerPayload):
+            self.__metrics.timing(
+                "receive_latency",
+                (start - payload.timestamp.timestamp()) * 1000,
+                tags={
+                    "topic": payload.partition.topic.name,
+                    "partition": str(payload.partition.index),
+                },
+            )
 
         # Create the batch only after the first message is seen.
         if self.__batch is None:
