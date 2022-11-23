@@ -8,14 +8,14 @@ from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.types import (
-    BrokerPayload,
+    BrokerValue,
     Commit,
     Message,
     Partition,
-    Payload,
     Position,
     Topic,
     TPayload,
+    Value,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Mapping[Partition, Position], Future[BrokerPayload[TPayload]]]
+            Tuple[Mapping[Partition, Position], Future[BrokerValue[TPayload]]]
         ] = deque()
 
         self.__closed = False
@@ -68,7 +68,7 @@ class Produce(ProcessingStrategy[TPayload]):
             if not future.done():
                 break
 
-            message = Message(Payload(future.result().payload, committable))
+            message = Message(Value(future.result().payload, committable))
 
             self.__queue.popleft()
             self.__next_step.poll()
@@ -108,7 +108,7 @@ class Produce(ProcessingStrategy[TPayload]):
 
             committable, future = self.__queue.popleft()
 
-            message = Message(Payload(future.result().payload, committable))
+            message = Message(Value(future.result().payload, committable))
 
             self.__next_step.poll()
             self.__next_step.submit(message)

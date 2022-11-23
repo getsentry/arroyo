@@ -17,7 +17,7 @@ from typing import (
 )
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import BrokerPayload, Message, Partition, Position, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         start = time.time()
 
         payload = message.data
-        if isinstance(payload, BrokerPayload):
+        if isinstance(payload, BrokerValue):
             self.__metrics.timing(
                 "receive_latency",
                 (start - payload.timestamp.timestamp()) * 1000,

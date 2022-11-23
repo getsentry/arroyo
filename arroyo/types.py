@@ -32,20 +32,20 @@ TPayload = TypeVar("TPayload")
 class Message(Generic[TPayload]):
     """
     Contains a payload and partitions to be committed after processing.
-    Can either represent a single message from a Kafka broker (BrokerPayload)
+    Can either represent a single message from a Kafka broker (BrokerValue)
     or something else, such as a number of messages grouped together for a
     batch processing step (Payload).
     """
 
-    __slots__ = ["data"]
+    __slots__ = ["value"]
 
-    data: BasePayload[TPayload]
+    data: BaseValue[TPayload]
 
     def __init__(
         self,
-        data: BasePayload[TPayload],
+        value: BaseValue[TPayload],
     ) -> None:
-        self.data = data
+        self.value = value
 
     def __repr__(self) -> str:
         # XXX: Field values can't be excluded from ``__repr__`` with
@@ -56,11 +56,11 @@ class Message(Generic[TPayload]):
 
     @property
     def payload(self) -> TPayload:
-        return self.data.payload
+        return self.value.payload
 
     @property
     def committable(self) -> Mapping[Partition, Position]:
-        return self.data.committable
+        return self.value.committable
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class Position:
             object.__setattr__(self, slot, value)
 
 
-class BasePayload(Generic[TPayload]):
+class BaseValue(Generic[TPayload]):
     @property
     def payload(self) -> TPayload:
         raise NotImplementedError()
@@ -90,12 +90,12 @@ class BasePayload(Generic[TPayload]):
     def committable(self) -> Mapping[Partition, Position]:
         raise NotImplementedError()
 
-    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
         raise NotImplementedError
 
 
 @dataclass(unsafe_hash=True)
-class Payload(BasePayload[TPayload]):
+class Value(BaseValue[TPayload]):
     """
     Any other payload that may not map 1:1 to a single message from a
     consumer. May represent a batch spanning many partitions.
@@ -119,12 +119,12 @@ class Payload(BasePayload[TPayload]):
     def committable(self) -> Mapping[Partition, Position]:
         return self.__committable
 
-    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
-        return Payload(value, self.__committable)
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
+        return Value(value, self.__committable)
 
 
 @dataclass(unsafe_hash=True)
-class BrokerPayload(BasePayload[TPayload]):
+class BrokerValue(BaseValue[TPayload]):
     """
     A payload received from the consumer or producer after it is done producing.
     Partition, offset, and timestamp values are present.
@@ -144,8 +144,8 @@ class BrokerPayload(BasePayload[TPayload]):
         self.offset = offset
         self.timestamp = timestamp
 
-    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
-        return BrokerPayload(value, self.partition, self.offset, self.timestamp)
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
+        return BrokerValue(value, self.partition, self.offset, self.timestamp)
 
     @property
     def payload(self) -> TPayload:

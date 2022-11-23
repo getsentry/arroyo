@@ -1,7 +1,7 @@
 import pickle
 from datetime import datetime
 
-from arroyo.types import BrokerPayload, Message, Partition, Payload, Position, Topic
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
 
 
 def test_topic_contains_partition() -> None:
@@ -15,11 +15,11 @@ def test_message() -> None:
     now = datetime.now()
 
     # Broker payload
-    message = Message(BrokerPayload(b"", partition, 0, now))
+    message = Message(BrokerValue(b"", partition, 0, now))
     assert pickle.loads(pickle.dumps(message)) == message
 
     # Generic payload
-    message = Message(Payload(b"", {partition: Position(1, now)}))
+    message = Message(Value(b"", {partition: Position(1, now)}))
     assert pickle.loads(pickle.dumps(message)) == message
 
 
@@ -33,21 +33,21 @@ def test_position() -> None:
     _ = {position}
 
 
-def test_broker_payload() -> None:
+def test_broker_value() -> None:
     partition = Partition(Topic("topic"), 0)
     offset = 5
     now = datetime.now()
 
-    broker_payload = BrokerPayload(
+    broker_value = BrokerValue(
         b"asdf",
         partition,
         offset,
         now,
     )
 
-    assert broker_payload.committable == {partition: Position(offset + 1, now)}
+    assert broker_value.committable == {partition: Position(offset + 1, now)}
 
-    assert pickle.loads(pickle.dumps(broker_payload)) == broker_payload
+    assert pickle.loads(pickle.dumps(broker_value)) == broker_value
 
     # Hashable
-    _ = {broker_payload}
+    _ = {broker_value}

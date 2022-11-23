@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
 from typing import Callable, Generic, Mapping, Optional, Sequence, Union
 
-from arroyo.types import BrokerPayload, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(
-        self, timeout: Optional[float] = None
-    ) -> Optional[BrokerPayload[TPayload]]:
+    def poll(self, timeout: Optional[float] = None) -> Optional[BrokerValue[TPayload]]:
         """
         Fetch a message from the consumer. If no message is available before
         the timeout, ``None`` is returned.
@@ -170,7 +168,7 @@ class Producer(Generic[TPayload], ABC):
     @abstractmethod
     def produce(
         self, destination: Union[Topic, Partition], payload: TPayload
-    ) -> Future[BrokerPayload[TPayload]]:
+    ) -> Future[BrokerValue[TPayload]]:
         """
         Produce to a topic or partition.
         """

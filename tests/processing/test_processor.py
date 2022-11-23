@@ -11,7 +11,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerPayload, Commit, Message, Partition, Topic
+from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -41,7 +41,7 @@ def test_stream_processor_lifecycle() -> None:
     now = datetime.now()
     payload = 0
 
-    message = Message(BrokerPayload(payload, partition, offset, now))
+    message = Message(BrokerValue(payload, partition, offset, now))
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -135,7 +135,7 @@ def test_stream_processor_termination_on_error() -> None:
     offset = 0
     now = datetime.now()
 
-    consumer.poll.return_value = Message(BrokerPayload(0, partition, offset, now))
+    consumer.poll.return_value = Message(BrokerValue(0, partition, offset, now))
 
     exception = NotImplementedError("error")
 
@@ -351,11 +351,11 @@ def test_stream_processor_commit_policy() -> None:
     assert run_commit_policy_test(
         topic,
         [
-            Message(BrokerPayload(0, Partition(topic, 0), 0, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 0), 1, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 0), 2, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 0), 5, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 0), 10, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 0, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 1, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 2, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 5, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 10, datetime.now())),
         ],
         commit_every_second_message,
     ) == [
@@ -379,10 +379,10 @@ def test_stream_processor_commit_policy_multiple_partitions() -> None:
     assert run_commit_policy_test(
         topic,
         [
-            Message(BrokerPayload(0, Partition(topic, 0), 200, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 1), 400, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 0), 400, datetime.now())),
-            Message(BrokerPayload(0, Partition(topic, 1), 400, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 0), 400, datetime.now())),
+            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
         ],
         commit_every_second_message,
     ) == [
@@ -402,7 +402,7 @@ def test_stream_processor_commit_policy_always() -> None:
 
     assert run_commit_policy_test(
         topic,
-        [Message(BrokerPayload(0, Partition(topic, 0), 200, datetime.now()))],
+        [Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now()))],
         IMMEDIATE,
     ) == [
         # IMMEDIATE policy can commit on the first message (even

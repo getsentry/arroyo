@@ -3,7 +3,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from arroyo.processing.strategies.commit import CommitOffsets
-from arroyo.types import Message, Partition, Payload, Position, Topic
+from arroyo.types import Message, Partition, Position, Topic, Value
 
 
 def test_commit() -> None:
@@ -11,9 +11,7 @@ def test_commit() -> None:
     strategy: CommitOffsets[Any] = CommitOffsets(commit_func)
 
     strategy.submit(
-        Message(
-            Payload(b"", {Partition(Topic("topic"), 1): Position(5, datetime.now())})
-        )
+        Message(Value(b"", {Partition(Topic("topic"), 1): Position(5, datetime.now())}))
     )
 
     assert commit_func.call_count == 1

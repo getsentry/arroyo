@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerPayload, Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
 
-        self.__message: Optional[BrokerPayload[TPayload]] = None
+        self.__message: Optional[BrokerValue[TPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
         # ``pause`` occurred or the time the pause metric was last recorded.

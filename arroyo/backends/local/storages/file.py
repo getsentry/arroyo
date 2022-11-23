@@ -24,12 +24,12 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import BrokerPayload, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TPayload
 from arroyo.utils.codecs import Codec
 
 
 @dataclass(unsafe_hash=True)
-class FilePayload(BrokerPayload[TPayload]):
+class FileValue(BrokerValue[TPayload]):
     _next_offset: int
 
     def __init__(
@@ -160,7 +160,7 @@ class FileMessageStorage(MessageStorage[TPayload]):
 
     def produce(
         self, partition: Partition, payload: TPayload, timestamp: datetime
-    ) -> BrokerPayload[TPayload]:
+    ) -> BrokerValue[TPayload]:
         encoded = self.__codec.encode((payload, timestamp))
         file = self.__get_file_partition(partition).writer
         offset = file.tell()
@@ -168,11 +168,11 @@ class FileMessageStorage(MessageStorage[TPayload]):
         file.write(encoded)
         file.flush()
 
-        return FilePayload(payload, partition, offset, timestamp, file.tell())
+        return FileValue(payload, partition, offset, timestamp, file.tell())
 
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerPayload[TPayload]]:
+    ) -> Optional[BrokerValue[TPayload]]:
         file_partition = self.__get_file_partition(partition)
         file = file_partition.reader
 
@@ -195,4 +195,4 @@ class FileMessageStorage(MessageStorage[TPayload]):
             )
         payload, timestamp = self.__codec.decode(encoded)
 
-        return FilePayload(payload, partition, offset, timestamp, file.tell())
+        return FileValue(payload, partition, offset, timestamp, file.tell())

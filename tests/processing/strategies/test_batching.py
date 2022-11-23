@@ -7,7 +7,7 @@ from arroyo.processing.strategies.batching import (
     AbstractBatchWorker,
     BatchProcessingStrategy,
 )
-from arroyo.types import BrokerPayload, Message, Partition, Topic
+from arroyo.types import BrokerValue, Message, Partition, Topic
 
 
 class FakeWorker(AbstractBatchWorker[int, int]):
@@ -34,9 +34,7 @@ class TestConsumer(object):
         )
 
         for i in [1, 2, 3]:
-            message = Message(
-                BrokerPayload(i, Partition(topic, 0), i, datetime.utcnow())
-            )
+            message = Message(BrokerValue(i, Partition(topic, 0), i, datetime.utcnow()))
             strategy.submit(message)
             strategy.poll()
 
@@ -64,21 +62,21 @@ class TestConsumer(object):
         )
 
         for i in [1, 2, 3]:
-            message = Message(BrokerPayload(i, Partition(topic, 0), i, t1))
+            message = Message(BrokerValue(i, Partition(topic, 0), i, t1))
             strategy.submit(message)
 
         mock_time.return_value = time.mktime(t2.timetuple())
         strategy.poll()
 
         for i in [4, 5, 6]:
-            message = Message(BrokerPayload(i, Partition(topic, 0), i, t2))
+            message = Message(BrokerValue(i, Partition(topic, 0), i, t2))
             strategy.submit(message)
 
         mock_time.return_value = time.mktime(t3.timetuple())
         strategy.poll()
 
         for i in [7, 8, 9]:
-            message = Message(BrokerPayload(i, Partition(topic, 0), i, t3))
+            message = Message(BrokerValue(i, Partition(topic, 0), i, t3))
             strategy.submit(message)
             strategy.poll()
 

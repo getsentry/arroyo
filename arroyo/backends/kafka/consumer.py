@@ -43,7 +43,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import BrokerPayload, Partition, Position, Topic
+from arroyo.types import BrokerValue, Partition, Position, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -396,7 +396,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
     def poll(
         self, timeout: Optional[float] = None
-    ) -> Optional[BrokerPayload[KafkaPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         """
         Return the next message available to be consumed, if one is
         available. If no message is available, this method will block up to
@@ -452,7 +452,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 raise ConsumerError(str(error))
 
         headers: Optional[Headers] = message.headers()
-        consumer_payload = BrokerPayload(
+        consumer_payload = BrokerValue(
             KafkaPayload(
                 message.key(),
                 message.value(),
@@ -700,7 +700,7 @@ class KafkaProducer(Producer[KafkaPayload]):
 
     def __delivery_callback(
         self,
-        future: Future[BrokerPayload[KafkaPayload]],
+        future: Future[BrokerValue[KafkaPayload]],
         payload: KafkaPayload,
         error: KafkaError,
         message: ConfluentMessage,
@@ -714,7 +714,7 @@ class KafkaProducer(Producer[KafkaPayload]):
                     raise ValueError("timestamp not available")
 
                 future.set_result(
-                    BrokerPayload(
+                    BrokerValue(
                         payload,
                         Partition(Topic(message.topic()), message.partition()),
                         message.offset(),
@@ -728,7 +728,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         self,
         destination: Union[Topic, Partition],
         payload: KafkaPayload,
-    ) -> Future[BrokerPayload[KafkaPayload]]:
+    ) -> Future[BrokerValue[KafkaPayload]]:
         if self.__shutdown_requested.is_set():
             raise RuntimeError("producer has been closed")
 
@@ -743,7 +743,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         else:
             raise TypeError("invalid destination type")
 
-        future: Future[BrokerPayload[KafkaPayload]] = Future()
+        future: Future[BrokerValue[KafkaPayload]] = Future()
         future.set_running_or_notify_cancel()
         produce(
             value=payload.value,

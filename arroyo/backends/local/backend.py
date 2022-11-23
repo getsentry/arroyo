@@ -23,7 +23,7 @@ from typing import (
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import BrokerPayload, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
 from arroyo.utils.clock import Clock, SystemClock
 
 system_clock = SystemClock()
@@ -68,9 +68,7 @@ class LocalBroker(Generic[TPayload]):
         with self.__lock:
             return self.__message_storage.get_partition_count(topic)
 
-    def produce(
-        self, partition: Partition, payload: TPayload
-    ) -> BrokerPayload[TPayload]:
+    def produce(self, partition: Partition, payload: TPayload) -> BrokerValue[TPayload]:
         with self.__lock:
             return self.__message_storage.produce(
                 partition, payload, datetime.fromtimestamp(self.__clock.time())
@@ -117,7 +115,7 @@ class LocalBroker(Generic[TPayload]):
 
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerPayload[TPayload]]:
+    ) -> Optional[BrokerValue[TPayload]]:
         with self.__lock:
             return self.__message_storage.consume(partition, offset)
 
@@ -224,9 +222,7 @@ class LocalConsumer(Consumer[TPayload]):
             self.__staged_positions.clear()
             self.__last_eof_at.clear()
 
-    def poll(
-        self, timeout: Optional[float] = None
-    ) -> Optional[BrokerPayload[TPayload]]:
+    def poll(self, timeout: Optional[float] = None) -> Optional[BrokerValue[TPayload]]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -254,7 +250,7 @@ class LocalConsumer(Consumer[TPayload]):
                         self.__last_eof_at[partition] = offset
                         raise EndOfPartition(partition, offset)
                 else:
-                    assert isinstance(payload, BrokerPayload)
+                    assert isinstance(payload, BrokerValue)
                     self.__offsets[partition] = payload.next_offset
 
                     return payload
@@ -374,7 +370,7 @@ class LocalProducer(Producer[TPayload]):
 
     def produce(
         self, destination: Union[Topic, Partition], payload: TPayload
-    ) -> Future[BrokerPayload[TPayload]]:
+    ) -> Future[BrokerValue[TPayload]]:
         with self.__lock:
             assert not self.__closed
 
@@ -391,7 +387,7 @@ class LocalProducer(Producer[TPayload]):
             else:
                 raise TypeError("invalid destination type")
 
-            future: Future[BrokerPayload[TPayload]] = Future()
+            future: Future[BrokerValue[TPayload]] = Future()
             future.set_running_or_notify_cancel()
             try:
                 message = self.__broker.produce(partition, payload)

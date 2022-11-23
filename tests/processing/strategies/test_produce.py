@@ -5,7 +5,7 @@ from arroyo.backends.kafka import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.processing.strategies.produce import Produce, ProduceAndCommit
-from arroyo.types import Message, Partition, Payload, Position, Topic
+from arroyo.types import Message, Partition, Position, Topic, Value
 from arroyo.utils.clock import TestingClock
 
 
@@ -26,7 +26,7 @@ def test_produce() -> None:
     value = b'{"something": "something"}'
     data = KafkaPayload(None, value, [])
 
-    message = Message(Payload(data, {Partition(orig_topic, 0): Position(1, epoch)}))
+    message = Message(Value(data, {Partition(orig_topic, 0): Position(1, epoch)}))
 
     strategy.submit(message)
 
@@ -63,7 +63,7 @@ def test_produce_and_commit() -> None:
     value = b'{"something": "something"}'
     data = KafkaPayload(None, value, [])
 
-    message = Message(Payload(data, {Partition(orig_topic, 0): Position(1, epoch)}))
+    message = Message(Value(data, {Partition(orig_topic, 0): Position(1, epoch)}))
 
     strategy.submit(message)
 
