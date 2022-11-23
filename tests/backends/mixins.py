@@ -10,7 +10,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -77,14 +77,17 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with assert_changes(
                 lambda: assignment_callback.called, False, True
             ), assert_changes(
-                consumer.tell, {}, {Partition(topic, 0): messages[1].next_offset}
+                consumer.tell,
+                {},
+                {Partition(topic, 0): messages[1].next_offset},
             ):
-                message = consumer.poll(10.0)  # XXX: getting the subcription is slow
+                value = consumer.poll(10.0)  # XXX: getting the subcription is slow
 
-            assert isinstance(message, Message)
-            assert message.partition == Partition(topic, 0)
-            assert message.offset == messages[1].offset
-            assert message.payload == messages[1].payload
+            assert isinstance(value, BrokerValue)
+            assert value.committable == messages[1].committable
+            assert value.partition == Partition(topic, 0)
+            assert value.offset == messages[1].offset
+            assert value == messages[1]
 
             consumer.seek({Partition(topic, 0): messages[0].offset})
             assert consumer.tell() == {Partition(topic, 0): messages[0].offset}
@@ -102,21 +105,15 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with assert_changes(consumer.paused, [Partition(topic, 0)], []):
                 consumer.resume([Partition(topic, 0)])
 
-            message = consumer.poll(5.0)
-            assert isinstance(message, Message)
-            assert message.partition == Partition(topic, 0)
-            assert message.offset == messages[0].offset
-            assert message.payload == messages[0].payload
+            value = consumer.poll(5.0)
+            assert isinstance(value, BrokerValue)
+            assert value.partition == Partition(topic, 0)
+            assert value.offset == messages[0].offset
+            assert value.payload == messages[0].payload
 
             assert consumer.commit_positions() == {}
 
-            consumer.stage_positions(
-                {
-                    message.partition: Position(
-                        message.next_offset, messages[1].timestamp
-                    )
-                }
-            )
+            consumer.stage_positions(value.committable)
 
             with pytest.raises(ConsumerError):
                 consumer.stage_positions(
@@ -128,7 +125,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 )
 
             assert consumer.commit_positions() == {
-                Partition(topic, 0): Position(message.next_offset, message.timestamp)
+                Partition(topic, 0): Position(value.next_offset, value.timestamp)
             }
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
@@ -191,17 +188,18 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             consumer.subscribe([topic], on_revoke=revocation_callback)
 
-            message = consumer.poll(10.0)  # XXX: getting the subscription is slow
-            assert isinstance(message, Message)
-            assert message.partition == Partition(topic, 0)
-            assert message.offset == messages[1].offset
-            assert message.payload == messages[1].payload
+            value = consumer.poll(10.0)  # XXX: getting the subscription is slow
+            assert isinstance(value, BrokerValue)
+            assert value.partition == Partition(topic, 0)
+            assert value.offset == messages[1].offset
+            assert value.payload == messages[1].payload
+            assert value == messages[1]
 
             try:
                 assert consumer.poll(1.0) is None
             except EndOfPartition as error:
                 assert error.partition == Partition(topic, 0)
-                assert error.offset == message.next_offset
+                assert error.offset == value.next_offset
             else:
                 raise AssertionError("expected EndOfPartition error")
 
@@ -248,6 +246,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             def on_assign(partitions: Mapping[Partition, int]) -> None:
                 # NOTE: This will eventually need to be controlled by a generalized
                 # consumer auto offset reset setting.
+
                 assert (
                     partitions
                     == consumer.tell()
@@ -258,72 +257,78 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             consumer.subscribe([topic], on_assign=on_assign)
 
             for i in range(5):
-                message = consumer.poll(1.0)
-                if message is not None:
+                value = consumer.poll(1.0)
+                if value is not None:
                     break
                 else:
                     time.sleep(1.0)
             else:
                 raise Exception("assignment never received")
 
-            assert message == messages[0]
+            assert isinstance(value, BrokerValue)
+            assert value == messages[0]
 
             # The first call to ``poll`` should raise ``EndOfPartition``. It
             # should be otherwise be safe to try to read the first missing
             # offset (index) in the partition.
             with assert_does_not_change(
-                consumer.tell, {message.partition: message.next_offset}
+                consumer.tell, {value.partition: value.next_offset}
             ), pytest.raises(EndOfPartition):
-                consumer.poll(1.0) is None
+                assert consumer.poll(1.0) is None
 
             # It should be otherwise be safe to try to read the first missing
             # offset (index) in the partition.
             with assert_does_not_change(
-                consumer.tell, {message.partition: message.next_offset}
+                consumer.tell, {value.partition: value.next_offset}
             ):
                 assert consumer.poll(1.0) is None
 
             with assert_changes(
                 consumer.tell,
-                {message.partition: message.next_offset},
-                {message.partition: message.offset},
+                {value.partition: value.next_offset},
+                {value.partition: value.offset},
             ):
-                consumer.seek({message.partition: message.offset})
+                consumer.seek({value.partition: value.offset})
 
             with assert_changes(
                 consumer.tell,
-                {message.partition: message.offset},
-                {message.partition: message.next_offset},
+                {value.partition: value.offset},
+                {value.partition: value.next_offset},
             ):
-                assert consumer.poll(1.0) == messages[0]
+                value = consumer.poll()
+                assert value == messages[0]
 
             # Seeking beyond the first missing index should work but subsequent
             # reads should error. (We don't know if this offset is valid or not
             # until we try to fetch a message.)
+            assert isinstance(value, BrokerValue)
             with assert_changes(
                 consumer.tell,
-                {message.partition: message.next_offset},
-                {message.partition: message.next_offset + 1},
+                {value.partition: value.next_offset},
+                {value.partition: value.next_offset + 1},
             ):
-                consumer.seek({message.partition: message.next_offset + 1})
+                consumer.seek({value.partition: value.next_offset + 1})
 
             # Offsets should not be advanced after a failed poll.
             with assert_does_not_change(
-                consumer.tell, {message.partition: message.next_offset + 1}
+                consumer.tell,
+                {value.partition: value.next_offset + 1},
             ), pytest.raises(ConsumerError):
                 consumer.poll(1.0)
 
             # Trying to seek on an unassigned partition should error.
             with assert_does_not_change(
-                consumer.tell, {message.partition: message.next_offset + 1}
+                consumer.tell,
+                {value.partition: value.next_offset + 1},
             ), pytest.raises(ConsumerError):
-                consumer.seek({message.partition: 0, Partition(topic, -1): 0})
+                consumer.seek({value.partition: 0, Partition(topic, -1): 0})
 
             # Trying to seek to a negative offset should error.
             with assert_does_not_change(
-                consumer.tell, {message.partition: message.next_offset + 1}
+                consumer.tell,
+                {value.partition: value.next_offset + 1},
             ), pytest.raises(ConsumerError):
-                consumer.seek({message.partition: -1})
+                consumer.seek({value.partition: -1})
 
     def test_pause_resume(self) -> None:
         payloads = self.get_payloads()

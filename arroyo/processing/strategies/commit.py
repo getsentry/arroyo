@@ -20,7 +20,7 @@ class CommitOffsets(ProcessingStrategy[TPayload]):
         pass
 
     def submit(self, message: Message[TPayload]) -> None:
-        self.__commit({message.partition: message.position_to_commit})
+        self.__commit(message.committable)
 
     def close(self) -> None:
         pass
