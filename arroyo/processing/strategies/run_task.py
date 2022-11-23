@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import BasePayload, BrokerPayload, Message, Payload
+from arroyo.types import Message
 
 logger = logging.getLogger(__name__)
 
@@ -73,16 +73,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
             self.__queue.popleft()
 
-            payload: BasePayload[TResult]
-            if isinstance(message.data, BrokerPayload):
-                payload = BrokerPayload(
-                    result,
-                    message.data.partition,
-                    message.data.offset,
-                    message.data.timestamp,
-                )
-            else:
-                payload = Payload(result, message.committable)
+            payload = message.data.replace(result)
 
             next_message = Message(payload)
 
@@ -102,16 +93,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
             result = future.result(remaining)
 
-            payload: BasePayload[TResult]
-            if isinstance(message.data, BrokerPayload):
-                payload = BrokerPayload(
-                    result,
-                    message.data.partition,
-                    message.data.offset,
-                    message.data.timestamp,
-                )
-            else:
-                payload = Payload(result, message.committable)
+            payload = message.data.replace(result)
 
             next_message = Message(payload)
             self.__next_step.poll()

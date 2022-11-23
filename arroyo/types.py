@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, Mapping, Protocol, TypeVar
 
+TReplaced = TypeVar("TReplaced")
+
 
 @dataclass(order=True, unsafe_hash=True)
 class Topic:
@@ -82,11 +84,14 @@ class Position:
 class BasePayload(Generic[TPayload]):
     @property
     def payload(self) -> TPayload:
-        pass
+        raise NotImplementedError()
 
     @property
     def committable(self) -> Mapping[Partition, Position]:
-        pass
+        raise NotImplementedError()
+
+    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
+        raise NotImplementedError
 
 
 @dataclass(unsafe_hash=True)
@@ -114,6 +119,9 @@ class Payload(BasePayload[TPayload]):
     def committable(self) -> Mapping[Partition, Position]:
         return self.__committable
 
+    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
+        return Payload(value, self.__committable)
+
 
 @dataclass(unsafe_hash=True)
 class BrokerPayload(BasePayload[TPayload]):
@@ -135,6 +143,9 @@ class BrokerPayload(BasePayload[TPayload]):
         self.partition = partition
         self.offset = offset
         self.timestamp = timestamp
+
+    def replace(self, value: TReplaced) -> BasePayload[TReplaced]:
+        return BrokerPayload(value, self.partition, self.offset, self.timestamp)
 
     @property
     def payload(self) -> TPayload:
