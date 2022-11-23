@@ -273,7 +273,7 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            payload = message.data.replace(result)
+            payload = message.value.replace(result)
             valid_messages_transformed.append(Message(payload))
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
