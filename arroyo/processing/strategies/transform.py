@@ -66,8 +66,8 @@ class TransformStep(ProcessingStep[TPayload]):
         assert not self.__closed
 
         result = self.__transform_function(message)
-        payload = message.data.replace(result)
-        self.__next_step.submit(Message(payload))
+        value = message.value.replace(result)
+        self.__next_step.submit(Message(value))
 
     def close(self) -> None:
         self.__closed = True

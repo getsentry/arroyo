@@ -40,7 +40,7 @@ NOW = datetime.now()
 def kafka_message_to_invalid_kafka_message(
     message: Message[KafkaPayload], reason: str
 ) -> InvalidKafkaMessage:
-    consumer_payload = message.data
+    consumer_payload = message.value
     assert isinstance(consumer_payload, BrokerValue)
     return InvalidKafkaMessage(
         payload=consumer_payload.payload.value,
@@ -155,23 +155,28 @@ def processing_step() -> ProcessingStrategy[KafkaPayload]:
 def valid_message() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
     position = Position(0, NOW)
-    valid_payload = BrokerValue(
-        KafkaPayload(b"Key", b"Value", []),
-        partition,
-        position.offset,
-        position.timestamp,
+    return Message(
+        BrokerValue(
+            KafkaPayload(b"Key", b"Value", []),
+            partition,
+            position.offset,
+            position.timestamp,
+        )
     )
-    return Message(valid_payload)
 
 
 @pytest.fixture
 def invalid_message_no_key() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
     position = Position(0, NOW)
-    invalid_payload = BrokerValue(
-        KafkaPayload(None, b"Value", []), partition, position.offset, position.timestamp
+    return Message(
+        BrokerValue(
+            KafkaPayload(None, b"Value", []),
+            partition,
+            position.offset,
+            position.timestamp,
+        )
     )
-    return Message(invalid_payload)
 
 
 @pytest.fixture
@@ -179,13 +184,14 @@ def invalid_message_bad_value() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
     position = Position(0, NOW)
 
-    invalid_payload = BrokerValue(
-        KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
-        partition,
-        position.offset,
-        position.timestamp,
+    return Message(
+        BrokerValue(
+            KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
+            partition,
+            position.offset,
+            position.timestamp,
+        )
     )
-    return Message(invalid_payload)
 
 
 def test_raise(
@@ -350,9 +356,9 @@ def test_produce_invalid_messages(
     dlq_produce.submit(invalid_message_no_key)
     dlq_produce.submit(invalid_message_bad_value)
 
-    payload = consumer.poll()
-    assert payload is not None
-    produced_message = Message(payload)
+    value = consumer.poll()
+    assert value is not None
+    produced_message = Message(value)
     assert_produced_message_is_expected(
         produced_message,
         {
@@ -368,9 +374,9 @@ def test_produce_invalid_messages(
         },
     )
 
-    payload = consumer.poll()
-    assert payload is not None
-    produced_message = Message(payload)
+    value = consumer.poll()
+    assert value is not None
+    produced_message = Message(value)
     assert_produced_message_is_expected(
         produced_message,
         {

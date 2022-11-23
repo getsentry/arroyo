@@ -73,7 +73,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
             self.__queue.popleft()
 
-            payload = message.data.replace(result)
+            payload = message.value.replace(result)
 
             next_message = Message(payload)
 
@@ -93,7 +93,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
             result = future.result(remaining)
 
-            payload = message.data.replace(result)
+            payload = message.value.replace(result)
 
             next_message = Message(payload)
             self.__next_step.poll()

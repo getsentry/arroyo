@@ -452,7 +452,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 raise ConsumerError(str(error))
 
         headers: Optional[Headers] = message.headers()
-        consumer_payload = BrokerValue(
+        broker_value = BrokerValue(
             KafkaPayload(
                 message.key(),
                 message.value(),
@@ -462,9 +462,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             message.offset(),
             datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
-        self.__offsets[consumer_payload.partition] = consumer_payload.next_offset
+        self.__offsets[broker_value.partition] = broker_value.next_offset
 
-        return consumer_payload
+        return broker_value
 
     def tell(self) -> Mapping[Partition, int]:
         """

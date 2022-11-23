@@ -63,7 +63,7 @@ def test_stream_processor_lifecycle() -> None:
 
     # If ``Consumer.poll`` **does** return a message, we should poll the
     # processing strategy and submit the message for processing.
-    consumer.poll.return_value = message.data
+    consumer.poll.return_value = message.value
     with assert_changes(lambda: int(strategy.poll.call_count), 1, 2), assert_changes(
         lambda: int(strategy.submit.call_count), 0, 1
     ):
@@ -73,7 +73,7 @@ def test_stream_processor_lifecycle() -> None:
     # If the message is rejected by the processing strategy, the consumer
     # should be paused and the message should be held for later.
     consumer.tell.return_value = offsets
-    consumer.poll.return_value = message.data
+    consumer.poll.return_value = message.value
     strategy.submit.side_effect = MessageRejected()
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()

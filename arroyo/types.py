@@ -39,7 +39,7 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["value"]
 
-    data: BaseValue[TPayload]
+    value: BaseValue[TPayload]
 
     def __init__(
         self,

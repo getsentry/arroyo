@@ -140,14 +140,14 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         start = time.time()
 
-        payload = message.data
-        if isinstance(payload, BrokerValue):
+        value = message.value
+        if isinstance(value, BrokerValue):
             self.__metrics.timing(
                 "receive_latency",
-                (start - payload.timestamp.timestamp()) * 1000,
+                (start - value.timestamp.timestamp()) * 1000,
                 tags={
-                    "topic": payload.partition.topic.name,
-                    "partition": str(payload.partition.index),
+                    "topic": value.partition.topic.name,
+                    "partition": str(value.partition.index),
                 },
             )
 
