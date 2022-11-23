@@ -7,7 +7,7 @@ from arroyo.processing.strategies.collect import CollectStep, ParallelCollectSte
 from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.processing.strategies.filter import FilterStep
 from arroyo.processing.strategies.produce import Produce
-from arroyo.processing.strategies.run_task import RunTaskInThreads
+from arroyo.processing.strategies.run_task import RunTask, RunTaskInThreads
 from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
 
 __all__ = [
@@ -21,5 +21,6 @@ __all__ = [
     "ProcessingStrategy",
     "ProcessingStrategyFactory",
     "Produce",
+    "RunTask",
     "RunTaskInThreads",
 ]
