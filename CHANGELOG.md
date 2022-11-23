@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.0.0
+
+### Various fixes & improvements
+
+- feat: Split the Message interface to better support batching steps (#134) by @lynnagara
+- feat: Remove BatchProcessingStrategyFactory from Arroyo (#138) by @lynnagara
+- docs: Add docstring for MessageRejected (#146) by @lynnagara
+- feat: Increase log level during consumer shutdown (#144) by @lynnagara
+- feat: Remove ProduceAndCommit (#145) by @lynnagara
+
 ## 1.2.0
 
 ### Various fixes & improvements
