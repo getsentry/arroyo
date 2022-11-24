@@ -4,13 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import Semaphore
 from typing import Iterator, Mapping, Optional
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call
 
 import pytest
 
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
-from arroyo.types import Message, Partition, Position, Topic
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -18,7 +18,7 @@ def message_generator(
     partition: Partition, starting_offset: int = 0
 ) -> Iterator[Message[int]]:
     for i in itertools.count(starting_offset):
-        yield Message(partition, i, i, datetime.now())
+        yield Message(BrokerValue(i, partition, i, datetime.utcnow()))
 
 
 @pytest.mark.parametrize("parallel", [0, 1])
@@ -54,9 +54,8 @@ def test_collect(parallel: int) -> None:
         collect_step.poll()
         # Give the threadpool some time to do processing
         time.sleep(1) if parallel else None
-        assert commit_function.call_args == call(
-            {partition: Position(2, second_message.timestamp)}
-        )
+
+        assert commit_function.call_args == call({partition: Position(2, ANY)})
 
     step_factory.return_value = inner_step = Mock()
 
