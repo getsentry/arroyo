@@ -53,3 +53,15 @@ Producers
 .. automodule:: arroyo.processing.strategies.produce
    :members:
    :undoc-members:
+
+
+Dead Letter Queue
+--------------------------
+
+Arroyo's DLQ is subject to change, and will likely be redesigned from the
+ground up in an upcoming release.
+
+.. automodule:: arroyo.processing.strategies.dead_letter_queue
+   :members:
+   :undoc-members:
+   :show-inheritance:

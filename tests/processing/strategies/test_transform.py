@@ -10,8 +10,8 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidKafkaMessage,
     InvalidMessages,
+    InvalidRawMessage,
 )
 from arroyo.processing.strategies.transform import (
     MessageBatch,
@@ -20,7 +20,7 @@ from arroyo.processing.strategies.transform import (
     ValueTooLarge,
     parallel_transform_worker_apply,
 )
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -35,17 +35,16 @@ def test_transform() -> None:
 
     transform_step = TransformStep(transform_function, next_step)
 
-    original_message = Message(Partition(Topic("topic"), 0), 0, 1, datetime.now())
+    original_message = Message(
+        Value(1, {Partition(Topic("topic"), 0): Position(1, datetime.now())})
+    )
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
         transform_step.submit(original_message)
 
     assert next_step.submit.call_args == call(
         Message(
-            original_message.partition,
-            original_message.offset,
-            transform_function(original_message),
-            original_message.timestamp,
+            Value(transform_function(original_message), original_message.committable)
         )
     )
 
@@ -56,6 +55,27 @@ def test_transform() -> None:
         lambda: int(next_step.join.call_count), 0, 1
     ):
         transform_step.join()
+
+    next_step.reset_mock()
+    next_step.submit.reset_mock()
+
+    broker_payload = BrokerValue(1, Partition(Topic("topic"), 0), 0, datetime.now())
+
+    original_broker_message = Message(broker_payload)
+
+    with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
+        transform_step.submit(original_broker_message)
+
+    assert next_step.submit.call_args == call(
+        Message(
+            BrokerValue(
+                transform_function(original_broker_message),
+                broker_payload.partition,
+                broker_payload.offset,
+                broker_payload.timestamp,
+            )
+        )
+    )
 
 
 class WaitProcessingStep(ProcessingStrategy[int]):
@@ -92,7 +112,10 @@ def test_message_batch() -> None:
     assert block.size == 16384
 
     message = Message(
-        partition, 0, KafkaPayload(None, b"\x00" * 16000, []), datetime.now()
+        Value(
+            KafkaPayload(None, b"\x00" * 16000, []),
+            {partition: Position(0, datetime.now())},
+        )
     )
 
     batch: MessageBatch[KafkaPayload] = MessageBatch(block)
@@ -119,10 +142,10 @@ def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
 def test_parallel_transform_worker_apply() -> None:
     messages = [
         Message(
-            Partition(Topic("test"), 0),
-            i,
-            KafkaPayload(None, b"\x00" * size, []),
-            datetime.now(),
+            Value(
+                KafkaPayload(None, b"\x00" * size, []),
+                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+            )
         )
         for i, size in enumerate([4000, 4000, 8000, 12000])
     ]
@@ -180,14 +203,8 @@ def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
     if message.payload.key is None:
         raise InvalidMessages(
             [
-                InvalidKafkaMessage(
+                InvalidRawMessage(
                     payload=str(message.payload),
-                    timestamp=message.timestamp,
-                    topic=message.partition.topic.name,
-                    consumer_group="",
-                    partition=message.partition.index,
-                    offset=message.offset,
-                    headers=message.payload.headers,
                     reason=NO_KEY,
                 )
             ]
@@ -204,10 +221,10 @@ def test_parallel_transform_worker_bad_messages() -> None:
     # every other message has a key
     messages = [
         Message(
-            Partition(Topic("test"), 0),
-            i,
-            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-            datetime.now(),
+            Value(
+                KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
+                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+            )
         )
         for i in range(9)
     ]
@@ -251,10 +268,10 @@ def test_parallel_transform_step() -> None:
 
     messages = [
         Message(
-            Partition(Topic("test"), 0),
-            i,
-            KafkaPayload(None, b"\x00" * size, []),
-            datetime.now(),
+            Value(
+                KafkaPayload(None, b"\x00" * size, []),
+                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+            )
         )
         for i, size in enumerate([4000, 4000, 8000, 2000])
     ]
@@ -354,10 +371,10 @@ def test_parallel_transform_step_bad_messages() -> None:
     # every other message has a key
     messages = [
         Message(
-            Partition(Topic("test"), 0),
-            0,
-            KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-            datetime.now(),
+            Value(
+                KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
+                {Partition(Topic("test"), 0): Position(0, datetime.now())},
+            )
         )
         for i in range(9)
     ]
@@ -393,7 +410,7 @@ def test_parallel_transform_step_bad_messages() -> None:
     assert len(e_info.value.messages) == 5
     # Test exception pickles and decodes correctly
     invalid_message = e_info.value.messages[0]
-    assert isinstance(invalid_message, InvalidKafkaMessage)
+    assert isinstance(invalid_message, InvalidRawMessage)
     assert invalid_message.reason == NO_KEY
     assert invalid_message.payload == str(messages[0].payload)
     # The 4 good ones should not have been blocked

@@ -11,4 +11,3 @@ Contents:
    architecture
    strategies
    offsets
-   dlq

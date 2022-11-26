@@ -64,14 +64,10 @@ class TransformStep(ProcessingStep[TPayload], Generic[TPayload, TTransformed]):
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
-        self.__next_step.submit(
-            Message(
-                message.partition,
-                message.offset,
-                self.__transform_function(message),
-                message.timestamp,
-            )
-        )
+
+        result = self.__transform_function(message)
+        value = message.value.replace(result)
+        self.__next_step.submit(Message(value))
 
     def close(self) -> None:
         self.__closed = True
@@ -277,9 +273,8 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            valid_messages_transformed.append(
-                Message(message.partition, message.offset, result, message.timestamp)
-            )
+            payload = message.value.replace(result)
+            valid_messages_transformed.append(Message(payload))
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
             # the batch is empty, we'll never be able to write it and should
@@ -299,8 +294,8 @@ def parallel_transform_worker_apply(
 class ParallelTransformStep(ProcessingStep[TPayload]):
     """
     Caution: MessageRejected is not properly handled by the ParallelTransform step. Exercise
-    caution if chaining this step before a strategy like `ProduceAndCommit` which raises
-    MessageRejected in order to apply backpressure.
+    caution if chaining this step before a strategy like `Produce` or `RunTaskInThreads` which
+    raise MessageRejected in order to apply backpressure.
     """
 
     def __init__(

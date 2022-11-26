@@ -5,13 +5,15 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.processing.strategies.batching import BatchStep, MessageBatch, UnbatchStep
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
+from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.processing.strategies.filter import FilterStep
-from arroyo.processing.strategies.produce import ProduceAndCommit
+from arroyo.processing.strategies.produce import Produce
 from arroyo.processing.strategies.run_task import RunTaskInThreads
 from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
 
 __all__ = [
     "CollectStep",
+    "CommitOffsets",
     "ParallelCollectStep",
     "FilterStep",
     "TransformStep",
@@ -19,7 +21,7 @@ __all__ = [
     "MessageRejected",
     "ProcessingStrategy",
     "ProcessingStrategyFactory",
-    "ProduceAndCommit",
+    "Produce",
     "RunTaskInThreads",
     "MessageBatch",
     "BatchStep",

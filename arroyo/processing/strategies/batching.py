@@ -18,12 +18,16 @@ from typing import (
     TypeVar,
 )
 
-from arroyo.processing.strategies.abstract import (
-    MessageRejected,
-    ProcessingStrategy,
-    ProcessingStrategyFactory,
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.types import (
+    BaseValue,
+    BrokerValue,
+    Message,
+    Partition,
+    Position,
+    TPayload,
+    Value,
 )
-from arroyo.types import Message, OffsetRange, Partition, Position, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -146,14 +150,16 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 
         start = time.time()
 
-        self.__metrics.timing(
-            "receive_latency",
-            (start - message.timestamp.timestamp()) * 1000,
-            tags={
-                "topic": message.partition.topic.name,
-                "partition": str(message.partition.index),
-            },
-        )
+        value = message.value
+        if isinstance(value, BrokerValue):
+            self.__metrics.timing(
+                "receive_latency",
+                (start - value.timestamp.timestamp()) * 1000,
+                tags={
+                    "topic": value.partition.topic.name,
+                    "partition": str(value.partition.index),
+                },
+            )
 
         # Create the batch only after the first message is seen.
         if self.__batch is None:
@@ -171,15 +177,16 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__batch.processing_time_ms += duration
         self.__metrics.timing("process_message", duration)
 
-        if message.partition in self.__batch.offsets:
-            self.__batch.offsets[message.partition].hi = message.next_offset
-            self.__batch.offsets[message.partition].timestamp = message.timestamp
-        else:
-            self.__batch.offsets[message.partition] = Offsets(
-                message.offset,
-                message.next_offset,
-                message.timestamp,
-            )
+        for (partition, position) in message.committable.items():
+            if partition in self.__batch.offsets:
+                self.__batch.offsets[partition].hi = position.offset
+                self.__batch.offsets[partition].timestamp = position.timestamp
+            else:
+                self.__batch.offsets[partition] = Offsets(
+                    position.offset,
+                    position.offset,
+                    position.timestamp,
+                )
 
     def close(self) -> None:
         self.__closed = True
@@ -238,35 +245,6 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__batch = None
 
 
-class BatchProcessingStrategyFactory(ProcessingStrategyFactory[TPayload]):
-    """
-    Do not use for new consumers.
-    This is deprecated and will be removed in a future version.
-    """
-
-    def __init__(
-        self,
-        worker: AbstractBatchWorker[TPayload, TResult],
-        max_batch_size: int,
-        max_batch_time: int,
-    ) -> None:
-        self.__worker = worker
-        self.__max_batch_size = max_batch_size
-        self.__max_batch_time = max_batch_time
-
-    def create_with_partitions(
-        self,
-        commit: Callable[[Mapping[Partition, Position]], None],
-        partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TPayload]:
-        return BatchProcessingStrategy(
-            commit,
-            self.__worker,
-            self.__max_batch_size,
-            self.__max_batch_time,
-        )
-
-
 @dataclass(frozen=True)
 class MessageBatch(Generic[TPayload]):
     """
@@ -282,13 +260,13 @@ class MessageBatch(Generic[TPayload]):
     when checking for an empty batch.
     """
 
-    messages: Sequence[Message[TPayload]]
-    offsets: Mapping[Partition, OffsetRange]
+    offsets: Mapping[Partition, Position]
+    messages: Sequence[BaseValue[TPayload]]
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__}: {len(self.messages)} message{'s' if len(self.messages) != 1 else ''}>"
 
-    def last(self) -> Optional[Message[TPayload]]:
+    def last(self) -> Optional[BaseValue[TPayload]]:
         return self.messages[-1] if self.messages else None
 
     def is_empty(self) -> bool:
@@ -312,35 +290,29 @@ class BatchBuilder(Generic[TPayload]):
     ) -> None:
         self.__max_batch_time = max_batch_time
         self.__max_batch_size = max_batch_size
-        self.__messages: MutableSequence[Message[TPayload]] = []
-        self.__offsets: MutableMapping[Partition, OffsetRange] = {}
+        self.__messages: MutableSequence[BaseValue[TPayload]] = []
+        self.__offsets: MutableMapping[Partition, Position] = {}
         self.__init_time = time.time()
 
-    def append(self, message: Message[TPayload]) -> None:
-        if message.partition in self.__offsets:
-            if self.__offsets[message.partition].hi >= message.next_offset:
-                raise OutOfOrderMessage(
-                    f"Received offset {message.next_offset}. Current watermark {self.__offsets[message.partition].hi}"
-                )
+    def append(self, value: BaseValue[TPayload]) -> None:
+        committables = value.committable
+        for partition, position in committables.items():
+            if partition in self.__offsets:
+                if self.__offsets[partition].offset >= position.offset:
+                    raise OutOfOrderMessage(
+                        f"Received offset {position.offset}. Current watermark {self.__offsets[partition].offset}"
+                    )
 
-            self.__offsets[message.partition].hi = message.next_offset
-            self.__offsets[message.partition].timestamp = message.timestamp
-        else:
-            self.__offsets[message.partition] = OffsetRange(
-                message.offset, message.next_offset, message.timestamp
-            )
+            self.__offsets[partition] = position
 
-        self.__messages.append(message)
+        self.__messages.append(value)
 
     def build_if_ready(self) -> Optional[MessageBatch[TPayload]]:
         if (
             len(self.__messages) >= self.__max_batch_size
             or time.time() > self.__init_time + self.__max_batch_time
         ):
-            return MessageBatch(
-                messages=self.__messages,
-                offsets=self.__offsets,
-            )
+            return MessageBatch(messages=self.__messages, offsets=self.__offsets)
         else:
             return None
 
@@ -374,7 +346,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self,
         max_batch_time_sec: float,
         max_batch_size: int,
-        next_step: ProcessingStrategy[MessageBatch[TPayload]],
+        next_step: ProcessingStrategy[Sequence[BaseValue[TPayload]]],
     ) -> None:
         self.__max_batch_time_sec = max_batch_time_sec
         self.__max_batch_size = max_batch_size
@@ -388,23 +360,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         if batch is None:
             return
 
-        last_msg = batch.last()
-        if last_msg is None:
-            # TODO: PR #134 will fix this problem and make it unnecessary
-            # to hack partition id = 0 and offset = 0 for empty batches.
-            batch_msg = Message(
-                partition=Partition(Topic(""), 0),
-                offset=0,
-                timestamp=datetime.now(),
-                payload=batch,
-            )
-        else:
-            batch_msg = Message(
-                partition=last_msg.partition,
-                offset=last_msg.offset,
-                timestamp=last_msg.timestamp,
-                payload=batch,
-            )
+        batch_msg = Message(value=Value(batch.messages, batch.offsets))
         self.__next_step.submit(batch_msg)
         self.__batch_builder = None
 
@@ -431,7 +387,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
                 max_batch_size=self.__max_batch_size,
             )
 
-        self.__batch_builder.append(message)
+        self.__batch_builder.append(message.value)
 
     def poll(self) -> None:
         assert not self.__closed
@@ -462,7 +418,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         )
 
 
-class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
+class UnbatchStep(ProcessingStrategy[Sequence[BaseValue[TPayload]]]):
     """
     This processing step receives batches and explodes them sending
     the content message by message to the next step.
@@ -479,21 +435,21 @@ class UnbatchStep(ProcessingStrategy[MessageBatch[TPayload]]):
         next_step: ProcessingStrategy[TPayload],
     ) -> None:
         self.__next_step = next_step
-        self.__batch_to_send: Deque[Message[TPayload]] = deque()
+        self.__batch_to_send: Deque[BaseValue[TPayload]] = deque()
         self.__closed = False
 
     def __flush(self) -> None:
         while self.__batch_to_send:
             msg = self.__batch_to_send[0]
-            self.__next_step.submit(msg)
+            self.__next_step.submit(Message(msg))
             self.__batch_to_send.popleft()
 
-    def submit(self, message: Message[MessageBatch[TPayload]]) -> None:
+    def submit(self, message: Message[Sequence[BaseValue[TPayload]]]) -> None:
         assert not self.__closed
         if self.__batch_to_send:
             raise MessageRejected
 
-        self.__batch_to_send.extend(message.payload.messages)
+        self.__batch_to_send.extend(message.payload)
         try:
             self.__flush()
         except MessageRejected:

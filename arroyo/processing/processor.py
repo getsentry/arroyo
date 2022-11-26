@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
 
-        self.__message: Optional[Message[TPayload]] = None
+        self.__message: Optional[BrokerValue[TPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
         # ``pause`` occurred or the time the pause metric was last recorded.
@@ -84,7 +84,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
-        self.__messages_since_last_commit = 0
+        self.__committed_offsets: MutableMapping[Partition, int] = {}
 
         self.__shutdown_requested = False
 
@@ -94,13 +94,13 @@ class StreamProcessor(Generic[TPayload]):
                     "received unexpected revocation without active processing strategy"
                 )
 
-            logger.debug("Closing %r...", self.__processing_strategy)
+            logger.info("Closing %r...", self.__processing_strategy)
             self.__processing_strategy.close()
 
-            logger.debug("Waiting for %r to exit...", self.__processing_strategy)
+            logger.info("Waiting for %r to exit...", self.__processing_strategy)
             self.__processing_strategy.join()
 
-            logger.debug(
+            logger.info(
                 "%r exited successfully, releasing assignment.",
                 self.__processing_strategy,
             )
@@ -156,10 +156,14 @@ class StreamProcessor(Generic[TPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         self.__consumer.stage_positions(positions)
-        self.__messages_since_last_commit += 1
+
+        messages_since_last_commit = 0
+        for partition, pos in positions.items():
+            prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
+            messages_since_last_commit += pos.offset - prev_offset
 
         if force or self.__commit_policy.should_commit(
-            self.__last_committed_time, self.__messages_since_last_commit
+            self.__last_committed_time, messages_since_last_commit
         ):
             start = time.time()
             self.__consumer.commit_positions()
@@ -169,7 +173,8 @@ class StreamProcessor(Generic[TPayload]):
                 self.__consumer,
             )
             self.__last_committed_time = start
-            self.__messages_since_last_commit = 0
+            for partition, pos in positions.items():
+                self.__committed_offsets[partition] = pos.offset
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
@@ -224,7 +229,10 @@ class StreamProcessor(Generic[TPayload]):
             if self.__message is not None:
                 try:
                     start_submit = time.time()
-                    self.__processing_strategy.submit(self.__message)
+                    message = (
+                        Message(self.__message) if self.__message is not None else None
+                    )
+                    self.__processing_strategy.submit(message)
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,

@@ -4,7 +4,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Generic, Mapping, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message, OffsetRange, Partition, Position, TPayload
+from arroyo.types import Message, Partition, Position, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class Batch(Generic[TPayload]):
 
         self.__created = time.time()
         self.__length = 0
-        self.__offsets: MutableMapping[Partition, OffsetRange] = {}
+        self.__offsets: MutableMapping[Partition, Position] = {}
         self.__closed = False
 
     def __repr__(self) -> str:
@@ -46,13 +46,8 @@ class Batch(Generic[TPayload]):
         self.__step.submit(message)
         self.__length += 1
 
-        if message.partition in self.__offsets:
-            self.__offsets[message.partition].hi = message.next_offset
-            self.__offsets[message.partition].timestamp = message.timestamp
-        else:
-            self.__offsets[message.partition] = OffsetRange(
-                message.offset, message.next_offset, message.timestamp
-            )
+        for (partition, position) in message.committable.items():
+            self.__offsets[partition] = position
 
     def close(self) -> None:
         self.__closed = True
@@ -66,12 +61,8 @@ class Batch(Generic[TPayload]):
 
     def join(self, timeout: Optional[float] = None) -> None:
         self.__step.join(timeout)
-        offsets = {
-            partition: Position(offsets.hi, offsets.timestamp)
-            for partition, offsets in self.__offsets.items()
-        }
-        logger.debug("Committing offsets: %r", offsets)
-        self.__commit_function(offsets)
+        logger.debug("Committing offsets: %r", self.__offsets)
+        self.__commit_function(self.__offsets)
 
 
 class CollectStep(ProcessingStrategy[TPayload]):

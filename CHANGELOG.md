@@ -1,5 +1,29 @@
 # Changelog and versioning
 
+## 2.0.0
+
+### Various fixes & improvements
+
+- feat: Split the Message interface to better support batching steps (#134) by @lynnagara
+- feat: Remove BatchProcessingStrategyFactory from Arroyo (#138) by @lynnagara
+- docs: Add docstring for MessageRejected (#146) by @lynnagara
+- feat: Increase log level during consumer shutdown (#144) by @lynnagara
+- feat: Remove ProduceAndCommit (#145) by @lynnagara
+
+## 1.2.0
+
+### Various fixes & improvements
+
+- feat: Introduce separate commit strategy (#140) by @lynnagara
+- feat: Mark ConsumerStrategyFactory/KafkaConsumerStrategyFactory deprecated (#139) by @lynnagara
+- docs: Update DLQ docs (#136) by @lynnagara
+- fix: Compute offset deltas for commit policy [SNS-1863] (#135) by @untitaker
+- fix: Make Position pickleable (#129) by @lynnagara
+- feat: Avoid storing entire messages in RunTaskInThreads (#133) by @lynnagara
+- feat: Avoid storing entire messages in the produce step (#132) by @lynnagara
+- test: Split the collect and transform tests into separate files (#130) by @lynnagara
+- test: Simplify the commit codec test (#131) by @lynnagara
+
 ## 1.1.0
 
 ### Various fixes & improvements
