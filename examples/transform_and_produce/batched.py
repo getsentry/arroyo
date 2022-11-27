@@ -48,14 +48,14 @@ def index_data(
 
 class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
     """
-    This strategy factory rpovides an example of the use of BatchStep
-    and Unbatchstep.
+    This strategy factory provides an example of the use of BatchStep
+    and UnbatchStep.
 
     It consumes from Kafka, batches messages, passes the batch to a transform
     step. The transform step is suppsoed to index the messages in batches
     and produce a transformed version.
     At this point Unbatchstep breaks up the batch and sends the messages to
-    a ProduceAndCommit step.
+    a Produce step.
     """
 
     def __init__(

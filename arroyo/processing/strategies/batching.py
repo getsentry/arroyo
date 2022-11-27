@@ -248,14 +248,13 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
 ValuesBatch = Sequence[BaseValue[TPayload]]
 
 
-class OutOfOrderMessage(Exception):
-    pass
-
-
 class BatchBuilder(Generic[TPayload]):
     """
-    Accumulates Values in a `ValueBatch` object.
-    It requires offsets to be in monotonic order in each partition.
+    Accumulates Values in a Sequence of BaseValue.
+
+    It does not require offsets to be in monotonic order, though,
+    if offsets are not in monotonic order, it keeps track of the high
+    offset watermark as committable offset.
     """
 
     def __init__(
@@ -273,14 +272,10 @@ class BatchBuilder(Generic[TPayload]):
         committables = value.committable
         for partition, position in committables.items():
             if (
-                partition in self.__offsets
-                and self.__offsets[partition].offset >= position.offset
+                partition not in self.__offsets
+                or self.__offsets[partition].offset <= position.offset
             ):
-                raise OutOfOrderMessage(
-                    f"Received offset {position.offset}. Current watermark {self.__offsets[partition].offset}"
-                )
-
-            self.__offsets[partition] = position
+                self.__offsets[partition] = position
 
         self.__values.append(value)
 
@@ -299,24 +294,21 @@ class BatchBuilder(Generic[TPayload]):
 
 class BatchStep(ProcessingStrategy[TPayload]):
     """
-    Accumulates messages into a batch. When the batch is full this
+    Accumulates messages into a batch. When the batch is full, this
     strategy submits it to the next step.
 
     A batch is represented as a `ValuesBatch` object which is a sequence
-    of BaseValue. This includes both the messages and the offset ranges.
+    of BaseValue. This includes both the messages and the high offset
+    watermark.
 
     A messages batch is closed and submitted when the maximum number of
     messages is received or when the max_batch_time has passed since the
     first message was received.
 
-    This step does not allow out of order processing. The batch can only
-    be built with monotonically increasing offsets per partition.
-    If messages out of order are spot, this strategy will raise an
-    `OutOfOrderMessage` exception.
-
-    If a batch is closed empty (no message received within `max_batch_time_sec`)
-    An empty batch is submitted to the following step. The following step,
-    thus needs to know how to deal with empty batches.
+    This step does not require in order processing. If messages are sent
+    out of order, though, the highest observed offset per partition is
+    still the committable one, whether or not all messages with lower
+    offsets have been observed by this step.
 
     This strategy propagates `MessageRejected` exceptions from the
     downstream steps if they are thrown.
@@ -394,7 +386,8 @@ class BatchStep(ProcessingStrategy[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         """
         Terminates the strategy by joining the following step.
-        This method throws away the current batch.
+        This method tries to flush the current batch no matter
+        whether the batch is ready or not.
         """
         deadline = time.time() + timeout if timeout is not None else None
         if self.__batch_builder is not None:
@@ -412,8 +405,8 @@ class BatchStep(ProcessingStrategy[TPayload]):
 
 class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
     """
-    This processing step receives batches and explodes them sending
-    the content message by message to the next step.
+    This processing step receives batches and explodes them thus sending
+    the content to the next step message by message.
 
     A batch is represented as a `ValuesBatch` object.
 
