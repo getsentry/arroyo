@@ -14,12 +14,19 @@ from arroyo.processing.strategies.batching import (
     BatchBuilder,
     BatchProcessingStrategy,
     BatchStep,
-    MessageBatch,
     UnbatchStep,
+    ValuesBatch,
 )
-
-# from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
+from arroyo.processing.strategies.transform import TransformStep
+from arroyo.types import (
+    BaseValue,
+    BrokerValue,
+    Message,
+    Partition,
+    Position,
+    Topic,
+    Value,
+)
 
 # from arroyo.backends.local.backend import LocalBroker as Broker
 
@@ -98,15 +105,17 @@ class TestConsumer(object):
         assert worker.flushed == [[1, 2, 3, 4, 5, 6]]
 
 
-def message(partition: int, offset: int, payload: str) -> Message[str]:
-    return Message(
-        BrokerValue(
-            partition=Partition(topic=Topic("test"), index=partition),
-            offset=offset,
-            payload=payload,
-            timestamp=datetime(2022, 1, 1, 0, 0, 1),
-        )
+def value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
+    return BrokerValue(
+        partition=Partition(topic=Topic("test"), index=partition),
+        offset=offset,
+        payload=payload,
+        timestamp=datetime(2022, 1, 1, 0, 0, 1),
     )
+
+
+def message(partition: int, offset: int, payload: str) -> Message[str]:
+    return Message(value(partition=partition, offset=offset, payload=payload))
 
 
 test_builder = [
@@ -190,8 +199,8 @@ def test_batch_builder(
     batch = batch_builder.build_if_ready()
     if expected_ready:
         assert batch is not None
-        assert len(batch.messages) == len(messages_in)
-        assert batch.offsets == expected_offsets
+        assert len(batch.payload) == len(messages_in)
+        assert batch.committable == expected_offsets
     else:
         assert batch is None
 
@@ -216,22 +225,17 @@ test_batch = [
         [
             call(
                 Message(
-                    BrokerValue(
-                        partition=Partition(topic=Topic("test"), index=0),
-                        offset=3,
-                        timestamp=datetime(2022, 1, 1, 0, 0, 1),
-                        payload=MessageBatch(
-                            messages=[
-                                message(0, 1, "Message 1").value,
-                                message(0, 2, "Message 2").value,
-                                message(0, 3, "Message 3").value,
-                            ],
-                            offsets={
-                                Partition(Topic("test"), 0): Position(
-                                    4, datetime(2022, 1, 1, 0, 0, 1)
-                                )
-                            },
-                        ),
+                    Value(
+                        payload=[
+                            value(0, 1, "Message 1"),
+                            value(0, 2, "Message 2"),
+                            value(0, 3, "Message 3"),
+                        ],
+                        committable={
+                            Partition(Topic("test"), 0): Position(
+                                4, datetime(2022, 1, 1, 0, 0, 1)
+                            )
+                        },
                     ),
                 )
             )
@@ -251,43 +255,33 @@ test_batch = [
         [
             call(
                 Message(
-                    BrokerValue(
-                        partition=Partition(topic=Topic("test"), index=0),
-                        offset=3,
-                        timestamp=datetime(2022, 1, 1, 0, 0, 1),
-                        payload=MessageBatch(
-                            messages=[
-                                message(0, 1, "Message 1").value,
-                                message(0, 2, "Message 2").value,
-                                message(0, 3, "Message 3").value,
-                            ],
-                            offsets={
-                                Partition(Topic("test"), 0): Position(
-                                    4, datetime(2022, 1, 1, 0, 0, 1)
-                                )
-                            },
-                        ),
+                    Value(
+                        payload=[
+                            value(0, 1, "Message 1"),
+                            value(0, 2, "Message 2"),
+                            value(0, 3, "Message 3"),
+                        ],
+                        committable={
+                            Partition(Topic("test"), 0): Position(
+                                4, datetime(2022, 1, 1, 0, 0, 1)
+                            )
+                        },
                     ),
                 )
             ),
             call(
                 Message(
-                    BrokerValue(
-                        partition=Partition(topic=Topic("test"), index=1),
-                        offset=3,
-                        timestamp=datetime(2022, 1, 1, 0, 0, 1),
-                        payload=MessageBatch(
-                            messages=[
-                                message(1, 1, "Message 1").value,
-                                message(1, 2, "Message 2").value,
-                                message(1, 3, "Message 3").value,
-                            ],
-                            offsets={
-                                Partition(Topic("test"), 1): Position(
-                                    4, datetime(2022, 1, 1, 0, 0, 1)
-                                )
-                            },
-                        ),
+                    Value(
+                        payload=[
+                            value(1, 1, "Message 1"),
+                            value(1, 2, "Message 2"),
+                            value(1, 3, "Message 3"),
+                        ],
+                        committable={
+                            Partition(Topic("test"), 1): Position(
+                                4, datetime(2022, 1, 1, 0, 0, 1)
+                            )
+                        },
                     ),
                 )
             ),
@@ -303,7 +297,7 @@ def test_batch_step(
     mock_time: Any,
     start_time: datetime,
     messages_in: Sequence[Message[str]],
-    expected_batches: Sequence[Message[MessageBatch[str]]],
+    expected_batches: Sequence[ValuesBatch[str]],
 ) -> None:
     start = time.mktime(start_time.timetuple())
     mock_time.return_value = start
@@ -320,23 +314,18 @@ def test_batch_step(
 
 
 def test_unbatch_step() -> None:
-    msg = Message(
-        BrokerValue(
-            partition=Partition(topic=Topic("test"), index=1),
-            offset=3,
-            timestamp=datetime(2022, 1, 1, 0, 0, 1),
-            payload=MessageBatch(
-                messages=[
-                    message(1, 1, "Message 1").value,
-                    message(1, 2, "Message 2").value,
-                    message(1, 3, "Message 3").value,
-                ],
-                offsets={
-                    Partition(Topic("test"), 1): Position(
-                        4, datetime(2022, 1, 1, 0, 0, 1)
-                    )
-                },
-            ),
+    m: Sequence[BaseValue[str]] = [
+        value(1, 1, "Message 1"),
+        value(1, 2, "Message 2"),
+        value(1, 3, "Message 3"),
+    ]
+
+    msg: Message[ValuesBatch[str]] = Message(
+        Value(
+            payload=m,
+            committable={
+                Partition(Topic("test"), 1): Position(4, datetime(2022, 1, 1, 0, 0, 1))
+            },
         ),
     )
 
@@ -347,9 +336,7 @@ def test_unbatch_step() -> None:
     ]
     next_step = Mock()
     unbatch_step = UnbatchStep[str](next_step)
-    unbatch_step.submit(
-        Message(Value(payload=messages, committable=msg.value.committable))
-    )
+    unbatch_step.submit(msg)
     next_step.submit.assert_has_calls(
         [
             call(message(1, 1, "Message 1")),
@@ -388,47 +375,41 @@ def test_batch_unbatch() -> None:
     """
     Tests a full end to end batch and unbatch pipeline.
     """
-    pass
-    #    def transform_msg(msg: Message[str]) -> Message[str]:
-    #       return Message[str](
-    #            BrokerValue(
-    #                partition=msg.partition,
-    #                offset=msg.offset,
-    #                timestamp=msg.timestamp,
-    #                payload="Transformed",
-    #            )
-    #        )
-    #
-    #    def transformer(msg: Message[MessageBatch[str]]) -> MessageBatch[str]:
-    #        return MessageBatch(
-    #            messages=[transform_msg(sub_msg) for sub_msg in msg.payload.messages],
-    #            offsets=msg.payload.offsets,
-    #        )
-    #
-    #    final_step = Mock()
-    #    next_step: TransformStep[MessageBatch[str], MessageBatch[str]] = TransformStep(
-    #        function=transformer, next_step=UnbatchStep(final_step)
-    #    )
-    #
-    #    pipeline = BatchStep[str](
-    #        max_batch_size=3, max_batch_time_sec=10, next_step=next_step
-    #    )
 
+    def transform_msg(msg: BaseValue[str]) -> Value[str]:
+        return Value(
+            committable=msg.committable,
+            payload="Transformed",
+        )
 
-#    input_msgs = [
-#        message(1, 1, "Message 1"),
-#        message(1, 2, "Message 2"),
-#        message(1, 3, "Message 3"),
-#    ]
-#    for m in input_msgs:
-#        pipeline.submit(m)
-#        final_step.submit.assert_not_called()
-#        pipeline.poll()
-#
-#    final_step.submit.assert_has_calls(
-#        [
-#            call(message(1, 1, "Transformed")),
-#            call(message(1, 2, "Transformed")),
-#            call(message(1, 3, "Transformed")),
-#        ]
-#    )
+    def transformer(
+        msg: Message[ValuesBatch[str]],
+    ) -> ValuesBatch[str]:
+        return [transform_msg(sub_msg) for sub_msg in msg.payload]
+
+    final_step = Mock()
+    next_step: TransformStep[ValuesBatch[str], ValuesBatch[str]] = TransformStep(
+        function=transformer, next_step=UnbatchStep(final_step)
+    )
+
+    pipeline = BatchStep[str](
+        max_batch_size=3, max_batch_time_sec=10, next_step=next_step
+    )
+
+    input_msgs = [
+        message(1, 1, "Message 1"),
+        message(1, 2, "Message 2"),
+        message(1, 3, "Message 3"),
+    ]
+    for m in input_msgs:
+        pipeline.submit(m)
+        final_step.submit.assert_not_called()
+        pipeline.poll()
+
+    final_step.submit.assert_has_calls(
+        [
+            call(message(1, 1, "Transformed")),
+            call(message(1, 2, "Transformed")),
+            call(message(1, 3, "Transformed")),
+        ]
+    )

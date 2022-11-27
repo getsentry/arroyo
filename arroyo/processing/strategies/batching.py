@@ -245,32 +245,7 @@ class BatchProcessingStrategy(ProcessingStrategy[TPayload]):
         self.__batch = None
 
 
-@dataclass(frozen=True)
-class MessageBatch(Generic[TPayload]):
-    """
-    Represents a batch of messages with the range of offsets covered.
-    The range of offsets is represented as a mapping between partitions
-    and offset ranges.
-    The lowest offset in each offset range is inclusize. The highest is
-    esclusive.
-
-    This class intentionally does not implement __len__ or __iter__ as
-    generally, when using it, we want to deal with None batch and empty
-    batches differently. This way it is less likely to make mistakes
-    when checking for an empty batch.
-    """
-
-    offsets: Mapping[Partition, Position]
-    messages: Sequence[BaseValue[TPayload]]
-
-    def __repr__(self) -> str:
-        return f"<{type(self).__name__}: {len(self.messages)} message{'s' if len(self.messages) != 1 else ''}>"
-
-    def last(self) -> Optional[BaseValue[TPayload]]:
-        return self.messages[-1] if self.messages else None
-
-    def is_empty(self) -> bool:
-        return len(self.messages) == 0
+ValuesBatch = Sequence[BaseValue[TPayload]]
 
 
 class OutOfOrderMessage(Exception):
@@ -307,12 +282,12 @@ class BatchBuilder(Generic[TPayload]):
 
         self.__messages.append(value)
 
-    def build_if_ready(self) -> Optional[MessageBatch[TPayload]]:
+    def build_if_ready(self) -> Optional[Value[ValuesBatch[TPayload]]]:
         if (
             len(self.__messages) >= self.__max_batch_size
             or time.time() > self.__init_time + self.__max_batch_time
         ):
-            return MessageBatch(messages=self.__messages, offsets=self.__offsets)
+            return Value(payload=self.__messages, committable=self.__offsets)
         else:
             return None
 
@@ -360,7 +335,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         if batch is None:
             return
 
-        batch_msg = Message(value=Value(batch.messages, batch.offsets))
+        batch_msg = Message(batch)
         self.__next_step.submit(batch_msg)
         self.__batch_builder = None
 
@@ -418,7 +393,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         )
 
 
-class UnbatchStep(ProcessingStrategy[Sequence[BaseValue[TPayload]]]):
+class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
     """
     This processing step receives batches and explodes them sending
     the content message by message to the next step.
@@ -444,7 +419,7 @@ class UnbatchStep(ProcessingStrategy[Sequence[BaseValue[TPayload]]]):
             self.__next_step.submit(Message(msg))
             self.__batch_to_send.popleft()
 
-    def submit(self, message: Message[Sequence[BaseValue[TPayload]]]) -> None:
+    def submit(self, message: Message[ValuesBatch[TPayload]]) -> None:
         assert not self.__closed
         if self.__batch_to_send:
             raise MessageRejected
