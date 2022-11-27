@@ -43,7 +43,7 @@ class ChildProcessTerminated(RuntimeError):
     pass
 
 
-class TransformStep(ProcessingStep[TPayload]):
+class TransformStep(ProcessingStep[TPayload], Generic[TPayload, TTransformed]):
     """
     Transforms a message and submits the transformed value to the next
     processing step.
