@@ -340,6 +340,41 @@ def test_batch_step(
         next_step.submit.assert_not_called()
 
 
+def test_batch_join() -> None:
+    next_step = Mock()
+    batch_step = BatchStep[str](10.0, 5, next_step)
+    messages = [
+        message(0, 1, "Message 1"),
+        message(0, 2, "Message 2"),
+    ]
+
+    for msg in messages:
+        batch_step.submit(msg)
+        batch_step.poll()
+        next_step.submit.assert_not_called()
+
+    batch_step.join(None)
+    next_step.submit.assert_has_calls(
+        [
+            call(
+                Message(
+                    Value(
+                        payload=[
+                            broker_value(0, 1, "Message 1"),
+                            broker_value(0, 2, "Message 2"),
+                        ],
+                        committable={
+                            Partition(Topic("test"), 0): Position(
+                                3, datetime(2022, 1, 1, 0, 0, 1)
+                            )
+                        },
+                    ),
+                )
+            )
+        ]
+    )
+
+
 def test_unbatch_step() -> None:
     msg: Message[ValuesBatch[str]] = Message(
         Value(
@@ -378,6 +413,19 @@ def test_unbatch_step() -> None:
     next_step.submit.reset_mock(side_effect=True)
 
     unbatch_step.poll()
+    next_step.submit.assert_has_calls(
+        [
+            call(message(1, 1, "Message 1")),
+            call(message(1, 2, "Message 2")),
+            call(message(1, 3, "Message 3")),
+        ]
+    )
+
+    next_step.submit.reset_mock(side_effect=True)
+    unbatch_step = UnbatchStep[str](next_step)
+    unbatch_step.submit(msg)
+    unbatch_step.join(None)
+
     next_step.submit.assert_has_calls(
         [
             call(message(1, 1, "Message 1")),

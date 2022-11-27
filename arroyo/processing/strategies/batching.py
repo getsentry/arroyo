@@ -293,6 +293,9 @@ class BatchBuilder(Generic[TPayload]):
         else:
             return None
 
+    def build(self) -> Value[ValuesBatch[TPayload]]:
+        return Value(payload=self.__values, committable=self.__offsets)
+
 
 class BatchStep(ProcessingStrategy[TPayload]):
     """
@@ -331,9 +334,13 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
         self.__closed = False
 
-    def __flush(self) -> None:
+    def __flush(self, force: bool) -> None:
         assert self.__batch_builder is not None
-        batch = self.__batch_builder.build_if_ready()
+        batch = (
+            self.__batch_builder.build_if_ready()
+            if not force
+            else self.__batch_builder.build()
+        )
         if batch is None:
             return
 
@@ -356,7 +363,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         assert not self.__closed
 
         if self.__batch_builder is not None:
-            self.__flush()
+            self.__flush(force=False)
 
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
@@ -371,7 +378,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
 
         if self.__batch_builder is not None:
             try:
-                self.__flush()
+                self.__flush(force=False)
             except MessageRejected:
                 pass
 
@@ -390,6 +397,14 @@ class BatchStep(ProcessingStrategy[TPayload]):
         This method throws away the current batch.
         """
         deadline = time.time() + timeout if timeout is not None else None
+        if self.__batch_builder is not None:
+            while deadline is None or time.time() < deadline:
+                try:
+                    self.__flush(force=True)
+                    break
+                except MessageRejected:
+                    pass
+
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
         )
@@ -456,6 +471,12 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
+        while deadline is None or time.time() < deadline:
+            try:
+                self.__flush()
+                break
+            except MessageRejected:
+                pass
 
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
