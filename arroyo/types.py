@@ -165,12 +165,3 @@ class Commit(Protocol):
         self, positions: Mapping[Partition, Position], force: bool = False
     ) -> None:
         pass
-
-
-@dataclass
-class OffsetRange:
-    __slots__ = ["lo", "hi", "timestamp"]
-
-    lo: int  # inclusive
-    hi: int  # exclusive
-    timestamp: datetime

@@ -254,7 +254,7 @@ class OutOfOrderMessage(Exception):
 
 class BatchBuilder(Generic[TPayload]):
     """
-    Accumulates messages in a `MessageBatch` object.
+    Accumulates Values in a `ValueBatch` object.
     It requires offsets to be in monotonic order in each partition.
     """
 
@@ -265,29 +265,31 @@ class BatchBuilder(Generic[TPayload]):
     ) -> None:
         self.__max_batch_time = max_batch_time
         self.__max_batch_size = max_batch_size
-        self.__messages: MutableSequence[BaseValue[TPayload]] = []
+        self.__values: MutableSequence[BaseValue[TPayload]] = []
         self.__offsets: MutableMapping[Partition, Position] = {}
         self.__init_time = time.time()
 
     def append(self, value: BaseValue[TPayload]) -> None:
         committables = value.committable
         for partition, position in committables.items():
-            if partition in self.__offsets:
-                if self.__offsets[partition].offset >= position.offset:
-                    raise OutOfOrderMessage(
-                        f"Received offset {position.offset}. Current watermark {self.__offsets[partition].offset}"
-                    )
+            if (
+                partition in self.__offsets
+                and self.__offsets[partition].offset >= position.offset
+            ):
+                raise OutOfOrderMessage(
+                    f"Received offset {position.offset}. Current watermark {self.__offsets[partition].offset}"
+                )
 
             self.__offsets[partition] = position
 
-        self.__messages.append(value)
+        self.__values.append(value)
 
     def build_if_ready(self) -> Optional[Value[ValuesBatch[TPayload]]]:
         if (
-            len(self.__messages) >= self.__max_batch_size
+            len(self.__values) >= self.__max_batch_size
             or time.time() > self.__init_time + self.__max_batch_time
         ):
-            return Value(payload=self.__messages, committable=self.__offsets)
+            return Value(payload=self.__values, committable=self.__offsets)
         else:
             return None
 
@@ -297,12 +299,12 @@ class BatchStep(ProcessingStrategy[TPayload]):
     Accumulates messages into a batch. When the batch is full this
     strategy submits it to the next step.
 
-    A batch is represented as a `MessageBatch` object, which includes
-    both the messages and the offset ranges.
+    A batch is represented as a `ValuesBatch` object which is a sequence
+    of BaseValue. This includes both the messages and the offset ranges.
 
-    A message is closed and submitted when the maximum number of messages
-    is received or when the max_batch_time has passed since the first
-    message was received.
+    A messages batch is closed and submitted when the maximum number of
+    messages is received or when the max_batch_time has passed since the
+    first message was received.
 
     This step does not allow out of order processing. The batch can only
     be built with monotonically increasing offsets per partition.
@@ -398,7 +400,7 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
     This processing step receives batches and explodes them sending
     the content message by message to the next step.
 
-    A batch is represented as a `MessageBatch` object.
+    A batch is represented as a `ValuesBatch` object.
 
     If this step receives a `MessageRejected` exception from the next
     step it would keep the remaining messages and attempt to submit
