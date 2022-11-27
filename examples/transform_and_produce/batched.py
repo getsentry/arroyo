@@ -5,16 +5,17 @@ from typing import Any, Mapping, Sequence
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies import (
     BatchStep,
-    MessageBatch,
-    ProduceAndCommit,
+    CommitOffsets,
+    Produce,
     TransformStep,
     UnbatchStep,
+    ValuesBatch,
 )
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, Topic
+from arroyo.types import Commit, Message, Partition, Topic, Value
 
 logger = logging.getLogger(__name__)
 
@@ -25,31 +26,24 @@ def resolve_index(msgs: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, An
 
 
 def index_data(
-    batch: Message[MessageBatch[KafkaPayload]],
-) -> MessageBatch[KafkaPayload]:
-    logger.info("Indexing %d messages", len(batch.payload.messages))
-    parsed_msgs = [
-        json.loads(s.payload.value.decode("utf-8")) for s in batch.payload.messages
-    ]
+    batch: Message[ValuesBatch[KafkaPayload]],
+) -> ValuesBatch[KafkaPayload]:
+    logger.info("Indexing %d messages", len(batch.payload))
+    parsed_msgs = [json.loads(s.payload.value.decode("utf-8")) for s in batch.payload]
     indexed_messages = resolve_index(parsed_msgs)
     ret = []
-    for i in range(0, len(batch.payload.messages)):
+    for i in range(0, len(batch.payload)):
         ret.append(
-            Message(
-                partition=batch.payload.messages[i].partition,
-                offset=batch.payload.messages[i].offset,
-                timestamp=batch.payload.messages[i].timestamp,
+            Value(
                 payload=KafkaPayload(
                     key=None,
                     headers=[],
                     value=json.dumps(indexed_messages[i]).encode(),
                 ),
+                committable=batch.payload[i].committable,
             )
         )
-    return MessageBatch(
-        messages=ret,
-        offsets=batch.payload.offsets,
-    )
+    return ret
 
 
 class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
@@ -84,7 +78,9 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
             next_step=TransformStep(
                 function=index_data,
                 next_step=UnbatchStep(
-                    next_step=ProduceAndCommit(self.__producer, self.__topic, commit)
+                    next_step=Produce(
+                        self.__producer, self.__topic, CommitOffsets(commit)
+                    )
                 ),
             ),
         )
