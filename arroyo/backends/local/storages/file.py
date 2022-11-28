@@ -24,13 +24,24 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import Message, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TPayload
 from arroyo.utils.codecs import Codec
 
 
 @dataclass(unsafe_hash=True)
-class FileMessage(Message[TPayload]):
+class FileValue(BrokerValue[TPayload]):
     _next_offset: int
+
+    def __init__(
+        self,
+        payload: TPayload,
+        partition: Partition,
+        offset: int,
+        timestamp: datetime,
+        next_offset: int,
+    ) -> None:
+        super().__init__(payload, partition, offset, timestamp)
+        self._next_offset = next_offset
 
     @property
     def next_offset(self) -> int:
@@ -149,16 +160,19 @@ class FileMessageStorage(MessageStorage[TPayload]):
 
     def produce(
         self, partition: Partition, payload: TPayload, timestamp: datetime
-    ) -> FileMessage[TPayload]:
+    ) -> BrokerValue[TPayload]:
         encoded = self.__codec.encode((payload, timestamp))
         file = self.__get_file_partition(partition).writer
         offset = file.tell()
         file.write(self.__record_header.pack(len(encoded), crc32(encoded)))
         file.write(encoded)
         file.flush()
-        return FileMessage(partition, offset, payload, timestamp, file.tell())
 
-    def consume(self, partition: Partition, offset: int) -> Optional[Message[TPayload]]:
+        return FileValue(payload, partition, offset, timestamp, file.tell())
+
+    def consume(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerValue[TPayload]]:
         file_partition = self.__get_file_partition(partition)
         file = file_partition.reader
 
@@ -181,4 +195,4 @@ class FileMessageStorage(MessageStorage[TPayload]):
             )
         payload, timestamp = self.__codec.decode(encoded)
 
-        return FileMessage(partition, offset, payload, timestamp, file.tell())
+        return FileValue(payload, partition, offset, timestamp, file.tell())

@@ -2,11 +2,10 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime
-from typing import Callable, Deque, Optional, Tuple, TypeVar
+from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Message, Partition
+from arroyo.types import Message
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +27,9 @@ class RunTask(ProcessingStrategy[TPayload]):
         self.__next_step = next_step
 
     def submit(self, message: Message[TPayload]) -> None:
-        self.__next_step.submit(
-            Message(
-                message.partition,
-                message.offset,
-                self.__function(message),
-                message.timestamp,
-            )
-        )
+        result = self.__function(message)
+        value = message.value.replace(result)
+        self.__next_step.submit(Message(value))
 
     def poll(self) -> None:
         self.__next_step.poll()
@@ -50,7 +44,7 @@ class RunTask(ProcessingStrategy[TPayload]):
         self.__next_step.terminate()
 
 
-class RunTaskInThreads(ProcessingStrategy[TPayload]):
+class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     """
     This strategy can be used to run IO-bound tasks in parallel.
 
@@ -80,7 +74,7 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Partition, int, datetime, Future[TResult]]] = deque()
+        self.__queue: Deque[Tuple[Message[TPayload], Future[TResult]]] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
         self.__closed = False
@@ -93,16 +87,14 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
         self.__queue.append(
             (
-                message.partition,
-                message.offset,
-                message.timestamp,
+                message,
                 self.__executor.submit(self.__function, message),
             )
         )
 
     def poll(self) -> None:
         while self.__queue:
-            partition, offset, timestamp, future = self.__queue[0]
+            message, future = self.__queue[0]
 
             if not future.done():
                 break
@@ -112,10 +104,12 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
 
             self.__queue.popleft()
 
-            message = Message(partition, offset, result, timestamp)
+            payload = message.value.replace(result)
+
+            next_message = Message(payload)
 
             self.__next_step.poll()
-            self.__next_step.submit(message)
+            self.__next_step.submit(next_message)
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
@@ -126,13 +120,15 @@ class RunTaskInThreads(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            partition, offset, timetsamp, future = self.__queue.popleft()
+            message, future = self.__queue.popleft()
 
             result = future.result(remaining)
 
-            message = Message(partition, offset, result, timetsamp)
+            payload = message.value.replace(result)
+
+            next_message = Message(payload)
             self.__next_step.poll()
-            self.__next_step.submit(message)
+            self.__next_step.submit(next_message)
 
         self.__executor.shutdown()
         self.__next_step.join(timeout)

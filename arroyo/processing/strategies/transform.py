@@ -246,9 +246,8 @@ def parallel_transform_worker_apply(
             raise
 
         try:
-            valid_messages_transformed.append(
-                Message(message.partition, message.offset, result, message.timestamp)
-            )
+            payload = message.value.replace(result)
+            valid_messages_transformed.append(Message(payload))
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
             # the batch is empty, we'll never be able to write it and should

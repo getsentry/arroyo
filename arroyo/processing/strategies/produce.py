@@ -2,12 +2,21 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, Optional, Tuple
+from typing import Deque, Mapping, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
-from arroyo.types import Commit, Message, Partition, Position, Topic, TPayload
+from arroyo.types import (
+    BrokerValue,
+    Commit,
+    Message,
+    Partition,
+    Position,
+    Topic,
+    TPayload,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,26 +56,23 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Partition, Position, Future[Message[TPayload]]]
+            Tuple[Mapping[Partition, Position], Future[BrokerValue[TPayload]]]
         ] = deque()
 
         self.__closed = False
 
     def poll(self) -> None:
         while self.__queue:
-            partition, position, future = self.__queue[0]
+            committable, future = self.__queue[0]
 
             if not future.done():
                 break
 
-            exc = future.exception()
-
-            if exc is not None:
-                raise exc
+            message = Message(Value(future.result().payload, committable))
 
             self.__queue.popleft()
             self.__next_step.poll()
-            self.__next_step.submit(future.result())
+            self.__next_step.submit(message)
 
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
@@ -76,8 +82,7 @@ class Produce(ProcessingStrategy[TPayload]):
 
         self.__queue.append(
             (
-                message.partition,
-                message.position_to_commit,
+                message.committable,
                 self.__producer.produce(self.__topic, message.payload),
             )
         )
@@ -101,15 +106,12 @@ class Produce(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            partition, position, future = self.__queue.popleft()
+            committable, future = self.__queue.popleft()
 
-            future.result(remaining)
+            message = Message(Value(future.result().payload, committable))
 
-            offset = {partition: position}
-
-            logger.info("Committing offset: %r", offset)
             self.__next_step.poll()
-            self.__next_step.submit(future.result())
+            self.__next_step.submit(message)
 
         self.__next_step.join(remaining)
 

@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest import mock
 
 from arroyo.processing.strategies.run_task import RunTask, RunTaskInThreads
-from arroyo.types import Message, Partition, Topic
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
 
 
 def test_run_task() -> None:
@@ -13,9 +13,9 @@ def test_run_task() -> None:
     strategy = RunTask(mock_func, next_step)
     partition = Partition(Topic("topic"), 0)
 
-    strategy.submit(Message(partition, 0, b"hello", datetime.now()))
+    strategy.submit(Message(Value(b"hello", {partition: Position(0, datetime.now())})))
     strategy.poll()
-    strategy.submit(Message(partition, 1, b"world", datetime.now()))
+    strategy.submit(Message(Value(b"world", {partition: Position(1, datetime.now())})))
     strategy.poll()
 
     # Wait for async functions to finish
@@ -47,9 +47,9 @@ def test_run_task_in_threads() -> None:
     strategy = RunTaskInThreads(mock_func, 2, 4, next_step)
     partition = Partition(Topic("topic"), 0)
 
-    strategy.submit(Message(partition, 0, b"hello", datetime.now()))
+    strategy.submit(Message(BrokerValue(b"hello", partition, 0, datetime.now())))
     strategy.poll()
-    strategy.submit(Message(partition, 1, b"world", datetime.now()))
+    strategy.submit(Message(BrokerValue(b"world", partition, 1, datetime.now())))
     strategy.poll()
 
     # Wait for async functions to finish
