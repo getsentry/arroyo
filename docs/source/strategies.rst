@@ -14,6 +14,15 @@ The abstract interface to be implemented when creating a new Processing Strategy
    :undoc-members:
    :show-inheritance:
 
+Task runners
+-----------------------------
+
+Strategies to run custom processing functions.
+
+.. automodule:: arroyo.processing.strategies.run_task
+   :members:
+   :undoc-members:
+
 Transformers
 -----------------------------
 
