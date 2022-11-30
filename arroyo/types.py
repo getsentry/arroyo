@@ -62,6 +62,9 @@ class Message(Generic[TPayload]):
     def committable(self) -> Mapping[Partition, Position]:
         return self.value.committable
 
+    def replace(self, payload: TReplaced) -> Message[TReplaced]:
+        return Message(self.value.replace(payload))
+
 
 @dataclass(frozen=True)
 class Position:
