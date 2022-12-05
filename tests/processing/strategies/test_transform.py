@@ -54,6 +54,7 @@ def test_transform() -> None:
     with assert_changes(lambda: int(next_step.close.call_count), 0, 1), assert_changes(
         lambda: int(next_step.join.call_count), 0, 1
     ):
+        transform_step.close()
         transform_step.join()
 
     next_step.reset_mock()

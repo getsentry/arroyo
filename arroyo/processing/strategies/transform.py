@@ -29,6 +29,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import Message, TPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
@@ -43,44 +44,16 @@ class ChildProcessTerminated(RuntimeError):
     pass
 
 
-class TransformStep(ProcessingStep[TPayload]):
+class TransformStep(RunTask[TPayload]):
     """
     Transforms a message and submits the transformed value to the next
     processing step.
+
+    This is now an alias for RunTask, which explicitly allows side effects.
+    Kept for backwards compatibility.
     """
 
-    def __init__(
-        self,
-        function: Callable[[Message[TPayload]], TTransformed],
-        next_step: ProcessingStep[TTransformed],
-    ) -> None:
-        self.__transform_function = function
-        self.__next_step = next_step
-
-        self.__closed = False
-
-    def poll(self) -> None:
-        self.__next_step.poll()
-
-    def submit(self, message: Message[TPayload]) -> None:
-        assert not self.__closed
-
-        result = self.__transform_function(message)
-        value = message.value.replace(result)
-        self.__next_step.submit(Message(value))
-
-    def close(self) -> None:
-        self.__closed = True
-
-    def terminate(self) -> None:
-        self.__closed = True
-
-        logger.debug("Terminating %r...", self.__next_step)
-        self.__next_step.terminate()
-
-    def join(self, timeout: Optional[float] = None) -> None:
-        self.__next_step.close()
-        self.__next_step.join(timeout)
+    pass
 
 
 # A serialized message is composed of a pickled ``Message`` instance (bytes)
