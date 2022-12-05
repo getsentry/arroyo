@@ -15,12 +15,20 @@ def test_message() -> None:
     now = datetime.now()
 
     # Broker payload
-    message = Message(BrokerValue(b"", partition, 0, now))
-    assert pickle.loads(pickle.dumps(message)) == message
+    broker_message = Message(BrokerValue(b"", partition, 0, now))
+    assert pickle.loads(pickle.dumps(broker_message)) == broker_message
 
     # Generic payload
     message = Message(Value(b"", {partition: Position(1, now)}))
     assert pickle.loads(pickle.dumps(message)) == message
+
+    # Replace payload
+    new_broker_message = broker_message.replace(b"123")
+    assert new_broker_message.payload == b"123"
+    assert new_broker_message.committable == {partition: Position(1, now)}
+    new_message = message.replace(b"123")
+    assert new_message.payload == b"123"
+    assert new_message.committable == message.committable
 
 
 def test_position() -> None:

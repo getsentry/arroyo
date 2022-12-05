@@ -1,38 +1,43 @@
 import logging
-import time
-from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar
-
-from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import Message
-
-logger = logging.getLogger(__name__)
-
-TPayload = TypeVar("TPayload")
-TResult = TypeVar("TResult")
-
-
-import logging
 import multiprocessing
 import pickle
 import signal
+import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.pool import AsyncResult, Pool
 from multiprocessing.shared_memory import SharedMemory
 from pickle import PickleBuffer
-from typing import Any, Iterator, MutableSequence, Sequence, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Generic,
+    Iterator,
+    MutableSequence,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 
+from arroyo.processing.strategies.abstract import MessageRejected
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
+from arroyo.types import Message
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
+
+TPayload = TypeVar("TPayload")
+TResult = TypeVar("TResult")
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 
