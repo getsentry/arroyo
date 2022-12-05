@@ -13,6 +13,37 @@ TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
 
 
+class RunTask(ProcessingStrategy[TPayload]):
+    """
+    Basic strategy to run a custom processing function on a message.
+    """
+
+    def __init__(
+        self,
+        function: Callable[[Message[TPayload]], TResult],
+        next_step: ProcessingStrategy[TResult],
+    ) -> None:
+        self.__function = function
+        self.__next_step = next_step
+
+    def submit(self, message: Message[TPayload]) -> None:
+        result = self.__function(message)
+        value = message.value.replace(result)
+        self.__next_step.submit(Message(value))
+
+    def poll(self) -> None:
+        self.__next_step.poll()
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        self.__next_step.join(timeout)
+
+    def close(self) -> None:
+        self.__next_step.close()
+
+    def terminate(self) -> None:
+        self.__next_step.terminate()
+
+
 class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     """
     This strategy can be used to run IO-bound tasks in parallel.
