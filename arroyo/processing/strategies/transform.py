@@ -2,6 +2,7 @@ from arroyo.processing.strategies.run_task import (
     MessageBatch,
     RunTask,
     RunTaskWithMultiprocessing,
+    TResult,
     ValueTooLarge,
 )
 from arroyo.processing.strategies.run_task import (
@@ -10,7 +11,7 @@ from arroyo.processing.strategies.run_task import (
 from arroyo.types import TPayload
 
 
-class TransformStep(RunTask[TPayload]):
+class TransformStep(RunTask[TPayload, TResult]):
     """
     Transforms a message and submits the transformed value to the next
     processing step.
@@ -22,7 +23,7 @@ class TransformStep(RunTask[TPayload]):
     pass
 
 
-class ParallelTransformStep(RunTaskWithMultiprocessing[TPayload]):
+class ParallelTransformStep(RunTaskWithMultiprocessing[TPayload, TResult]):
     """
     Transforms a message in parallel and submits the transformed value to
     the next processing step.
