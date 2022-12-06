@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.1.0
+
+### Various fixes & improvements
+
+- feat: Collect / ParallelCollect supports a next step (#149) by @lynnagara
+- feat: Add RunTaskWithMultiprocessing strategy (#152) by @lynnagara
+- feat: Add replace() method to message (#151) by @lynnagara
+- feat: Death to the consumer strategy factory (#150) by @lynnagara
+- feat: Add RunTask strategy (#147) by @lynnagara
+
 ## 2.0.0
 
 ### Various fixes & improvements

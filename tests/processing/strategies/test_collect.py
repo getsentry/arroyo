@@ -3,14 +3,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import Semaphore
-from typing import Iterator, Mapping, Optional
+from typing import Iterator, Optional
 from unittest.mock import ANY, Mock, call
 
 import pytest
 
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic
+from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -26,14 +26,14 @@ def test_collect(parallel: int) -> None:
     step_factory = Mock()
     step_factory.return_value = inner_step = Mock()
 
-    commit_function = Mock()
+    next_step = Mock()
     partition = Partition(Topic("topic"), 0)
     messages = message_generator(partition, 0)
 
     collect_step = (
-        ParallelCollectStep(step_factory, commit_function, 2, 60)
+        ParallelCollectStep(step_factory, next_step, 2, 60)
         if parallel
-        else CollectStep(step_factory, commit_function, 2, 60)
+        else CollectStep(step_factory, next_step, 2, 60)
     )
 
     # A batch should be started the first time the step receives a message.
@@ -50,12 +50,14 @@ def test_collect(parallel: int) -> None:
     # ...until we hit the batch size limit.
     with assert_changes(lambda: int(inner_step.close.call_count), 0, 1), assert_changes(
         lambda: int(inner_step.join.call_count), 0, 1
-    ), assert_changes(lambda: commit_function.call_count, 0, 1):
+    ), assert_changes(lambda: next_step.submit.call_count, 0, 1):
         collect_step.poll()
         # Give the threadpool some time to do processing
         time.sleep(1) if parallel else None
 
-        assert commit_function.call_args == call({partition: Position(2, ANY)})
+        assert next_step.submit.call_args == call(
+            Message(Value(ANY, {partition: Position(2, ANY)}))
+        )
 
     step_factory.return_value = inner_step = Mock()
 
@@ -67,7 +69,7 @@ def test_collect(parallel: int) -> None:
         collect_step.close()
 
     with assert_changes(lambda: int(inner_step.join.call_count), 0, 1), assert_changes(
-        lambda: commit_function.call_count, 1, 2
+        lambda: next_step.submit.call_count, 1, 2
     ):
         collect_step.join()
 
@@ -214,8 +216,8 @@ def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch(
     the future makes the collect step throw an exception.
     """
 
-    def commit_function(commit_map: Mapping[Partition, Position]) -> None:
-        raise Exception
+    next_step = Mock()
+    next_step.submit = Mock(side_effect=Exception())
 
     def create_step_factory() -> ProcessingStrategy[int]:
         return ByPassProcessingStep()
@@ -223,7 +225,7 @@ def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch(
     partition = Partition(Topic("topic"), 0)
     messages = message_generator(partition, 0)
 
-    collect_step = ParallelCollectStep(create_step_factory, commit_function, 1, 60)
+    collect_step = ParallelCollectStep(create_step_factory, next_step, 1, 60)
     collect_step.submit(next(messages))
     # This step will close the batch and let threadpool finish it.
     collect_step.poll()
@@ -231,6 +233,6 @@ def test_parallel_collect_throws_exception_when_commit_fails_for_previous_batch(
     collect_step.submit(next(messages))
     with pytest.raises(Exception):
         # This step will close the new batch. While doing so it will check the status of the
-        # future. The future should throw an exception since commit_function will raise one.
+        # future. The future should throw an exception since next_step.submit will raise one.
         # The exception should be raised now.
         collect_step.poll()

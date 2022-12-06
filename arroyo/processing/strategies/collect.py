@@ -1,10 +1,11 @@
 import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Generic, Mapping, MutableMapping, Optional
+from functools import partial
+from typing import Callable, Generic, MutableMapping, Optional
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message, Partition, Position, TPayload
+from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.types import Message, Partition, Position, TPayload, Value
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -17,15 +18,13 @@ class Batch(Generic[TPayload]):
 
     def __init__(
         self,
-        step: ProcessingStrategy[TPayload],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        step: ProcessingStep[TPayload],
     ) -> None:
         self.__step = step
-        self.__commit_function = commit_function
 
         self.__created = time.time()
         self.__length = 0
-        self.__offsets: MutableMapping[Partition, Position] = {}
+        self.offsets: MutableMapping[Partition, Position] = {}
         self.__closed = False
 
     def __repr__(self) -> str:
@@ -47,7 +46,7 @@ class Batch(Generic[TPayload]):
         self.__length += 1
 
         for (partition, position) in message.committable.items():
-            self.__offsets[partition] = position
+            self.offsets[partition] = position
 
     def close(self) -> None:
         self.__closed = True
@@ -61,11 +60,9 @@ class Batch(Generic[TPayload]):
 
     def join(self, timeout: Optional[float] = None) -> None:
         self.__step.join(timeout)
-        logger.debug("Committing offsets: %r", self.__offsets)
-        self.__commit_function(self.__offsets)
 
 
-class CollectStep(ProcessingStrategy[TPayload]):
+class CollectStep(ProcessingStep[TPayload]):
     """
     Collects messages into batches, periodically closing the batch and
     committing the offsets once the batch has successfully been closed.
@@ -73,13 +70,13 @@ class CollectStep(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        step_factory: Callable[[], ProcessingStrategy[TPayload]],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        step_factory: Callable[[], ProcessingStep[TPayload]],
+        next_step: ProcessingStep[Batch[TPayload]],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:
         self.__step_factory = step_factory
-        self.__commit_function = commit_function
+        self.__next_step = next_step
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
 
@@ -93,6 +90,7 @@ class CollectStep(ProcessingStrategy[TPayload]):
         self.batch.close()
         self.batch.join()
         logger.info("Completed processing %r.", self.batch)
+        self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
         self.batch = None
         self._metrics.timing("collect.poll.time", self._collect_poll_time)
         self._collect_poll_time = 0
@@ -127,7 +125,7 @@ class CollectStep(ProcessingStrategy[TPayload]):
         assert not self.__closed
 
         if self.batch is None:
-            self.batch = Batch(self.__step_factory(), self.__commit_function)
+            self.batch = Batch(self.__step_factory())
 
         self.batch.submit(message)
 
@@ -147,6 +145,7 @@ class CollectStep(ProcessingStrategy[TPayload]):
     def join(self, timeout: Optional[float] = None) -> None:
         if self.batch is not None:
             self.batch.join(timeout)
+            self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
             logger.info("Completed processing %r.", self.batch)
             self.batch = None
 
@@ -154,31 +153,33 @@ class CollectStep(ProcessingStrategy[TPayload]):
 class ParallelCollectStep(CollectStep[TPayload]):
     """
     ParallelCollectStep is similar to CollectStep except it allows the closing and reset of the
-    batch to happen in a threadpool. What this allows for is the next batch to start getting
-    filled in while the previous batch is still being processed.
+    batch to happen in a threadpool. This is useful if closing the batch involes IO-bound tasks
+    such as flushing to a remote storage system. The next batch can start getting filled while
+    the previous batch is being closed.
 
-    The threadpool will have only 1 worker since we want to perform writes to clickhouse sequentially
-    so that kafka offsets are written in order.
+    The threadpool has 1 worker since we want to ensure batches are processed sequentially
+    and passed to the next step in order.
     """
 
     def __init__(
         self,
-        step_factory: Callable[[], ProcessingStrategy[TPayload]],
-        commit_function: Callable[[Mapping[Partition, Position]], None],
+        step_factory: Callable[[], ProcessingStep[TPayload]],
+        next_step: ProcessingStep[Batch[TPayload]],
         max_batch_size: int,
         max_batch_time: float,
         wait_timeout: float = 10.0,
     ):
-        super().__init__(step_factory, commit_function, max_batch_size, max_batch_time)
+        super().__init__(step_factory, next_step, max_batch_size, max_batch_time)
         self.__threadpool = ThreadPoolExecutor(max_workers=1)
         self.future: Optional[Future[None]] = None
         self.wait_timeout = wait_timeout
+        self.__finish_batch = partial(self.__finish_batch_and_submit, next_step)
 
     def close_and_reset_batch(self) -> None:
         """
-        Closes the current batch in an asynchronous manner. Waits for previous work to be completed before proceeding
-        the next one. We can provide the existing batch to the threadpool since the collector is going to make a
-        new batch.
+        Closes the current batch in an asynchronous manner. Waits for previous work to be completed before
+        proceeding the next one. We can provide the existing batch to the threadpool since the collector
+        is going to make a new batch.
         """
         if self.future:
             # If any exceptions are raised they should get bubbled up.
@@ -191,12 +192,15 @@ class ParallelCollectStep(CollectStep[TPayload]):
         self._collect_poll_time = 0
 
     @staticmethod
-    def __finish_batch(batch: Batch[TPayload]) -> None:
+    def __finish_batch_and_submit(
+        next_step: ProcessingStep[Batch[TPayload]], batch: Batch[TPayload]
+    ) -> None:
         assert batch is not None
 
         batch.close()
         batch.join()
         logger.info("Completed processing %r.", batch)
+        next_step.submit(Message(Value(batch, batch.offsets)))
 
     def join(self, timeout: Optional[float] = None) -> None:
         work_time = 0.0
