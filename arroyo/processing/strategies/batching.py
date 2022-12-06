@@ -252,9 +252,8 @@ class BatchBuilder(Generic[TPayload]):
     """
     Accumulates Values in a Sequence of BaseValue.
 
-    It does not require offsets to be in monotonic order, though,
-    if offsets are not in monotonic order, it keeps track of the high
-    offset watermark as committable offset.
+    It expects messages to be in monotonic order per partition.
+    Out of order offsets will generate an invalid watermark.
     """
 
     def __init__(
@@ -269,14 +268,7 @@ class BatchBuilder(Generic[TPayload]):
         self.__init_time = time.time()
 
     def append(self, value: BaseValue[TPayload]) -> None:
-        committables = value.committable
-        for partition, position in committables.items():
-            if (
-                partition not in self.__offsets
-                or self.__offsets[partition].offset <= position.offset
-            ):
-                self.__offsets[partition] = position
-
+        self.__offsets.update(value.committable)
         self.__values.append(value)
 
     def build_if_ready(self) -> Optional[Value[ValuesBatch[TPayload]]]:

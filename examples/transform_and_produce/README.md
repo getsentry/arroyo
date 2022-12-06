@@ -32,8 +32,8 @@ The process is fairly simple:
 - The batch is submitted to the `TransformStrategy` which would run some indexing logic on the whole
   batch.
 - The results are exploded into messages again.
-- The indexed messages are then submitted to the `ProduceAndCommitStep` which simply produces the given message to `hash-topic`
-- The `ProduceAndCommitStep` is also responsible for commiting the original offset back for the consumer
+- The indexed messages are then submitted to the `Produce` which simply produces the given message to `hash-topic`
+- The `Commit` step is then responsible for commiting the original offset back for the consumer
 
 # Usage
 
