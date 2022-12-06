@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class Batch(Generic[TPayload]):
+    """
+    Use MessageBatch instead.
+    """
+
     def __init__(
         self,
         step: ProcessingStep[TPayload],

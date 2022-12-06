@@ -42,7 +42,7 @@ TResult = TypeVar("TResult")
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
-class RunTask(ProcessingStrategy[TPayload]):
+class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     """
     Basic strategy to run a custom processing function on a message.
     """
@@ -384,7 +384,7 @@ def parallel_run_task_worker_apply(
     )
 
 
-class RunTaskWithMultiprocessing(ProcessingStep[TPayload]):
+class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TResult]):
     """
     Caution: MessageRejected is not properly handled by the RunTaskWithMultiprocessing step. Exercise
     caution if chaining this step before a strategy like `Produce` or `RunTaskInThreads` which
