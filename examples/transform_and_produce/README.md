@@ -1,4 +1,6 @@
-# Consume -> Transform -> Produce
+# Examples
+
+## Consume -> Transform -> Produce
 
 ### What this does
 
@@ -14,7 +16,26 @@ The process is fairly simple:
 - The credentials are then submitted to `Produce` which simply produces the given message to `hash-topic`
 - Finally the `CommitOffsets` step commits the original offset back for the consumer
 
-### Usage
+## Consume -> Batch -> Transform -> Unbatch -> Produce
+
+### What this does
+
+---
+
+This is a slightly more complex consumer that includes batching.
+
+The process is fairly simple:
+
+- The consumer consumes messages from the `raw-topic`
+- This message is in the form `{"username": "<username>", "password": "<password>"}`
+- Messages are batched
+- The batch is submitted to the `TransformStrategy` which would run some indexing logic on the whole
+  batch.
+- The results are exploded into messages again.
+- The indexed messages are then submitted to the `Produce` which simply produces the given message to `hash-topic`
+- The `Commit` step is then responsible for commiting the original offset back for the consumer
+
+# Usage
 
 ---
 
