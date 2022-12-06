@@ -9,12 +9,12 @@ from arroyo.processing.strategies import (
     Produce,
     TransformStep,
     UnbatchStep,
-    ValuesBatch,
 )
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
+from arroyo.processing.strategies.batching import ValuesBatch
 from arroyo.types import Commit, Message, Partition, Topic, Value
 
 logger = logging.getLogger(__name__)
