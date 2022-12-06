@@ -1,14 +1,12 @@
 import multiprocessing
 from datetime import datetime
 from multiprocessing.managers import SharedMemoryManager
-from threading import Semaphore
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
 
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessages,
     InvalidRawMessage,
@@ -77,30 +75,6 @@ def test_transform() -> None:
             )
         )
     )
-
-
-class WaitProcessingStep(ProcessingStrategy[int]):
-    """
-    ProcessingStep implementation that acquires a lock when join is called to mimic a long wait.
-    """
-
-    def __init__(self, semaphore: Semaphore):
-        self.semaphore = semaphore
-
-    def submit(self, message: Message[int]) -> None:
-        pass
-
-    def poll(self) -> None:
-        pass
-
-    def close(self) -> None:
-        pass
-
-    def terminate(self) -> None:
-        pass
-
-    def join(self, timeout: Optional[float] = None) -> None:
-        self.semaphore.acquire()
 
 
 def test_message_batch() -> None:
