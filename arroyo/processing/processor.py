@@ -162,10 +162,12 @@ class StreamProcessor(Generic[TPayload]):
             prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
             messages_since_last_commit += pos.offset - prev_offset
 
+        start = time.time()
+        elapsed = start - self.__last_committed_time
+
         if force or self.__commit_policy.should_commit(
-            self.__last_committed_time, messages_since_last_commit
+            elapsed, messages_since_last_commit
         ):
-            start = time.time()
             self.__consumer.commit_positions()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
