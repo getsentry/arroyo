@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Callable, NamedTuple, Optional, Sequence, Tuple
+from typing import Callable, Generic, NamedTuple, Optional, Sequence, Tuple, TypeVar
 
 import fastjsonschema
 import rapidjson
@@ -12,6 +12,8 @@ from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.run_task import RunTaskWithMultiprocessing
 from arroyo.types import Message
 
+T = TypeVar("T")
+
 
 class DecodedKafkaMessage(NamedTuple):
     key: Optional[bytes]
@@ -20,7 +22,7 @@ class DecodedKafkaMessage(NamedTuple):
 
 
 def validation_func(
-    codec: Codec, validate: bool, message: Message[KafkaPayload]
+    codec: Codec[T], validate: bool, message: Message[KafkaPayload]
 ) -> DecodedKafkaMessage:
     return DecodedKafkaMessage(
         message.payload.key,
@@ -29,7 +31,7 @@ def validation_func(
     )
 
 
-class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
+class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload], Generic[T]):
     """
     Decode messages to be forwarded to the next step. Optional validation.
     This strategy accepts a KafkaPayload and only performs validation on the
@@ -38,7 +40,7 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
 
     def __init__(
         self,
-        codec: Codec,
+        codec: Codec[T],
         validate: bool,
         next_step: ProcessingStrategy[DecodedKafkaMessage],
         num_processes: int,
@@ -84,24 +86,24 @@ class ValidationError(Exception):
     pass
 
 
-class Codec(ABC):
+class Codec(ABC, Generic[T]):
     @abstractmethod
-    def decode(self, raw_data: bytes, validate: bool) -> object:
+    def decode(self, raw_data: bytes, validate: bool) -> T:
         """
-        Decode bytes from Kafka message into Python object.
+        Decode bytes from Kafka message.
         If validate is true, the validation is run.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def validate(self, data: object) -> None:
+    def validate(self, data: T) -> None:
         """
         Runs the validation. Raises a ValidationError if the data is not valid.
         """
         raise NotImplementedError
 
 
-class JsonCodec(Codec):
+class JsonCodec(Codec[object]):
     def __init__(self, json_schema: object) -> None:
         self.__json_schema = json_schema
         # Initially set to none as the validate function is not pickleable
