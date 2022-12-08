@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import NamedTuple, Optional, Sequence, Tuple
+from functools import partial
+from typing import Callable, NamedTuple, Optional, Sequence, Tuple
 
 import fastjsonschema
 import rapidjson
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.run_task import RunTaskWithMultiprocessing
 from arroyo.types import Message
 
 
@@ -17,13 +19,21 @@ class DecodedKafkaMessage(NamedTuple):
     headers: Sequence[Tuple[str, bytes]]
 
 
+def validation_func(
+    codec: Codec, validate: bool, message: Message[KafkaPayload]
+) -> DecodedKafkaMessage:
+    return DecodedKafkaMessage(
+        message.payload.key,
+        codec.decode(message.payload.value, validate),
+        message.payload.headers,
+    )
+
+
 class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
     """
     Decode messages to be forwarded to the next step. Optional validation.
     This strategy accepts a KafkaPayload and only performs validation on the
     message value. Headers and keys are forwarded without being validated or parsed.
-
-    TODO: Should accumulate batches and process in parallel.
     """
 
     def __init__(
@@ -31,32 +41,38 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
         codec: Codec,
         validate: bool,
         next_step: ProcessingStrategy[DecodedKafkaMessage],
+        num_processes: int,
+        max_batch_size: int,
+        max_batch_time: float,
+        input_block_size: int,
+        output_block_size: int,
+        initializer: Optional[Callable[[], None]] = None,
     ) -> None:
-        self.__codec = codec
-        self.__validate = validate
-        self.__next_step = next_step
+        self.__task_runner = RunTaskWithMultiprocessing(
+            partial(validation_func, codec, validate),
+            next_step,
+            num_processes,
+            max_batch_size,
+            max_batch_time,
+            input_block_size,
+            output_block_size,
+            initializer,
+        )
 
     def poll(self) -> None:
-        self.__next_step.poll()
+        self.__task_runner.poll()
 
     def submit(self, message: Message[KafkaPayload]) -> None:
-        decoded_value = self.__codec.decode(
-            message.payload.value, validate=self.__validate
-        )
-
-        decoded = DecodedKafkaMessage(
-            message.payload.key, decoded_value, message.payload.headers
-        )
-        self.__next_step.submit(Message(message.value.replace(decoded)))
+        self.__task_runner.submit(message)
 
     def close(self) -> None:
-        self.__next_step.close()
+        self.__task_runner.close()
 
     def terminate(self) -> None:
-        self.__next_step.terminate()
+        self.__task_runner.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__next_step.join(timeout)
+        self.__task_runner.join(timeout)
 
 
 class ValidationError(Exception):
@@ -87,7 +103,15 @@ class Codec(ABC):
 
 class JsonCodec(Codec):
     def __init__(self, json_schema: object) -> None:
-        self.__validate = fastjsonschema.compile(json_schema)
+        self.__json_schema = json_schema
+        # Initially set to none as the validate function is not pickleable
+        self.__validate_func: Optional[Callable[[object], None]] = None
+
+    def __validate(self, data: object) -> None:
+        if self.__validate_func is None:
+            self.__validate_func = fastjsonschema.compile(self.__json_schema)
+
+        self.__validate_func(data)
 
     def decode(self, raw_data: bytes, validate: bool) -> object:
         decoded = rapidjson.loads(raw_data)
