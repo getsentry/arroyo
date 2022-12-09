@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Generic, NamedTuple, Optional, Sequence, Tuple, TypeVar
+from typing import Callable, Generic, Optional, Sequence, Tuple, TypeVar
 
 import fastjsonschema
 import rapidjson
@@ -15,15 +16,16 @@ from arroyo.types import Message
 T = TypeVar("T")
 
 
-class DecodedKafkaMessage(NamedTuple):
+@dataclass(frozen=True)
+class DecodedKafkaMessage(Generic[T]):
     key: Optional[bytes]
-    decoded: object
+    decoded: T
     headers: Sequence[Tuple[str, bytes]]
 
 
 def validation_func(
     codec: Codec[T], validate: bool, message: Message[KafkaPayload]
-) -> DecodedKafkaMessage:
+) -> DecodedKafkaMessage[T]:
     return DecodedKafkaMessage(
         message.payload.key,
         codec.decode(message.payload.value, validate),
@@ -42,7 +44,7 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload], Generic[T]):
         self,
         codec: Codec[T],
         validate: bool,
-        next_step: ProcessingStrategy[DecodedKafkaMessage],
+        next_step: ProcessingStrategy[DecodedKafkaMessage[T]],
         num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
