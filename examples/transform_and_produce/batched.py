@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, MutableSequence, Sequence
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies import (
@@ -15,7 +15,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.batching import ValuesBatch
-from arroyo.types import Commit, Message, Partition, Topic, Value
+from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def index_data(
     logger.info("Indexing %d messages", len(batch.payload))
     parsed_msgs = [json.loads(s.payload.value.decode("utf-8")) for s in batch.payload]
     indexed_messages = resolve_index(parsed_msgs)
-    ret = []
+    ret: MutableSequence[BaseValue[KafkaPayload]] = []
     for i in range(0, len(batch.payload)):
         ret.append(
             Value(
@@ -74,7 +74,7 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
 
         return BatchStep(
             max_batch_size=10,
-            max_batch_time_sec=2,
+            max_batch_time=2.0,
             next_step=TransformStep(
                 function=index_data,
                 next_step=UnbatchStep(
