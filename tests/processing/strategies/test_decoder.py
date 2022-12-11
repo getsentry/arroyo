@@ -1,4 +1,3 @@
-import pickle
 from datetime import datetime
 from unittest.mock import Mock
 
@@ -23,12 +22,6 @@ schema = {
 }
 
 
-def test_codec() -> None:
-    # pickleable
-    codec = JsonCodec(schema)
-    pickle.loads(pickle.dumps(codec))
-
-
 def make_kafka_message(raw_data: bytes) -> Message[KafkaPayload]:
     return Message(
         Value(
@@ -45,24 +38,14 @@ def make_kafka_message(raw_data: bytes) -> Message[KafkaPayload]:
 def test_json_decoder() -> None:
     next_step = Mock()
     json_codec = JsonCodec(schema)
-    block_size = 4096
-
-    strategy = KafkaMessageDecoder(
-        json_codec, True, next_step, 1, 1, 1, block_size, block_size
-    )
+    strategy = KafkaMessageDecoder(json_codec, True, next_step)
+    strategy_skip_validation = KafkaMessageDecoder(json_codec, False, next_step)
 
     # Valid message
     valid_message = make_kafka_message(
         b'{"event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "project_id": 1, "group_id": 2}'
     )
     strategy.submit(valid_message)
-    strategy.poll()
-
-    # Wait for all messages to get processed
-    strategy.close()
-    strategy.join()
-
-    assert next_step.submit.call_count == 1
 
     assert next_step.submit.call_args[0][0] == Message(
         Value(
@@ -86,21 +69,7 @@ def test_json_decoder() -> None:
         b'{"event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "project_id": "bbb", "group_id": 2}'
     )
 
-    strategy = KafkaMessageDecoder(
-        json_codec, True, next_step, 1, 1, 1, block_size, block_size
-    )
-
     with pytest.raises(ValidationError):
         strategy.submit(invalid_message)
-        strategy.poll()
-        strategy.close()
-        strategy.join()
 
-    # Without validation
-    strategy_skip_validation = KafkaMessageDecoder(
-        json_codec, False, next_step, 1, 1, 1, block_size, block_size
-    )
     strategy_skip_validation.submit(invalid_message)
-    strategy_skip_validation.poll()
-    strategy_skip_validation.close()
-    strategy_skip_validation.join()
