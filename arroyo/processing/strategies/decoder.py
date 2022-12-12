@@ -36,8 +36,6 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
     Decode messages to be forwarded to the next step. Optional validation.
     This strategy accepts a KafkaPayload and only performs validation on the
     message value. Headers and keys are forwarded without being validated or parsed.
-
-    TODO: Should accumulate batches and process in parallel.
     """
 
     def __init__(
