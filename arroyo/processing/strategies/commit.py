@@ -1,10 +1,10 @@
-from typing import Optional
+from typing import Any, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Commit, Message, TPayload
+from arroyo.types import Commit, Message
 
 
-class CommitOffsets(ProcessingStrategy[TPayload]):
+class CommitOffsets(ProcessingStrategy[Any]):
     """
     Just commits offsets.
 
@@ -19,7 +19,7 @@ class CommitOffsets(ProcessingStrategy[TPayload]):
     def poll(self) -> None:
         pass
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[Any]) -> None:
         self.__commit(message.committable)
 
     def close(self) -> None:
