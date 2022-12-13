@@ -91,6 +91,12 @@ common use cases.
 
 Common examples are:
 
+* ``run task, run task in threads, run task with multiprocessing ```. The run task
+  set of strategies are are designed to be the most flexible and simple to use. They take
+  a function provided by the user and execute it on every message, passing the output
+  to the next step. The library includes synchronous and asynchronous versions depending
+  on the kind of concurrency required by the user.
+
 * ``filter, map and forward``. This type of consumer inspect a message, decides
   whether to process it or discard it, transform its content and produces the result
   on a new topic. In this case Arroyo provides three implementations of the
@@ -117,4 +123,4 @@ Common examples are:
   letter queue strategy wraps this logic and intercepts *InvalidMessage* exceptions
   sending the content to a dedicated topic.
 
-All high lkevel strategies are in `the strategies module <https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies>`_.
+All high level strategies are in `the strategies module <https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies>`_.
