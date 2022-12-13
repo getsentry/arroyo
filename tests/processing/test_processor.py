@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Mapping, Optional, Sequence, cast
+from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
 
 import pytest
@@ -443,3 +443,38 @@ def test_stream_processor_commit_policy_every_two_seconds() -> None:
         2,
         2,
     ]
+
+
+def test_commit_policy_bench(benchmark: Any) -> None:
+    topic = Topic("topic")
+    commit_never = CommitPolicy(1000, None)
+    now = datetime.now()
+
+    def commit_policy_never_commits() -> None:
+        run_commit_policy_test(
+            topic,
+            [
+                Message(BrokerValue(0, Partition(topic, 0), 0, now)),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 1, now + timedelta(seconds=1))
+                ),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 2, now + timedelta(seconds=2))
+                ),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 3, now + timedelta(seconds=3))
+                ),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 4, now + timedelta(seconds=4))
+                ),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 5, now + timedelta(seconds=5))
+                ),
+                Message(
+                    BrokerValue(0, Partition(topic, 0), 6, now + timedelta(seconds=6))
+                ),
+            ],
+            commit_never,
+        )
+
+    benchmark(commit_policy_never_commits)
