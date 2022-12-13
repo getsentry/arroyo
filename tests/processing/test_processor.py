@@ -4,6 +4,9 @@ from unittest import mock
 
 import pytest
 
+from arroyo.backends.local.backend import LocalBroker
+from arroyo.backends.local.storages.abstract import MessageStorage
+from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies.abstract import (
@@ -12,6 +15,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
+from arroyo.utils.clock import TestingClock
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -445,36 +449,39 @@ def test_stream_processor_commit_policy_every_two_seconds() -> None:
     ]
 
 
-def test_commit_policy_bench(benchmark: Any) -> None:
+@pytest.mark.parametrize(
+    "commit_seconds", [0, 1000], ids=("commit_always", "commit_never")
+)
+@pytest.mark.parametrize("num_messages", [1, 100, 1000])
+def test_commit_policy_bench(
+    benchmark: Any, commit_seconds: int, num_messages: int
+) -> None:
     topic = Topic("topic")
-    commit_never = CommitPolicy(1000, None)
+    commit_policy = CommitPolicy(commit_seconds, None)
+    num_partitions = 1
     now = datetime.now()
 
-    def commit_policy_never_commits() -> None:
-        run_commit_policy_test(
-            topic,
-            [
-                Message(BrokerValue(0, Partition(topic, 0), 0, now)),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 1, now + timedelta(seconds=1))
-                ),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 2, now + timedelta(seconds=2))
-                ),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 3, now + timedelta(seconds=3))
-                ),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 4, now + timedelta(seconds=4))
-                ),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 5, now + timedelta(seconds=5))
-                ),
-                Message(
-                    BrokerValue(0, Partition(topic, 0), 6, now + timedelta(seconds=6))
-                ),
-            ],
-            commit_never,
-        )
+    storage: MessageStorage[int] = MemoryMessageStorage()
+    storage.create_topic(topic, num_partitions)
 
-    benchmark(commit_policy_never_commits)
+    broker = LocalBroker(storage, TestingClock())
+
+    consumer = broker.get_consumer("test-group", enable_end_of_partition=True)
+
+    factory = CommitOffsetsFactory()
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer,
+        topic,
+        factory,
+        commit_policy,
+    )
+
+    def inner() -> None:
+        for i in range(num_messages):
+            storage.produce(Partition(topic, i % num_partitions), i, now)
+
+        for _ in range(num_messages):
+            processor._run_once()
+
+    benchmark(inner)
