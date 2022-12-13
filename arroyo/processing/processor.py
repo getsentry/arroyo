@@ -84,6 +84,7 @@ class StreamProcessor(Generic[TPayload]):
 
         self.__commit_policy = commit_policy
         self.__last_committed_time: float = time.time()
+        self.__pre_staged_offsets: MutableMapping[Partition, Position] = {}
         self.__committed_offsets: MutableMapping[Partition, int] = {}
 
         self.__shutdown_requested = False
@@ -155,6 +156,8 @@ class StreamProcessor(Generic[TPayload]):
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
+        self.__pre_staged_offsets.update(positions)
+
         messages_since_last_commit = 0
         for partition, pos in positions.items():
             prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
@@ -166,7 +169,8 @@ class StreamProcessor(Generic[TPayload]):
         if force or self.__commit_policy.should_commit(
             elapsed, messages_since_last_commit
         ):
-            self.__consumer.stage_positions(positions)
+            self.__consumer.stage_positions(self.__pre_staged_offsets)
+            self.__pre_staged_offsets.clear()
             self.__consumer.commit_positions()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
