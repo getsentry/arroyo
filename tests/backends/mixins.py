@@ -2,7 +2,6 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
-from datetime import datetime, timedelta
 from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
@@ -10,7 +9,7 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -111,22 +110,14 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             assert value.offset == messages[0].offset
             assert value.payload == messages[0].payload
 
-            assert consumer.commit_positions() == {}
+            assert consumer.commit_offsets() == {}
 
-            consumer.stage_positions(value.committable)
+            consumer.stage_offsets(value.committable)
 
             with pytest.raises(ConsumerError):
-                consumer.stage_positions(
-                    {
-                        Partition(Topic("invalid"), 0): Position(
-                            0, datetime.now() - timedelta(minutes=1)
-                        )
-                    }
-                )
+                consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
 
-            assert consumer.commit_positions() == {
-                Partition(topic, 0): Position(value.next_offset, value.timestamp)
-            }
+            assert consumer.commit_offsets() == {Partition(topic, 0): value.next_offset}
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
 
@@ -175,10 +166,10 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
                 consumer.paused()
 
             with pytest.raises(RuntimeError):
-                consumer.stage_positions({})
+                consumer.stage_offsets({})
 
             with pytest.raises(RuntimeError):
-                consumer.commit_positions()
+                consumer.commit_offsets()
 
             consumer.close()  # should be safe, even if the consumer is already closed
 
@@ -228,7 +219,7 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with pytest.raises(EndOfPartition):
                 consumer.poll()
 
-            # Somewhat counterintuitively, seeking to an invalid position
+            # Somewhat counterintuitively, seeking to an invalid offset
             # should be allowed -- we don't know it's invalid until we try and
             # read from it.
             consumer.seek({Partition(topic, 0): messages[-1].next_offset + 1000})

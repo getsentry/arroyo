@@ -18,7 +18,7 @@ from arroyo.backends.kafka.configuration import build_kafka_configuration
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import Commit
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import BrokerValue, Partition, Position, Topic
+from arroyo.types import BrokerValue, Partition, Topic
 from tests.backends.mixins import StreamsTestMixin
 
 commit_codec = CommitCodec()
@@ -150,14 +150,10 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
                 partition = Partition(topic, 0)
 
-                consumer.stage_positions(
-                    {
-                        partition: Position(
-                            offset=message.offset + 1000, timestamp=message.timestamp
-                        )
-                    },
+                consumer.stage_offsets(
+                    {partition: message.offset},
                 )
-                consumer.commit_positions()
+                consumer.commit_offsets()
 
             with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
@@ -167,7 +163,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 assert result_message.payload.value == b"0"
 
                 # make sure we reset our offset now
-                consumer.commit_positions()
+                consumer.commit_offsets()
 
     def test_auto_offset_reset_error(self) -> None:
         with self.get_topic() as topic:

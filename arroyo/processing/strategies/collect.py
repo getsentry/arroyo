@@ -5,7 +5,7 @@ from functools import partial
 from typing import Callable, Generic, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, Partition, Position, TPayload, Value
+from arroyo.types import Message, Partition, TPayload, Value
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class Batch(Generic[TPayload]):
 
         self.__created = time.time()
         self.__length = 0
-        self.offsets: MutableMapping[Partition, Position] = {}
+        self.offsets: MutableMapping[Partition, int] = {}
         self.__closed = False
 
     def __repr__(self) -> str:
@@ -45,8 +45,7 @@ class Batch(Generic[TPayload]):
         self.__step.submit(message)
         self.__length += 1
 
-        for (partition, position) in message.committable.items():
-            self.offsets[partition] = position
+        self.offsets.update(message.committable)
 
     def close(self) -> None:
         self.__closed = True

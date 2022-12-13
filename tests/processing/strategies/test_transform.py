@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest.mock import Mock, call
 
 from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes
 
 
@@ -14,9 +14,7 @@ def test_transform() -> None:
 
     transform_step = TransformStep(transform_function, next_step)
 
-    original_message = Message(
-        Value(1, {Partition(Topic("topic"), 0): Position(1, datetime.now())})
-    )
+    original_message = Message(Value(1, {Partition(Topic("topic"), 0): 1}))
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
         transform_step.submit(original_message)

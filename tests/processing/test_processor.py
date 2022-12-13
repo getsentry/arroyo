@@ -313,7 +313,7 @@ def run_commit_policy_test(
 ) -> Sequence[int]:
     commit = mock.Mock()
     consumer = mock.Mock()
-    consumer.commit_positions = commit
+    consumer.commit_offsets = commit
 
     factory = CommitOffsetsFactory()
 

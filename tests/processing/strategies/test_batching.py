@@ -13,15 +13,7 @@ from arroyo.processing.strategies.batching import (
     ValuesBatch,
 )
 from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import (
-    BaseValue,
-    BrokerValue,
-    Message,
-    Partition,
-    Position,
-    Topic,
-    Value,
-)
+from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
 
 def broker_value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
@@ -33,7 +25,7 @@ def broker_value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
     )
 
 
-def value(committable: Mapping[Partition, Position], payload: str) -> Value[str]:
+def value(committable: Mapping[Partition, int], payload: str) -> Value[str]:
     return Value(payload=payload, committable=committable)
 
 
@@ -58,7 +50,7 @@ test_builder = [
         ],
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
-        {Partition(Topic("test"), 0): Position(4, datetime(2022, 1, 1, 0, 0, 1))},
+        {Partition(Topic("test"), 0): 4},
         True,
         id="Batch closed by time",
     ),
@@ -72,7 +64,7 @@ test_builder = [
         ],
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 3),
-        {Partition(Topic("test"), 0): Position(6, datetime(2022, 1, 1, 0, 0, 1))},
+        {Partition(Topic("test"), 0): 6},
         True,
         id="Batch closed by size",
     ),
@@ -85,9 +77,9 @@ test_builder = [
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
         {
-            Partition(Topic("test"), 0): Position(2, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 1): Position(3, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 2): Position(4, datetime(2022, 1, 1, 0, 0, 1)),
+            Partition(Topic("test"), 0): 2,
+            Partition(Topic("test"), 1): 3,
+            Partition(Topic("test"), 2): 4,
         },
         True,
         id="Messages on multiple partitions",
@@ -97,15 +89,9 @@ test_builder = [
             value(
                 payload="test",
                 committable={
-                    Partition(Topic("test"), 0): Position(
-                        2, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
-                    Partition(Topic("test"), 1): Position(
-                        3, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
-                    Partition(Topic("test"), 2): Position(
-                        4, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
+                    Partition(Topic("test"), 0): 2,
+                    Partition(Topic("test"), 1): 3,
+                    Partition(Topic("test"), 2): 4,
                 },
             ),
             broker_value(2, 6, "Message 3"),
@@ -113,9 +99,9 @@ test_builder = [
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
         {
-            Partition(Topic("test"), 0): Position(2, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 1): Position(3, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 2): Position(7, datetime(2022, 1, 1, 0, 0, 1)),
+            Partition(Topic("test"), 0): 2,
+            Partition(Topic("test"), 1): 3,
+            Partition(Topic("test"), 2): 7,
         },
         True,
         id="Messages with multiple offsets to commit",
@@ -132,7 +118,7 @@ def test_batch_builder(
     values_in: Sequence[BaseValue[str]],
     time_create: datetime,
     time_end: datetime,
-    expected_offsets: Mapping[Partition, Position],
+    expected_offsets: Mapping[Partition, int],
     expected_ready: bool,
 ) -> None:
     start = time.mktime(time_create.timetuple())
@@ -182,11 +168,7 @@ test_batch = [
                             broker_value(0, 2, "Message 2"),
                             broker_value(0, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 4},
                     ),
                 )
             )
@@ -212,11 +194,7 @@ test_batch = [
                             broker_value(0, 2, "Message 2"),
                             broker_value(0, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 4},
                     ),
                 )
             ),
@@ -228,11 +206,7 @@ test_batch = [
                             broker_value(1, 2, "Message 2"),
                             broker_value(1, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 1): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 1): 4},
                     ),
                 )
             ),
@@ -287,11 +261,7 @@ def test_batch_join() -> None:
                             broker_value(0, 1, "Message 1"),
                             broker_value(0, 2, "Message 2"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                3, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 3},
                     ),
                 )
             )
@@ -307,9 +277,7 @@ def test_unbatch_step() -> None:
                 broker_value(1, 2, "Message 2"),
                 broker_value(1, 3, "Message 3"),
             ],
-            committable={
-                Partition(Topic("test"), 1): Position(4, datetime(2022, 1, 1, 0, 0, 1))
-            },
+            committable={Partition(Topic("test"), 1): 4},
         ),
     )
 

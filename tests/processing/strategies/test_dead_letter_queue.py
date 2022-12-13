@@ -30,7 +30,7 @@ from arroyo.processing.strategies.dead_letter_queue.policies.produce import (
 from arroyo.processing.strategies.dead_letter_queue.policies.raise_e import (
     RaiseInvalidMessagePolicy,
 )
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic
+from arroyo.types import BrokerValue, Message, Partition, Topic
 
 NO_KEY = "No key"
 BAD_PAYLOAD = "Bad payload"
@@ -154,13 +154,14 @@ def processing_step() -> ProcessingStrategy[KafkaPayload]:
 @pytest.fixture
 def valid_message() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
-    position = Position(0, NOW)
+    offset = 0
+
     return Message(
         BrokerValue(
             KafkaPayload(b"Key", b"Value", []),
             partition,
-            position.offset,
-            position.timestamp,
+            offset,
+            NOW,
         )
     )
 
@@ -168,13 +169,14 @@ def valid_message() -> Message[KafkaPayload]:
 @pytest.fixture
 def invalid_message_no_key() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
-    position = Position(0, NOW)
+    offset = 0
+
     return Message(
         BrokerValue(
             KafkaPayload(None, b"Value", []),
             partition,
-            position.offset,
-            position.timestamp,
+            offset,
+            NOW,
         )
     )
 
@@ -182,14 +184,14 @@ def invalid_message_no_key() -> Message[KafkaPayload]:
 @pytest.fixture
 def invalid_message_bad_value() -> Message[KafkaPayload]:
     partition = Partition(Topic(""), 0)
-    position = Position(0, NOW)
+    offset = 0
 
     return Message(
         BrokerValue(
             KafkaPayload(key=b"Key", value=b"\xff", headers=[]),
             partition,
-            position.offset,
-            position.timestamp,
+            offset,
+            NOW,
         )
     )
 
