@@ -317,16 +317,6 @@ class LocalConsumer(Consumer[TPayload]):
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            if positions.keys() - self.__offsets.keys():
-                raise ConsumerError("cannot stage offsets for unassigned partitions")
-
-            self.__validate_offsets(
-                {
-                    partition: position.offset
-                    for (partition, position) in positions.items()
-                }
-            )
-
             self.__staged_positions.update(positions)
 
     def commit_positions(self) -> Mapping[Partition, Position]:
@@ -334,18 +324,25 @@ class LocalConsumer(Consumer[TPayload]):
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            offsets = {**self.__staged_positions}
+            positions = {**self.__staged_positions}
+
+            if positions.keys() - self.__offsets.keys():
+                raise ConsumerError("cannot stage offsets for unassigned partitions")
+
+            offsets = {
+                partition: position.offset
+                for (partition, position) in positions.items()
+            }
+
+            self.__validate_offsets(offsets)
             self.__broker.commit(
                 self,
-                {
-                    partition: position.offset
-                    for (partition, position) in offsets.items()
-                },
+                offsets,
             )
             self.__staged_positions.clear()
 
             self.commit_offsets_calls += 1
-            return offsets
+            return positions
 
     def close(self, timeout: Optional[float] = None) -> None:
         with self.__lock:
