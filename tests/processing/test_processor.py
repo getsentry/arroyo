@@ -111,7 +111,7 @@ def test_stream_processor_lifecycle() -> None:
 
     # The processor should not accept non-heartbeat messages without an
     # assignment or active processor.
-    consumer.poll.return_value = message
+    consumer.poll.return_value = message.value
     with pytest.raises(InvalidStateError):
         processor._run_once()
 
@@ -135,7 +135,7 @@ def test_stream_processor_termination_on_error() -> None:
     offset = 0
     now = datetime.now()
 
-    consumer.poll.return_value = Message(BrokerValue(0, partition, offset, now))
+    consumer.poll.return_value = BrokerValue(0, partition, offset, now)
 
     exception = NotImplementedError("error")
 
@@ -336,7 +336,7 @@ def run_commit_policy_test(
     commit_calls = []
 
     for message in given_messages:
-        consumer.poll.return_value = message
+        consumer.poll.return_value = message.value
         message_timestamp = cast(BrokerValue[int], message.value).timestamp
         with mock.patch("time.time", return_value=message_timestamp.timestamp()):
             processor._run_once()
