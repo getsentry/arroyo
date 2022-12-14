@@ -42,7 +42,7 @@ TResult = TypeVar("TResult")
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
-class RunTask(ProcessingStrategy[TPayload]):
+class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     """
     Basic strategy to run a custom processing function on a message.
     """
@@ -89,9 +89,6 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
     On poll we check for completion of futures. If processing is done, we submit to the next step.
     If an error occured the original exception will be raised.
-
-    Caution: MessageRejected is not properly handled by the RunTaskWithMultiprocessing/ParallelTransform step.
-    Exercise caution if chaining this step anywhere after multiprocessing / parallel transform.
     """
 
     def __init__(
@@ -384,13 +381,7 @@ def parallel_run_task_worker_apply(
     )
 
 
-class RunTaskWithMultiprocessing(ProcessingStep[TPayload]):
-    """
-    Caution: MessageRejected is not properly handled by the RunTaskWithMultiprocessing step. Exercise
-    caution if chaining this step before a strategy like `Produce` or `RunTaskInThreads` which
-    raise MessageRejected in order to apply backpressure.
-    """
-
+class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TResult]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], TResult],
@@ -487,13 +478,14 @@ class RunTaskWithMultiprocessing(ProcessingStep[TPayload]):
         result = async_result.get(timeout=timeout)
         partial_invalid_messages += result.invalid_messages
 
-        # TODO: This does not handle rejections from the next step!
-        for message in result.valid_messages_transformed:
+        for idx, message in enumerate(result.valid_messages_transformed):
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
             except InvalidMessages as e:
                 partial_invalid_messages += e.messages
+            except MessageRejected:
+                result.next_index_to_process = idx
 
         if result.next_index_to_process != len(input_batch):
             logger.warning(

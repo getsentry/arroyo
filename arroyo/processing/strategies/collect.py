@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class Batch(Generic[TPayload]):
+    """
+    Use MessageBatch instead.
+    """
+
     def __init__(
         self,
         step: ProcessingStep[TPayload],
@@ -87,6 +91,7 @@ class CollectStep(ProcessingStep[TPayload]):
         self.batch.join()
         logger.info("Completed processing %r.", self.batch)
         self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
+        self.__next_step.poll()
         self.batch = None
         self._metrics.timing("collect.poll.time", self._collect_poll_time)
         self._collect_poll_time = 0
@@ -132,18 +137,27 @@ class CollectStep(ProcessingStep[TPayload]):
             logger.debug("Closing %r...", self.batch)
             self.batch.close()
 
+        self.__next_step.close()
+
     def terminate(self) -> None:
         self.__closed = True
 
         if self.batch is not None:
             self.batch.terminate()
 
+        self.__next_step.terminate()
+
     def join(self, timeout: Optional[float] = None) -> None:
+        start = time.time()
         if self.batch is not None:
             self.batch.join(timeout)
             self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
             logger.info("Completed processing %r.", self.batch)
             self.batch = None
+
+        remaining = timeout - (time.time() - start) if timeout is not None else None
+
+        self.__next_step.join(remaining)
 
 
 class ParallelCollectStep(CollectStep[TPayload]):
@@ -197,6 +211,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
         batch.join()
         logger.info("Completed processing %r.", batch)
         next_step.submit(Message(Value(batch, batch.offsets)))
+        next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
         work_time = 0.0

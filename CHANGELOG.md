@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.2.0
+
+### Various fixes & improvements
+
+- fix(commit_policy): Calculate elapsed timerange correctly (#155) by @untitaker
+- ref: Remove dead code (#153) by @lynnagara
+- feat(Collect) Attempt to redesign the Collector step (#127) by @fpacifici
+
 ## 2.1.0
 
 ### Various fixes & improvements

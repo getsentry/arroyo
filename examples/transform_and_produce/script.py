@@ -1,6 +1,8 @@
 import os
+import sys
 
-from examples.transform_and_produce import HashPasswordAndProduceStrategyFactory
+from examples.transform_and_produce.batched import BatchedIndexerStrategyFactory
+from examples.transform_and_produce.simple import HashPasswordAndProduceStrategyFactory
 
 from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
@@ -19,6 +21,16 @@ BOOTSTRAP_SERVERS = [os.environ.get("BOOTSTRAP_SERVERS") or "localhost:9092"]
 
 
 if __name__ == "__main__":
+
+    # Supports multiple factory types for multiple types of consumers
+    assert len(sys.argv) == 2
+    if len(sys.argv) > 1:
+        factory_type = sys.argv[1]
+        if factory_type not in ["simple", "batched"]:
+            print(f"Invalid factory type {sys.argv[1]}. Must be `simple` or `batched`")
+            exit(-1)
+    else:
+        factory_type = "simple"
 
     # Create a Producer, KafkaProducer is a wrapper on confluent_kafka.Producer
     producer = KafkaProducer(
@@ -39,14 +51,18 @@ if __name__ == "__main__":
         )
     )
 
+    factory = (
+        HashPasswordAndProduceStrategyFactory(producer=producer, topic=HASHED_TOPIC)
+        if factory_type == "simple"
+        else BatchedIndexerStrategyFactory(producer=producer, topic=HASHED_TOPIC)
+    )
+
     # StreamProcessor is an Arroyo specific processor written which continously polls
     # the given producer and submits the message to the provided strategy
     processor = StreamProcessor(
         consumer=consumer,
         topic=RAW_TOPIC,  # topic the consumer should subscribe to
-        processor_factory=HashPasswordAndProduceStrategyFactory(
-            producer=producer, topic=HASHED_TOPIC
-        ),
+        processor_factory=factory,
         commit_policy=ONCE_PER_SECOND,
     )
 

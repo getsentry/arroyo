@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Mapping, Optional, Sequence
+from datetime import datetime, timedelta
+from typing import Mapping, Optional, Sequence, cast
 from unittest import mock
 
 import pytest
@@ -111,7 +111,7 @@ def test_stream_processor_lifecycle() -> None:
 
     # The processor should not accept non-heartbeat messages without an
     # assignment or active processor.
-    consumer.poll.return_value = message
+    consumer.poll.return_value = message.value
     with pytest.raises(InvalidStateError):
         processor._run_once()
 
@@ -135,7 +135,7 @@ def test_stream_processor_termination_on_error() -> None:
     offset = 0
     now = datetime.now()
 
-    consumer.poll.return_value = Message(BrokerValue(0, partition, offset, now))
+    consumer.poll.return_value = BrokerValue(0, partition, offset, now)
 
     exception = NotImplementedError("error")
 
@@ -336,8 +336,10 @@ def run_commit_policy_test(
     commit_calls = []
 
     for message in given_messages:
-        consumer.poll.return_value = message
-        processor._run_once()
+        consumer.poll.return_value = message.value
+        message_timestamp = cast(BrokerValue[int], message.value).timestamp
+        with mock.patch("time.time", return_value=message_timestamp.timestamp()):
+            processor._run_once()
         commit_calls.append(commit.call_count)
 
     return commit_calls
@@ -411,4 +413,33 @@ def test_stream_processor_commit_policy_always() -> None:
         # Indirectly assert that an offset delta of 1 is passed to
         # the commit policy, not 0
         1
+    ]
+
+
+def test_stream_processor_commit_policy_every_two_seconds() -> None:
+    topic = Topic("topic")
+    commit_every_two_seconds = CommitPolicy(2, None)
+
+    now = datetime.now()
+
+    assert run_commit_policy_test(
+        topic,
+        [
+            Message(BrokerValue(0, Partition(topic, 0), 0, now)),
+            Message(BrokerValue(0, Partition(topic, 0), 1, now + timedelta(seconds=1))),
+            Message(BrokerValue(0, Partition(topic, 0), 2, now + timedelta(seconds=2))),
+            Message(BrokerValue(0, Partition(topic, 0), 3, now + timedelta(seconds=3))),
+            Message(BrokerValue(0, Partition(topic, 0), 4, now + timedelta(seconds=4))),
+            Message(BrokerValue(0, Partition(topic, 0), 5, now + timedelta(seconds=5))),
+            Message(BrokerValue(0, Partition(topic, 0), 6, now + timedelta(seconds=6))),
+        ],
+        commit_every_two_seconds,
+    ) == [
+        0,
+        0,
+        0,
+        1,
+        1,
+        2,
+        2,
     ]
