@@ -1,5 +1,19 @@
 # Changelog and versioning
 
+## 2.3.0
+
+### Various fixes & improvements
+
+- feat: Add Reduce strategy (#157) by @lynnagara
+- ref: Remove ``Position`` and stop passing timestamps to the commit function (#165) by @lynnagara
+- feat: Add a  schema validation strategy (#154) by @lynnagara
+- fix: Ensure Collect/ParallelCollect properly calls next_step methods (#163) by @lynnagara
+- feat: Remove the BatchProcessingStrategy and AbstractBatchWorker (#164) by @lynnagara
+- test: Fix streamprocessor tests (#160) by @lynnagara
+- docs: Call out the run task strategy (#161) by @lynnagara
+- fix: RunTaskWithMultiprocessing handles MessageRejected from subsequent steps (#158) by @lynnagara
+- ref: Improve typing of CommitOffsets strategy (#159) by @lynnagara
+
 ## 2.2.0
 
 ### Various fixes & improvements
