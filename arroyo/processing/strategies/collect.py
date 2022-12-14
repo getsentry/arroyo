@@ -65,6 +65,9 @@ class CollectStep(ProcessingStep[TPayload]):
     """
     Collects messages into batches, periodically closing the batch and
     committing the offsets once the batch has successfully been closed.
+
+    Avoid using for new consumers. Reduce followed by RunTask is a more
+    straightforward way to achieve the same thing.
     """
 
     def __init__(
@@ -168,6 +171,9 @@ class ParallelCollectStep(CollectStep[TPayload]):
 
     The threadpool has 1 worker since we want to ensure batches are processed sequentially
     and passed to the next step in order.
+
+    Avoid using for new consumers. Reduce followed by RunTaskInThreads is a more
+    straightforward way to achieve the same thing.
     """
 
     def __init__(

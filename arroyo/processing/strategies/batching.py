@@ -2,48 +2,13 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Deque, Generic, MutableMapping, MutableSequence, Optional, Sequence
+from typing import Deque, MutableSequence, Optional
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, Message, Partition, TPayload, Value
+from arroyo.processing.strategies.reduce import Reduce
+from arroyo.types import BaseValue, Message, TPayload
 
-ValuesBatch = Sequence[BaseValue[TPayload]]
-
-
-class BatchBuilder(Generic[TPayload]):
-    """
-    Accumulates Values in a Sequence of BaseValue.
-
-    It expects messages to be in monotonic order per partition.
-    Out of order offsets will generate an invalid watermark.
-    """
-
-    def __init__(
-        self,
-        max_batch_time: float,
-        max_batch_size: int,
-    ) -> None:
-        self.__max_batch_time = max_batch_time
-        self.__max_batch_size = max_batch_size
-        self.__values: MutableSequence[BaseValue[TPayload]] = []
-        self.__offsets: MutableMapping[Partition, int] = {}
-        self.__init_time = time.time()
-
-    def append(self, value: BaseValue[TPayload]) -> None:
-        self.__offsets.update(value.committable)
-        self.__values.append(value)
-
-    def build_if_ready(self) -> Optional[Value[ValuesBatch[TPayload]]]:
-        if (
-            len(self.__values) >= self.__max_batch_size
-            or time.time() > self.__init_time + self.__max_batch_time
-        ):
-            return Value(payload=self.__values, committable=self.__offsets)
-        else:
-            return None
-
-    def build(self) -> Value[ValuesBatch[TPayload]]:
-        return Value(payload=self.__values, committable=self.__offsets)
+ValuesBatch = MutableSequence[BaseValue[TPayload]]
 
 
 class BatchStep(ProcessingStrategy[TPayload]):
@@ -70,29 +35,23 @@ class BatchStep(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        max_batch_time_sec: float,
         max_batch_size: int,
-        next_step: ProcessingStrategy[Sequence[BaseValue[TPayload]]],
+        max_batch_time: float,
+        next_step: ProcessingStrategy[ValuesBatch[TPayload]],
     ) -> None:
-        self.__max_batch_time_sec = max_batch_time_sec
-        self.__max_batch_size = max_batch_size
-        self.__next_step = next_step
-        self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
-        self.__closed = False
+        def accumulator(
+            result: ValuesBatch[TPayload], value: BaseValue[TPayload]
+        ) -> ValuesBatch[TPayload]:
+            result.append(value)
+            return result
 
-    def __flush(self, force: bool) -> None:
-        assert self.__batch_builder is not None
-        batch = (
-            self.__batch_builder.build_if_ready()
-            if not force
-            else self.__batch_builder.build()
+        self.__reduce_step: Reduce[TPayload, ValuesBatch[TPayload]] = Reduce(
+            max_batch_size,
+            max_batch_time,
+            accumulator,
+            [],
+            next_step,
         )
-        if batch is None:
-            return
-
-        batch_msg = Message(batch)
-        self.__next_step.submit(batch_msg)
-        self.__batch_builder = None
 
     def submit(self, message: Message[TPayload]) -> None:
         """
@@ -106,36 +65,16 @@ class BatchStep(ProcessingStrategy[TPayload]):
         new message. This allows the previous step to try again
         without introducing duplications.
         """
-        assert not self.__closed
-
-        if self.__batch_builder is not None:
-            self.__flush(force=False)
-
-        if self.__batch_builder is None:
-            self.__batch_builder = BatchBuilder(
-                max_batch_time=self.__max_batch_time_sec,
-                max_batch_size=self.__max_batch_size,
-            )
-
-        self.__batch_builder.append(message.value)
+        self.__reduce_step.submit(message)
 
     def poll(self) -> None:
-        assert not self.__closed
-
-        if self.__batch_builder is not None:
-            try:
-                self.__flush(force=False)
-            except MessageRejected:
-                pass
-
-        self.__next_step.poll()
+        self.__reduce_step.poll()
 
     def close(self) -> None:
-        self.__closed = True
+        self.__reduce_step.close()
 
     def terminate(self) -> None:
-        self.__closed = True
-        self.__batch_builder = None
+        self.__reduce_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
         """
@@ -143,18 +82,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
         This method tries to flush the current batch no matter
         whether the batch is ready or not.
         """
-        deadline = time.time() + timeout if timeout is not None else None
-        if self.__batch_builder is not None:
-            while deadline is None or time.time() < deadline:
-                try:
-                    self.__flush(force=True)
-                    break
-                except MessageRejected:
-                    pass
-
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        self.__reduce_step.join(timeout)
 
 
 class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):

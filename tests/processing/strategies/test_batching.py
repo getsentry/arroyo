@@ -6,12 +6,8 @@ from unittest.mock import Mock, call, patch
 import pytest
 
 from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.processing.strategies.batching import (
-    BatchBuilder,
-    BatchStep,
-    UnbatchStep,
-    ValuesBatch,
-)
+from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
+from arroyo.processing.strategies.reduce import BatchBuilder
 from arroyo.processing.strategies.transform import TransformStep
 from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
@@ -123,7 +119,16 @@ def test_batch_builder(
 ) -> None:
     start = time.mktime(time_create.timetuple())
     mock_time.return_value = start
-    batch_builder = BatchBuilder[str](10.0, 5)
+
+    def accumulator(
+        result: ValuesBatch[str], value: BaseValue[str]
+    ) -> ValuesBatch[str]:
+        result.append(value)
+        return result
+
+    batch_builder: BatchBuilder[str, ValuesBatch[str]] = BatchBuilder(
+        accumulator, [], 5, 10.0
+    )
     for m in values_in:
         batch_builder.append(m)
 
@@ -227,7 +232,7 @@ def test_batch_step(
     start = time.mktime(start_time.timetuple())
     mock_time.return_value = start
     next_step = Mock()
-    batch_step = BatchStep[str](10.0, 3, next_step)
+    batch_step = BatchStep[str](3, 10.0, next_step)
     for message in messages_in:
         batch_step.submit(message)
         batch_step.poll()
@@ -240,7 +245,7 @@ def test_batch_step(
 
 def test_batch_join() -> None:
     next_step = Mock()
-    batch_step = BatchStep[str](10.0, 5, next_step)
+    batch_step = BatchStep[str](5, 10.0, next_step)
     messages = [
         message(0, 1, "Message 1"),
         message(0, 2, "Message 2"),
@@ -342,9 +347,7 @@ def test_batch_unbatch() -> None:
         function=transformer, next_step=UnbatchStep(final_step)
     )
 
-    pipeline = BatchStep[str](
-        max_batch_size=3, max_batch_time_sec=10, next_step=next_step
-    )
+    pipeline = BatchStep[str](max_batch_size=3, max_batch_time=10, next_step=next_step)
 
     input_msgs = [
         message(1, 1, "Message 1"),
