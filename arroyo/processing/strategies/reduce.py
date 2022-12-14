@@ -3,7 +3,7 @@ import time
 from typing import Callable, Generic, MutableMapping, Optional, TypeVar
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, Message, Partition, Position, Value
+from arroyo.types import BaseValue, Message, Partition, Value
 
 TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
@@ -29,7 +29,7 @@ class BatchBuilder(Generic[TPayload, TResult]):
         self.__accumulator = accumulator
         self.__accumulated_value = initial_value
         self.__count = 0
-        self.__offsets: MutableMapping[Partition, Position] = {}
+        self.__offsets: MutableMapping[Partition, int] = {}
         self.__init_time = time.time()
 
     def append(self, value: BaseValue[TPayload]) -> None:

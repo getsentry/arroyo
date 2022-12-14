@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -148,19 +148,17 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(
-        self, positions: Mapping[Partition, Position], force: bool = False
-    ) -> None:
+    def __commit(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
         """
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
-        self.__consumer.stage_positions(positions)
+        self.__consumer.stage_offsets(offsets)
 
         messages_since_last_commit = 0
-        for partition, pos in positions.items():
-            prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
-            messages_since_last_commit += pos.offset - prev_offset
+        for partition, offset in offsets.items():
+            prev_offset = self.__committed_offsets.setdefault(partition, offset - 1)
+            messages_since_last_commit += offset - prev_offset
 
         start = time.time()
         elapsed = start - self.__last_committed_time
@@ -168,15 +166,14 @@ class StreamProcessor(Generic[TPayload]):
         if force or self.__commit_policy.should_commit(
             elapsed, messages_since_last_commit
         ):
-            self.__consumer.commit_positions()
+            self.__consumer.commit_offsets()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
                 time.time() - start,
                 self.__consumer,
             )
             self.__last_committed_time = start
-            for partition, pos in positions.items():
-                self.__committed_offsets[partition] = pos.offset
+            self.__committed_offsets.update(offsets)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

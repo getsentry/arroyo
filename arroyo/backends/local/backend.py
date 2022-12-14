@@ -23,7 +23,7 @@ from typing import (
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TPayload
 from arroyo.utils.clock import Clock, SystemClock
 
 system_clock = SystemClock()
@@ -147,7 +147,7 @@ class LocalConsumer(Consumer[TPayload]):
         self.__pending_callbacks: Deque[Callable[[], None]] = deque()
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_positions: MutableMapping[Partition, Position] = {}
+        self.__staged_offsets: MutableMapping[Partition, int] = {}
 
         self.__paused: Set[Partition] = set()
 
@@ -202,7 +202,7 @@ class LocalConsumer(Consumer[TPayload]):
                 )
             )
 
-            self.__staged_positions.clear()
+            self.__staged_offsets.clear()
             self.__last_eof_at.clear()
 
     def unsubscribe(self) -> None:
@@ -219,7 +219,7 @@ class LocalConsumer(Consumer[TPayload]):
             )
             self.__subscription = None
 
-            self.__staged_positions.clear()
+            self.__staged_offsets.clear()
             self.__last_eof_at.clear()
 
     def poll(self, timeout: Optional[float] = None) -> Optional[BrokerValue[TPayload]]:
@@ -312,37 +312,31 @@ class LocalConsumer(Consumer[TPayload]):
 
             self.__offsets.update(offsets)
 
-    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            if positions.keys() - self.__offsets.keys():
+            if offsets.keys() - self.__offsets.keys():
                 raise ConsumerError("cannot stage offsets for unassigned partitions")
 
             self.__validate_offsets(
-                {
-                    partition: position.offset
-                    for (partition, position) in positions.items()
-                }
+                {partition: offset for (partition, offset) in offsets.items()}
             )
 
-            self.__staged_positions.update(positions)
+            self.__staged_offsets.update(offsets)
 
-    def commit_positions(self) -> Mapping[Partition, Position]:
+    def commit_offsets(self) -> Mapping[Partition, int]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
-            offsets = {**self.__staged_positions}
+            offsets = {**self.__staged_offsets}
             self.__broker.commit(
                 self,
-                {
-                    partition: position.offset
-                    for (partition, position) in offsets.items()
-                },
+                {partition: offset for (partition, offset) in offsets.items()},
             )
-            self.__staged_positions.clear()
+            self.__staged_offsets.clear()
 
             self.commit_offsets_calls += 1
             return offsets

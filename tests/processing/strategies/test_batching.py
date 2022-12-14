@@ -1,103 +1,15 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, MutableSequence, Sequence
+from typing import Any, Mapping, Sequence
 from unittest.mock import Mock, call, patch
 
 import pytest
 
 from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.processing.strategies.batching import (
-    AbstractBatchWorker,
-    BatchProcessingStrategy,
-    BatchStep,
-    UnbatchStep,
-    ValuesBatch,
-)
+from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
 from arroyo.processing.strategies.reduce import BatchBuilder
 from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import (
-    BaseValue,
-    BrokerValue,
-    Message,
-    Partition,
-    Position,
-    Topic,
-    Value,
-)
-
-
-class FakeWorker(AbstractBatchWorker[int, int]):
-    def __init__(self) -> None:
-        self.processed: MutableSequence[int] = []
-        self.flushed: MutableSequence[Sequence[int]] = []
-
-    def process_message(self, message: Message[int]) -> int:
-        self.processed.append(message.payload)
-        return message.payload
-
-    def flush_batch(self, batch: Sequence[int]) -> None:
-        self.flushed.append(batch)
-
-
-class TestConsumer(object):
-    def test_batch_size(self) -> None:
-        topic = Topic("topic")
-        worker = FakeWorker()
-        commit_func = Mock()
-
-        strategy = BatchProcessingStrategy(
-            commit_func, worker, max_batch_size=2, max_batch_time=100
-        )
-
-        for i in [1, 2, 3]:
-            message = Message(BrokerValue(i, Partition(topic, 0), i, datetime.utcnow()))
-            strategy.submit(message)
-            strategy.poll()
-
-        strategy.close()
-        strategy.join()
-
-        assert worker.processed == [1, 2, 3]
-        assert worker.flushed == [[1, 2]]
-        assert commit_func.call_count == 1
-
-    @patch("time.time")
-    def test_batch_time(self, mock_time: Any) -> None:
-        topic = Topic("topic")
-
-        t1 = datetime(2018, 1, 1, 0, 0, 0)
-        t2 = datetime(2018, 1, 1, 0, 0, 1)
-        t3 = datetime(2018, 1, 1, 0, 0, 5)
-
-        mock_time.return_value = time.mktime(t1.timetuple())
-        worker = FakeWorker()
-        commit_func = Mock()
-
-        strategy = BatchProcessingStrategy(
-            commit_func, worker, max_batch_size=100, max_batch_time=2000
-        )
-
-        for i in [1, 2, 3]:
-            message = Message(BrokerValue(i, Partition(topic, 0), i, t1))
-            strategy.submit(message)
-
-        mock_time.return_value = time.mktime(t2.timetuple())
-        strategy.poll()
-
-        for i in [4, 5, 6]:
-            message = Message(BrokerValue(i, Partition(topic, 0), i, t2))
-            strategy.submit(message)
-
-        mock_time.return_value = time.mktime(t3.timetuple())
-        strategy.poll()
-
-        for i in [7, 8, 9]:
-            message = Message(BrokerValue(i, Partition(topic, 0), i, t3))
-            strategy.submit(message)
-            strategy.poll()
-
-        assert worker.processed == [1, 2, 3, 4, 5, 6, 7, 8, 9]
-        assert worker.flushed == [[1, 2, 3, 4, 5, 6]]
+from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
 
 def broker_value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
@@ -109,7 +21,7 @@ def broker_value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
     )
 
 
-def value(committable: Mapping[Partition, Position], payload: str) -> Value[str]:
+def value(committable: Mapping[Partition, int], payload: str) -> Value[str]:
     return Value(payload=payload, committable=committable)
 
 
@@ -134,7 +46,7 @@ test_builder = [
         ],
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
-        {Partition(Topic("test"), 0): Position(4, datetime(2022, 1, 1, 0, 0, 1))},
+        {Partition(Topic("test"), 0): 4},
         True,
         id="Batch closed by time",
     ),
@@ -148,7 +60,7 @@ test_builder = [
         ],
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 3),
-        {Partition(Topic("test"), 0): Position(6, datetime(2022, 1, 1, 0, 0, 1))},
+        {Partition(Topic("test"), 0): 6},
         True,
         id="Batch closed by size",
     ),
@@ -161,9 +73,9 @@ test_builder = [
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
         {
-            Partition(Topic("test"), 0): Position(2, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 1): Position(3, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 2): Position(4, datetime(2022, 1, 1, 0, 0, 1)),
+            Partition(Topic("test"), 0): 2,
+            Partition(Topic("test"), 1): 3,
+            Partition(Topic("test"), 2): 4,
         },
         True,
         id="Messages on multiple partitions",
@@ -173,15 +85,9 @@ test_builder = [
             value(
                 payload="test",
                 committable={
-                    Partition(Topic("test"), 0): Position(
-                        2, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
-                    Partition(Topic("test"), 1): Position(
-                        3, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
-                    Partition(Topic("test"), 2): Position(
-                        4, datetime(2022, 1, 1, 0, 0, 1)
-                    ),
+                    Partition(Topic("test"), 0): 2,
+                    Partition(Topic("test"), 1): 3,
+                    Partition(Topic("test"), 2): 4,
                 },
             ),
             broker_value(2, 6, "Message 3"),
@@ -189,9 +95,9 @@ test_builder = [
         datetime(2022, 1, 1, 0, 0, 1),
         datetime(2022, 1, 1, 0, 0, 12),
         {
-            Partition(Topic("test"), 0): Position(2, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 1): Position(3, datetime(2022, 1, 1, 0, 0, 1)),
-            Partition(Topic("test"), 2): Position(7, datetime(2022, 1, 1, 0, 0, 1)),
+            Partition(Topic("test"), 0): 2,
+            Partition(Topic("test"), 1): 3,
+            Partition(Topic("test"), 2): 7,
         },
         True,
         id="Messages with multiple offsets to commit",
@@ -208,7 +114,7 @@ def test_batch_builder(
     values_in: Sequence[BaseValue[str]],
     time_create: datetime,
     time_end: datetime,
-    expected_offsets: Mapping[Partition, Position],
+    expected_offsets: Mapping[Partition, int],
     expected_ready: bool,
 ) -> None:
     start = time.mktime(time_create.timetuple())
@@ -267,11 +173,7 @@ test_batch = [
                             broker_value(0, 2, "Message 2"),
                             broker_value(0, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 4},
                     ),
                 )
             )
@@ -297,11 +199,7 @@ test_batch = [
                             broker_value(0, 2, "Message 2"),
                             broker_value(0, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 4},
                     ),
                 )
             ),
@@ -313,11 +211,7 @@ test_batch = [
                             broker_value(1, 2, "Message 2"),
                             broker_value(1, 3, "Message 3"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 1): Position(
-                                4, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 1): 4},
                     ),
                 )
             ),
@@ -372,11 +266,7 @@ def test_batch_join() -> None:
                             broker_value(0, 1, "Message 1"),
                             broker_value(0, 2, "Message 2"),
                         ],
-                        committable={
-                            Partition(Topic("test"), 0): Position(
-                                3, datetime(2022, 1, 1, 0, 0, 1)
-                            )
-                        },
+                        committable={Partition(Topic("test"), 0): 3},
                     ),
                 )
             )
@@ -392,9 +282,7 @@ def test_unbatch_step() -> None:
                 broker_value(1, 2, "Message 2"),
                 broker_value(1, 3, "Message 3"),
             ],
-            committable={
-                Partition(Topic("test"), 1): Position(4, datetime(2022, 1, 1, 0, 0, 1))
-            },
+            committable={Partition(Topic("test"), 1): 4},
         ),
     )
 

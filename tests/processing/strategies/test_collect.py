@@ -10,7 +10,7 @@ import pytest
 
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.collect import CollectStep, ParallelCollectStep
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 
 
@@ -55,9 +55,7 @@ def test_collect(parallel: int) -> None:
         # Give the threadpool some time to do processing
         time.sleep(1) if parallel else None
 
-        assert next_step.submit.call_args == call(
-            Message(Value(ANY, {partition: Position(2, ANY)}))
-        )
+        assert next_step.submit.call_args == call(Message(Value(ANY, {partition: 2})))
 
     step_factory.return_value = inner_step = Mock()
 
@@ -72,6 +70,11 @@ def test_collect(parallel: int) -> None:
         lambda: next_step.submit.call_count, 1, 2
     ):
         collect_step.join()
+
+    assert next_step.submit.call_count == 2
+    assert next_step.poll.call_count == 1
+    assert next_step.close.call_count == 1
+    assert next_step.join.call_count == 1
 
 
 class WaitProcessingStep(ProcessingStrategy[int]):

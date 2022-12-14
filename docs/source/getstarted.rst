@@ -158,7 +158,7 @@ Add a `ProcessingStragey` and `ProcessingStrategyFactory`.
 
         def __init__(
             self,
-            committer: Callable[[Mapping[Partition, Position]], None],
+            commit: Commit,
             partitions: Mapping[Partition, int],
         ):
             print(f"Partitions assigned {partitions}")
@@ -193,7 +193,7 @@ Add a `ProcessingStragey` and `ProcessingStrategyFactory`.
 
         def create_with_partitions(
             self,
-            commit: Callable[[Mapping[Partition, Position]], None],
+            commit: Commit,
             partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
             return ConsumerStrategy(commit, partitions)
@@ -223,7 +223,7 @@ Now we will add some logic to the `ProcessingStrategy` to produce messages on a 
     class ConsumerStrategy(ProcessingStrategy[KafkaPayload]):
         def __init__(
             self,
-            committer: Callable[[Mapping[Partition, Position]], None],
+            commit: Commit,
             partitions: Mapping[Partition, int],
         ):
             print(f"Partitions assigned {partitions}")
