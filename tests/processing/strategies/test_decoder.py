@@ -1,4 +1,3 @@
-from datetime import datetime
 from unittest.mock import Mock
 
 import pytest
@@ -10,7 +9,7 @@ from arroyo.processing.strategies.decoder import (
     KafkaMessageDecoder,
     ValidationError,
 )
-from arroyo.types import Message, Partition, Position, Topic, Value
+from arroyo.types import Message, Partition, Topic, Value
 
 schema = {
     "type": "object",
@@ -30,7 +29,7 @@ def make_kafka_message(raw_data: bytes) -> Message[KafkaPayload]:
                 raw_data,
                 [],
             ),
-            {Partition(Topic("test"), 0): Position(0, datetime.now())},
+            {Partition(Topic("test"), 0): 1},
         )
     )
 

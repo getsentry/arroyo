@@ -7,16 +7,7 @@ from typing import Deque, Mapping, Optional, Tuple
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
-from arroyo.types import (
-    BrokerValue,
-    Commit,
-    Message,
-    Partition,
-    Position,
-    Topic,
-    TPayload,
-    Value,
-)
+from arroyo.types import BrokerValue, Commit, Message, Partition, Topic, TPayload, Value
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +44,7 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Mapping[Partition, Position], Future[BrokerValue[TPayload]]]
+            Tuple[Mapping[Partition, int], Future[BrokerValue[TPayload]]]
         ] = deque()
 
         self.__closed = False

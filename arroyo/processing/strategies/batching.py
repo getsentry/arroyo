@@ -5,7 +5,7 @@ from collections import deque
 from typing import Deque, Generic, MutableMapping, MutableSequence, Optional, Sequence
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, Message, Partition, Position, TPayload, Value
+from arroyo.types import BaseValue, Message, Partition, TPayload, Value
 
 ValuesBatch = Sequence[BaseValue[TPayload]]
 
@@ -26,7 +26,7 @@ class BatchBuilder(Generic[TPayload]):
         self.__max_batch_time = max_batch_time
         self.__max_batch_size = max_batch_size
         self.__values: MutableSequence[BaseValue[TPayload]] = []
-        self.__offsets: MutableMapping[Partition, Position] = {}
+        self.__offsets: MutableMapping[Partition, int] = {}
         self.__init_time = time.time()
 
     def append(self, value: BaseValue[TPayload]) -> None:

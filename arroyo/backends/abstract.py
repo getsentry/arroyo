@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
 from typing import Callable, Generic, Mapping, Optional, Sequence, Union
 
-from arroyo.types import BrokerValue, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TPayload
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class Consumer(Generic[TPayload], ABC):
     poll will have a least an offset of X, and the last message read had an
     offset less than X.)
 
-    The working offsets are used track the current read position within a
+    The working offsets are used track the current read offset within a
     partition. This can be also be considered as a cursor, or as high
     watermark. Working offsets are local to the consumer process. They are
     not shared with other consumer instances in the same consumer group and
@@ -35,9 +35,9 @@ class Consumer(Generic[TPayload], ABC):
     during the subscription process. To ensure that a consumer roughly "picks
     up where it left off" after restarting, or that another consumer in the
     same group doesn't read messages that have been processed by another
-    consumer within the same group during a rebalance operation, positions must
-    be regularly committed by calling ``commit_positions`` after they have been
-    staged with ``stage_positions``. Offsets are not staged or committed
+    consumer within the same group during a rebalance operation, offsets must
+    be regularly committed by calling ``commit_offsets`` after they have been
+    staged with ``stage_offsets``. Offsets are not staged or committed
     automatically!
 
     During rebalance operations, working offsets are rolled back to the
@@ -114,7 +114,7 @@ class Consumer(Generic[TPayload], ABC):
     @abstractmethod
     def tell(self) -> Mapping[Partition, int]:
         """
-        Return the working offsets for all currently assigned positions.
+        Return the working offsets for all currently assigned partitions.
         """
         raise NotImplementedError
 
@@ -139,7 +139,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         """
         Stage offsets to be committed. If an offset has already been staged
         for a given partition, that offset is overwritten (even if the offset
@@ -148,7 +148,7 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def commit_positions(self) -> Mapping[Partition, Position]:
+    def commit_offsets(self) -> Mapping[Partition, int]:
         """
         Commit staged offsets. The return value of this method is a mapping
         of streams with their committed offsets as values.
