@@ -71,6 +71,11 @@ def test_collect(parallel: int) -> None:
     ):
         collect_step.join()
 
+    assert next_step.submit.call_count == 2
+    assert next_step.poll.call_count == 1
+    assert next_step.close.call_count == 1
+    assert next_step.join.call_count == 1
+
 
 class WaitProcessingStep(ProcessingStrategy[int]):
     """
