@@ -314,9 +314,8 @@ class LocalConsumer(Consumer[TPayload]):
 
     def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         with self.__lock:
-            if self.__closed:
-                raise RuntimeError("consumer is closed")
-
+            # XXX: can we remove the locking? dictionary updates might be
+            # atomic
             self.__staged_offsets.update(offsets)
 
     def commit_offsets(self) -> Mapping[Partition, int]:

@@ -82,7 +82,7 @@ class StreamProcessor(Generic[TPayload]):
         # ``pause`` occurred or the time the pause metric was last recorded.
         self.__paused_timestamp: Optional[float] = None
 
-        self.__commit_policy = commit_policy
+        self.__commit_policy_state = commit_policy.get_state_machine()
 
         self.__shutdown_requested = False
 
@@ -154,7 +154,7 @@ class StreamProcessor(Generic[TPayload]):
         self.__consumer.stage_offsets(offsets)
         now = time.time()
 
-        if force or self.__commit_policy.should_commit(
+        if force or self.__commit_policy_state.should_commit(
             now,
             offsets,
         ):
@@ -164,7 +164,7 @@ class StreamProcessor(Generic[TPayload]):
                 time.time() - now,
                 self.__consumer,
             )
-            self.__commit_policy.did_commit(now, offsets)
+            self.__commit_policy_state.did_commit(now, offsets)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
