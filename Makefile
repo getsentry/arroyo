@@ -1,4 +1,4 @@
-.PHONY: install lint setup-git tests docs
+.PHONY: install lint setup-git tests benchmarks docs
 
 setup-git:
 	pip install pre-commit==2.13.0
@@ -13,6 +13,9 @@ lint:
 
 tests:
 	pytest -vv
+
+benchmarks:
+	pytest -vv --benchmark-enable --benchmark-only
 
 docs:
 	pip install -U -r ./docs-requirements.txt
