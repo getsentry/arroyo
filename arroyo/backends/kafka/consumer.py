@@ -584,7 +584,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return [*self.__paused]
 
-    def stage_positions(self, offsets: Mapping[Partition, int]) -> None:
+    def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         # This method is on an extremely hot path since it is called
         # unconditionally before any commit policies are evaluated. Therefore
         # all of the validation happens in commit_positions.
