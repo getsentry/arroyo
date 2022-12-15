@@ -83,8 +83,6 @@ class StreamProcessor(Generic[TPayload]):
         self.__paused_timestamp: Optional[float] = None
 
         self.__commit_policy = commit_policy
-        self.__last_committed_time: float = time.time()
-        self.__committed_offsets: MutableMapping[Partition, int] = {}
 
         self.__shutdown_requested = False
 
@@ -156,27 +154,19 @@ class StreamProcessor(Generic[TPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         self.__consumer.stage_positions(positions)
-
-        messages_since_last_commit = 0
-        for partition, pos in positions.items():
-            prev_offset = self.__committed_offsets.setdefault(partition, pos.offset - 1)
-            messages_since_last_commit += pos.offset - prev_offset
-
-        start = time.time()
-        elapsed = start - self.__last_committed_time
+        now = time.time()
 
         if force or self.__commit_policy.should_commit(
-            elapsed, messages_since_last_commit
+            now,
+            positions,
         ):
             self.__consumer.commit_positions()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
-                time.time() - start,
+                time.time() - now,
                 self.__consumer,
             )
-            self.__last_committed_time = start
-            for partition, pos in positions.items():
-                self.__committed_offsets[partition] = pos.offset
+            self.__commit_policy.did_commit(now, positions)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

@@ -441,11 +441,11 @@ def test_stream_processor_commit_policy_every_two_seconds() -> None:
     ) == [
         0,
         0,
-        0,
         1,
         1,
         2,
         2,
+        3,
     ]
 
 
