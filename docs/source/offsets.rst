@@ -19,31 +19,19 @@ must be passed to the stream processor, which allows specifying a minimum commit
 Commit throttling can be skipped when needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
 If you are not sure how often to commit, `ONCE_PER_SECOND` is a reasonable option.
 
+The easiest way is to use the `CommitOffsets` strategy as the last step in a chain of processing strategies to commit offsets.
+
 .. code-block:: Python
 
-    class ConsumerStrategy(ProcessingStrategy[KafkaPayload]):
-        def __init__(
+    class MyConsumerFactoryFactory(ProcessingStrategyFactory[KafkaPayload]):
+        def create_with_partitions(
             self,
-            committer: Commit,
+            commit: Commit,
             partitions: Mapping[Partition, int],
-        ):
-            self.__commit = commit
+        ) -> ProcessingStrategy[KafkaPayload]:
+            def my_processing_function(message: Message[KafkaPayload]) -> None:
+                # do something (synchronous) with the message
+                do_something()
 
-        def poll(self) -> None:
-            pass
 
-        def submit(self, message: Message[KafkaPayload]) -> None:
-            # do something (synchronous) with the message
-            do_something()
-            self.__commit(
-                {message.partition: message.position_to_commit}
-            )
-
-        def close(self) -> None:
-            pass
-
-        def terminate(self) -> None:
-            print("Terminating")
-
-        def join(self, timeout: Optional[float] = None) -> None:
-            pass
+            return RunTask(my_processing_function, CommitOffsets(commit))

@@ -43,7 +43,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import BrokerValue, Partition, Position, Topic
+from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -122,8 +122,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     If the `cooperative-sticky` strategy is used, this won't happen as
     only the incremental partitions are passed to the callback during
     rebalancing, and any previously assigned partitions will continue
-    from their previous position without being reset to the last committed
-    position.
+    from their previous offset without being reset to the last committed
+    offset.
 
     The behavior of ``auto.offset.reset`` also differs slightly from the
     Confluent consumer as well: offsets are only reset during initial
@@ -217,7 +217,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, Position] = {}
+        self.__staged_offsets: MutableMapping[Partition, int] = {}
         self.__paused: Set[Partition] = set()
 
         self.__commit_retry_policy = commit_retry_policy
@@ -584,7 +584,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return [*self.__paused]
 
-    def stage_positions(self, positions: Mapping[Partition, Position]) -> None:
+    def stage_positions(self, offsets: Mapping[Partition, int]) -> None:
         # This method is on an extremely hot path since it is called
         # unconditionally before any commit policies are evaluated. Therefore
         # all of the validation happens in commit_positions.
@@ -596,21 +596,16 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
-        self.__staged_offsets.update(positions)
+        self.__staged_offsets.update(offsets)
 
-    def __commit(self) -> Mapping[Partition, Position]:
+    def __commit(self) -> Mapping[Partition, int]:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
 
         if self.__staged_offsets.keys() - self.__offsets.keys():
             raise ConsumerError("cannot stage offsets for unassigned partitions")
 
-        self.__validate_offsets(
-            {
-                partition: position.offset
-                for (partition, position) in self.__staged_offsets.items()
-            }
-        )
+        self.__validate_offsets(self.__staged_offsets)
 
         result: Optional[Sequence[ConfluentTopicPartition]]
 
@@ -618,9 +613,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             result = self.__consumer.commit(
                 offsets=[
                     ConfluentTopicPartition(
-                        partition.topic.name, partition.index, position.offset
+                        partition.topic.name, partition.index, offset
                     )
-                    for partition, position in self.__staged_offsets.items()
+                    for partition, offset in self.__staged_offsets.items()
                 ],
                 asynchronous=False,
             )
@@ -629,7 +624,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         assert result is not None  # synchronous commit should return result immediately
 
-        offsets: MutableMapping[Partition, Position] = {}
+        offsets: MutableMapping[Partition, int] = {}
 
         for value in result:
             # The Confluent Kafka Consumer will include logical offsets in the
@@ -643,15 +638,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
             assert value.offset >= 0, "expected non-negative offset"
             partition = Partition(Topic(value.topic), value.partition)
-            offsets[partition] = Position(
-                value.offset, self.__staged_offsets[partition].timestamp
-            )
+            offsets[partition] = value.offset
 
         self.__staged_offsets.clear()
 
         return offsets
 
-    def commit_positions(self) -> Mapping[Partition, Position]:
+    def commit_offsets(self) -> Mapping[Partition, int]:
         """
         Commit staged offsets for all partitions that this consumer is
         assigned to. The return value of this method is a mapping of

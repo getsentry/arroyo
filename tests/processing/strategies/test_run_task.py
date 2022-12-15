@@ -22,7 +22,7 @@ from arroyo.processing.strategies.run_task import (
     ValueTooLarge,
     parallel_run_task_worker_apply,
 )
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -36,9 +36,9 @@ def test_run_task() -> None:
     strategy = RunTask(mock_func, next_step)
     partition = Partition(Topic("topic"), 0)
 
-    strategy.submit(Message(Value(b"hello", {partition: Position(0, datetime.now())})))
+    strategy.submit(Message(Value(b"hello", {partition: 1})))
     strategy.poll()
-    strategy.submit(Message(Value(b"world", {partition: Position(1, datetime.now())})))
+    strategy.submit(Message(Value(b"world", {partition: 2})))
     strategy.poll()
 
     # Wait for async functions to finish
@@ -109,7 +109,7 @@ def test_message_batch() -> None:
     message = Message(
         Value(
             KafkaPayload(None, b"\x00" * 16000, []),
-            {partition: Position(0, datetime.now())},
+            {partition: 1},
         )
     )
 
@@ -139,7 +139,7 @@ def test_parallel_run_task_worker_apply() -> None:
         Message(
             Value(
                 KafkaPayload(None, b"\x00" * size, []),
-                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+                {Partition(Topic("test"), 0): i + 1},
             )
         )
         for i, size in enumerate([4000, 4000, 8000, 12000])
@@ -218,7 +218,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
         Message(
             Value(
                 KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+                {Partition(Topic("test"), 0): i + 1},
             )
         )
         for i in range(9)
@@ -265,7 +265,7 @@ def test_parallel_transform_step() -> None:
         Message(
             Value(
                 KafkaPayload(None, b"\x00" * size, []),
-                {Partition(Topic("test"), 0): Position(i, datetime.now())},
+                {Partition(Topic("test"), 0): i + 1},
             )
         )
         for i, size in enumerate([4000, 4000, 8000, 2000])
@@ -368,7 +368,7 @@ def test_parallel_run_task_bad_messages() -> None:
         Message(
             Value(
                 KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-                {Partition(Topic("test"), 0): Position(0, datetime.now())},
+                {Partition(Topic("test"), 0): 1},
             )
         )
         for i in range(9)

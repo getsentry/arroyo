@@ -34,11 +34,21 @@ Filters
 Collectors
 -----------------------------
 
-Accumulate messages in  abuffer and execute an operation on the batch when full.
+Accumulate messages in a buffer and execute an operation on the batch when full
 
 .. automodule:: arroyo.processing.strategies.collect
    :members:
    :undoc-members:
+
+Reducers
+-----------------------------
+
+Accumulate messages based on a custom accumulator function
+
+.. automodule:: arroyo.processing.strategies.reduce
+   :members:
+   :undoc-members:
+
 
 Task Runners
 -----------------------------

@@ -59,29 +59,11 @@ class Message(Generic[TPayload]):
         return self.value.payload
 
     @property
-    def committable(self) -> Mapping[Partition, Position]:
+    def committable(self) -> Mapping[Partition, int]:
         return self.value.committable
 
     def replace(self, payload: TReplaced) -> Message[TReplaced]:
         return Message(self.value.replace(payload))
-
-
-@dataclass(frozen=True)
-class Position:
-    __slots__ = ["offset", "timestamp"]
-    offset: int
-    timestamp: datetime
-
-    def __getstate__(self) -> dict[str, int | datetime]:
-        return dict(
-            (slot, getattr(self, slot))
-            for slot in self.__slots__
-            if hasattr(self, slot)
-        )
-
-    def __setstate__(self, state: dict[str, int | datetime]) -> None:
-        for slot, value in state.items():
-            object.__setattr__(self, slot, value)
 
 
 class BaseValue(Generic[TPayload]):
@@ -90,7 +72,7 @@ class BaseValue(Generic[TPayload]):
         raise NotImplementedError()
 
     @property
-    def committable(self) -> Mapping[Partition, Position]:
+    def committable(self) -> Mapping[Partition, int]:
         raise NotImplementedError()
 
     def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
@@ -106,11 +88,9 @@ class Value(BaseValue[TPayload]):
 
     __slots__ = ["__payload", "__committable"]
     __payload: TPayload
-    __committable: Mapping[Partition, Position]
+    __committable: Mapping[Partition, int]
 
-    def __init__(
-        self, payload: TPayload, committable: Mapping[Partition, Position]
-    ) -> None:
+    def __init__(self, payload: TPayload, committable: Mapping[Partition, int]) -> None:
         self.__payload = payload
         self.__committable = committable
 
@@ -119,7 +99,7 @@ class Value(BaseValue[TPayload]):
         return self.__payload
 
     @property
-    def committable(self) -> Mapping[Partition, Position]:
+    def committable(self) -> Mapping[Partition, int]:
         return self.__committable
 
     def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
@@ -155,8 +135,8 @@ class BrokerValue(BaseValue[TPayload]):
         return self.__payload
 
     @property
-    def committable(self) -> Mapping[Partition, Position]:
-        return {self.partition: Position(self.next_offset, self.timestamp)}
+    def committable(self) -> Mapping[Partition, int]:
+        return {self.partition: self.next_offset}
 
     @property
     def next_offset(self) -> int:
@@ -164,7 +144,5 @@ class BrokerValue(BaseValue[TPayload]):
 
 
 class Commit(Protocol):
-    def __call__(
-        self, positions: Mapping[Partition, Position], force: bool = False
-    ) -> None:
+    def __call__(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
         pass

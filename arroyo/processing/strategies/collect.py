@@ -5,7 +5,7 @@ from functools import partial
 from typing import Callable, Generic, MutableMapping, Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, Partition, Position, TPayload, Value
+from arroyo.types import Message, Partition, TPayload, Value
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class Batch(Generic[TPayload]):
 
         self.__created = time.time()
         self.__length = 0
-        self.offsets: MutableMapping[Partition, Position] = {}
+        self.offsets: MutableMapping[Partition, int] = {}
         self.__closed = False
 
     def __repr__(self) -> str:
@@ -45,8 +45,7 @@ class Batch(Generic[TPayload]):
         self.__step.submit(message)
         self.__length += 1
 
-        for (partition, position) in message.committable.items():
-            self.offsets[partition] = position
+        self.offsets.update(message.committable)
 
     def close(self) -> None:
         self.__closed = True
@@ -66,6 +65,9 @@ class CollectStep(ProcessingStep[TPayload]):
     """
     Collects messages into batches, periodically closing the batch and
     committing the offsets once the batch has successfully been closed.
+
+    Avoid using for new consumers. Reduce followed by RunTask is a more
+    straightforward way to achieve the same thing.
     """
 
     def __init__(
@@ -91,6 +93,7 @@ class CollectStep(ProcessingStep[TPayload]):
         self.batch.join()
         logger.info("Completed processing %r.", self.batch)
         self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
+        self.__next_step.poll()
         self.batch = None
         self._metrics.timing("collect.poll.time", self._collect_poll_time)
         self._collect_poll_time = 0
@@ -136,18 +139,27 @@ class CollectStep(ProcessingStep[TPayload]):
             logger.debug("Closing %r...", self.batch)
             self.batch.close()
 
+        self.__next_step.close()
+
     def terminate(self) -> None:
         self.__closed = True
 
         if self.batch is not None:
             self.batch.terminate()
 
+        self.__next_step.terminate()
+
     def join(self, timeout: Optional[float] = None) -> None:
+        start = time.time()
         if self.batch is not None:
             self.batch.join(timeout)
             self.__next_step.submit(Message(Value(self.batch, self.batch.offsets)))
             logger.info("Completed processing %r.", self.batch)
             self.batch = None
+
+        remaining = timeout - (time.time() - start) if timeout is not None else None
+
+        self.__next_step.join(remaining)
 
 
 class ParallelCollectStep(CollectStep[TPayload]):
@@ -159,6 +171,9 @@ class ParallelCollectStep(CollectStep[TPayload]):
 
     The threadpool has 1 worker since we want to ensure batches are processed sequentially
     and passed to the next step in order.
+
+    Avoid using for new consumers. Reduce followed by RunTaskInThreads is a more
+    straightforward way to achieve the same thing.
     """
 
     def __init__(
@@ -201,6 +216,7 @@ class ParallelCollectStep(CollectStep[TPayload]):
         batch.join()
         logger.info("Completed processing %r.", batch)
         next_step.submit(Message(Value(batch, batch.offsets)))
+        next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
         work_time = 0.0

@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerValue, Message, Partition, Position, Topic, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Topic, TPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -146,27 +146,25 @@ class StreamProcessor(Generic[TPayload]):
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
 
-    def __commit(
-        self, positions: Mapping[Partition, Position], force: bool = False
-    ) -> None:
+    def __commit(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
         """
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
-        self.__consumer.stage_positions(positions)
+        self.__consumer.stage_offsets(offsets)
         now = time.time()
 
         if force or self.__commit_policy.should_commit(
             now,
-            positions,
+            offsets,
         ):
-            self.__consumer.commit_positions()
+            self.__consumer.commit_offsets()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
                 time.time() - now,
                 self.__consumer,
             )
-            self.__commit_policy.did_commit(now, positions)
+            self.__commit_policy.did_commit(now, offsets)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

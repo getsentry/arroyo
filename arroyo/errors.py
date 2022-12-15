@@ -33,7 +33,7 @@ class EndOfPartition(ConsumerError):
 class OffsetOutOfRange(ConsumerError):
     """
     Raised when encountering an auto offset reset error or trying to read from
-    an invalid position in the partition.
+    an invalid offset in the partition.
     """
 
 
