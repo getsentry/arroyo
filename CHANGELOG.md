@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.3.1
+
+### Various fixes & improvements
+
+- ref(decoder): Remove dead code (#167) by @lynnagara
+- ref(commit_policy): Improve performance of commit policy (#162) by @untitaker
+- feat(decoders): Json decoder can be used without schema (#166) by @lynnagara
+
 ## 2.3.0
 
 ### Various fixes & improvements
