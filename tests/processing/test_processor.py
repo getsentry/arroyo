@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta
-from typing import Mapping, Optional, Sequence, cast
+from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
 
 import pytest
 
+from arroyo.backends.local.backend import LocalBroker
+from arroyo.backends.local.storages.abstract import MessageStorage
+from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies.abstract import (
@@ -12,6 +15,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
+from arroyo.utils.clock import TestingClock
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
 
@@ -443,3 +447,41 @@ def test_stream_processor_commit_policy_every_two_seconds() -> None:
         2,
         2,
     ]
+
+
+@pytest.mark.parametrize(
+    "commit_seconds", [0, 1000], ids=("commit_always", "commit_never")
+)
+@pytest.mark.parametrize("num_messages", [1, 100, 1000])
+def test_commit_policy_bench(
+    benchmark: Any, commit_seconds: int, num_messages: int
+) -> None:
+    topic = Topic("topic")
+    commit_policy = CommitPolicy(commit_seconds, None)
+    num_partitions = 1
+    now = datetime.now()
+
+    storage: MessageStorage[int] = MemoryMessageStorage()
+    storage.create_topic(topic, num_partitions)
+
+    broker = LocalBroker(storage, TestingClock())
+
+    consumer = broker.get_consumer("test-group", enable_end_of_partition=True)
+
+    factory = CommitOffsetsFactory()
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer,
+        topic,
+        factory,
+        commit_policy,
+    )
+
+    def inner() -> None:
+        for i in range(num_messages):
+            storage.produce(Partition(topic, i % num_partitions), i, now)
+
+        for _ in range(num_messages):
+            processor._run_once()
+
+    benchmark(inner)

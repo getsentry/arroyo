@@ -1,6 +1,9 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Mapping, MutableMapping, Optional
 
 from arroyo.types import Partition
 
@@ -16,20 +19,40 @@ class CommitPolicy:
             or self.min_commit_messages is not None
         ), "Must provide either min_commit_frequency_sec or min_commit_messages"
 
-    def should_commit(self, elapsed_time: float, elapsed_messages: int) -> bool:
-        if (
-            self.min_commit_frequency_sec is not None
-            and elapsed_time >= self.min_commit_frequency_sec
-        ):
-            return True
+    def get_state_machine(self) -> CommitPolicyState:
+        return CommitPolicyState(self)
 
-        if (
-            self.min_commit_messages is not None
-            and elapsed_messages >= self.min_commit_messages
-        ):
-            return True
+
+@dataclass
+class CommitPolicyState:
+    policy: CommitPolicy
+
+    __committed_offsets: MutableMapping[Partition, int] = field(default_factory=dict)
+    __last_committed_time: float = field(default_factory=time.time)
+
+    def should_commit(self, now: float, offsets: Mapping[Partition, int]) -> bool:
+        if self.policy.min_commit_frequency_sec is not None:
+            elapsed = now - self.__last_committed_time
+            if elapsed >= self.policy.min_commit_frequency_sec:
+                return True
+
+        if self.policy.min_commit_messages is not None:
+            messages_since_last_commit = 0
+            for partition, pos in offsets.items():
+                prev_offset = self.__committed_offsets.setdefault(partition, pos - 1)
+                messages_since_last_commit += pos - prev_offset
+
+            # XXX: is it faster to do this check in the loop and
+            # potentially early-return, or do it outside and keep
+            # the loop small?
+            if messages_since_last_commit >= self.policy.min_commit_messages:
+                return True
 
         return False
+
+    def did_commit(self, now: float, offsets: Mapping[Partition, int]) -> None:
+        self.__last_committed_time = now
+        self.__committed_offsets.update(offsets)
 
 
 IMMEDIATE = CommitPolicy(None, 1)

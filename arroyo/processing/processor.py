@@ -82,9 +82,7 @@ class StreamProcessor(Generic[TPayload]):
         # ``pause`` occurred or the time the pause metric was last recorded.
         self.__paused_timestamp: Optional[float] = None
 
-        self.__commit_policy = commit_policy
-        self.__last_committed_time: float = time.time()
-        self.__committed_offsets: MutableMapping[Partition, int] = {}
+        self.__commit_policy_state = commit_policy.get_state_machine()
 
         self.__shutdown_requested = False
 
@@ -154,26 +152,19 @@ class StreamProcessor(Generic[TPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         self.__consumer.stage_offsets(offsets)
+        now = time.time()
 
-        messages_since_last_commit = 0
-        for partition, offset in offsets.items():
-            prev_offset = self.__committed_offsets.setdefault(partition, offset - 1)
-            messages_since_last_commit += offset - prev_offset
-
-        start = time.time()
-        elapsed = start - self.__last_committed_time
-
-        if force or self.__commit_policy.should_commit(
-            elapsed, messages_since_last_commit
+        if force or self.__commit_policy_state.should_commit(
+            now,
+            offsets,
         ):
             self.__consumer.commit_offsets()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
-                time.time() - start,
+                time.time() - now,
                 self.__consumer,
             )
-            self.__last_committed_time = start
-            self.__committed_offsets.update(offsets)
+            self.__commit_policy_state.did_commit(now, offsets)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

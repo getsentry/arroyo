@@ -314,16 +314,8 @@ class LocalConsumer(Consumer[TPayload]):
 
     def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         with self.__lock:
-            if self.__closed:
-                raise RuntimeError("consumer is closed")
-
-            if offsets.keys() - self.__offsets.keys():
-                raise ConsumerError("cannot stage offsets for unassigned partitions")
-
-            self.__validate_offsets(
-                {partition: offset for (partition, offset) in offsets.items()}
-            )
-
+            # XXX: can we remove the locking? dictionary updates might be
+            # atomic
             self.__staged_offsets.update(offsets)
 
     def commit_offsets(self) -> Mapping[Partition, int]:
@@ -332,9 +324,14 @@ class LocalConsumer(Consumer[TPayload]):
                 raise RuntimeError("consumer is closed")
 
             offsets = {**self.__staged_offsets}
+
+            if offsets.keys() - self.__offsets.keys():
+                raise ConsumerError("cannot stage offsets for unassigned partitions")
+
+            self.__validate_offsets(offsets)
             self.__broker.commit(
                 self,
-                {partition: offset for (partition, offset) in offsets.items()},
+                offsets,
             )
             self.__staged_offsets.clear()
 
