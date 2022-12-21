@@ -21,16 +21,6 @@ class DecodedKafkaMessage(Generic[T]):
     headers: Sequence[Tuple[str, bytes]]
 
 
-def validation_func(
-    codec: Codec[T], validate: bool, message: Message[KafkaPayload]
-) -> DecodedKafkaMessage[T]:
-    return DecodedKafkaMessage(
-        message.payload.key,
-        codec.decode(message.payload.value, validate),
-        message.payload.headers,
-    )
-
-
 class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
     """
     Decode messages to be forwarded to the next step. Optional validation.
