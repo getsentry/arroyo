@@ -114,10 +114,12 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
 
             consumer.stage_offsets(value.committable)
 
-            with pytest.raises(ConsumerError):
-                consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
-
             assert consumer.commit_offsets() == {Partition(topic, 0): value.next_offset}
+
+            consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
+
+            with pytest.raises(ConsumerError):
+                consumer.commit_offsets()
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
 
@@ -165,8 +167,8 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
             with pytest.raises(RuntimeError):
                 consumer.paused()
 
-            with pytest.raises(RuntimeError):
-                consumer.stage_offsets({})
+            # stage_positions does not validate anything
+            consumer.stage_offsets({})
 
             with pytest.raises(RuntimeError):
                 consumer.commit_offsets()

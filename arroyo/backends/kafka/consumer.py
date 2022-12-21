@@ -585,16 +585,14 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         return [*self.__paused]
 
     def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
-        if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
-            raise InvalidState(self.__state)
-
-        if offsets.keys() - self.__offsets.keys():
-            raise ConsumerError("cannot stage offsets for unassigned partitions")
-
-        self.__validate_offsets(
-            {partition: offset for (partition, offset) in offsets.items()}
-        )
-
+        # This method is on an extremely hot path since it is called
+        # unconditionally before any commit policies are evaluated. Therefore
+        # all of the validation happens in commit_positions.
+        #
+        # We considered moving the concept of "staged offsets" into the
+        # producer, but it turns out that the consumer needs to sometimes clear
+        # staged offsets.
+        #
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
@@ -603,6 +601,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def __commit(self) -> Mapping[Partition, int]:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
             raise InvalidState(self.__state)
+
+        if self.__staged_offsets.keys() - self.__offsets.keys():
+            raise ConsumerError("cannot stage offsets for unassigned partitions")
+
+        self.__validate_offsets(self.__staged_offsets)
 
         result: Optional[Sequence[ConfluentTopicPartition]]
 

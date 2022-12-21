@@ -88,8 +88,11 @@ class Codec(ABC, Generic[T]):
 
 
 class JsonCodec(Codec[object]):
-    def __init__(self, json_schema: object) -> None:
-        self.__validate = fastjsonschema.compile(json_schema)
+    def __init__(self, json_schema: Optional[object] = None) -> None:
+        if json_schema is not None:
+            self.__validate = fastjsonschema.compile(json_schema)
+        else:
+            self.__validate = lambda _: _
 
     def decode(self, raw_data: bytes, validate: bool) -> object:
         decoded = rapidjson.loads(raw_data)
