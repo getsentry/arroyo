@@ -72,3 +72,9 @@ def test_json_decoder() -> None:
         strategy.submit(invalid_message)
 
     strategy_skip_validation.submit(invalid_message)
+
+    # Json codec without schema should not fail with invalid message
+    json_codec_no_schema = JsonCodec()
+    strategy = KafkaMessageDecoder(json_codec_no_schema, True, next_step)
+    strategy.submit(valid_message)
+    strategy.submit(invalid_message)
