@@ -164,63 +164,7 @@ def test_stream_processor_termination_on_error() -> None:
     assert e.value == exception
 
 
-def test_stream_processor_incremental_assignment_revocation() -> None:
-    topic = Topic("topic")
-
-    consumer = mock.Mock()
-    strategy = mock.Mock()
-    factory = mock.Mock()
-    factory.create_with_partitions.return_value = strategy
-
-    with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE
-        )
-
-    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
-    assert subscribe_args[0] == [topic]
-
-    assignment_callback = subscribe_kwargs["on_assign"]
-    revocation_callback = subscribe_kwargs["on_revoke"]
-
-    # First partition assigned
-    offsets_p0 = {Partition(topic, 0): 0}
-    assignment_callback(offsets_p0)
-
-    # Second partition assigned
-    offsets_p1 = {Partition(topic, 1): 0}
-    assignment_callback(offsets_p1)
-
-    processor._run_once()
-
-    # First partition revoked
-    consumer.tell.return_value = {**offsets_p0, **offsets_p1}
-    revocation_callback([Partition(topic, 0)])
-
-    # Second partition revoked
-    consumer.tell.return_value = {**offsets_p1}
-    revocation_callback([Partition(topic, 1)])
-
-    # Attempting to re-revoke a partition fails
-    consumer.tell.return_value = {}
-    with pytest.raises(InvalidStateError):
-        revocation_callback([Partition(topic, 1)])
-
-    # No assigned partitions, processor won't run
-    with pytest.raises(InvalidStateError):
-        processor._run_once()
-
-    # Shutdown
-    with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
-        processor._shutdown()
-
-
 def test_stream_processor_create_with_partitions() -> None:
-    """
-    Similar to test_stream_processor_incremental_assignment_revocation
-    but instead validates the partitions for the calls to
-    `create_with_partitions`.
-    """
     topic = Topic("topic")
 
     consumer = mock.Mock()
