@@ -1,4 +1,3 @@
-import copy
 import time
 from typing import Callable, Generic, MutableMapping, Optional, TypeVar
 
@@ -67,7 +66,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         max_batch_size: int,
         max_batch_time: float,
         accumulator: Accumulator[TResult, TPayload],
-        initial_value: TResult,
+        initial_value: Callable[[], TResult],
         next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__max_batch_size = max_batch_size
@@ -114,7 +113,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         if self.__batch_builder is None:
             self.__batch_builder = BatchBuilder(
                 self.__accumulator,
-                copy.deepcopy(self.__initial_value),
+                self.__initial_value(),
                 max_batch_size=self.__max_batch_size,
                 max_batch_time=self.__max_batch_time,
             )
