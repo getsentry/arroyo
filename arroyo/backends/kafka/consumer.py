@@ -119,12 +119,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     prevent uncommitted messages from being consumed multiple times,
     ``commit`` should be called in the partition revocation callback.
 
-    If the `cooperative-sticky` strategy is used, this won't happen as
-    only the incremental partitions are passed to the callback during
-    rebalancing, and any previously assigned partitions will continue
-    from their previous offset without being reset to the last committed
-    offset.
-
     The behavior of ``auto.offset.reset`` also differs slightly from the
     Confluent consumer as well: offsets are only reset during initial
     assignment or subsequent rebalancing operations. Any other circumstances
@@ -202,10 +196,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 "invalid value for 'enable.auto.offset.store' configuration"
             )
 
-        self.__incremental_cooperative = (
-            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
-        )
-
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled when
         # strict_offset_reset is enabled.
@@ -274,65 +264,32 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         ) -> None:
             self.__state = KafkaConsumerState.ASSIGNING
 
-            if self.__incremental_cooperative is True:
-                try:
-                    incremental_assignment: MutableSequence[
-                        ConfluentTopicPartition
-                    ] = []
+            try:
+                assignment: MutableSequence[ConfluentTopicPartition] = []
 
-                    for partition in partitions:
-                        if partition.offset >= 0:
-                            incremental_assignment.append(partition)
-                        elif partition.offset == OFFSET_INVALID:
-                            incremental_assignment.append(
-                                self.__resolve_partition_starting_offset(partition)
-                            )
-                        else:
-                            raise ValueError("received unexpected offset")
+                for partition in self.__consumer.committed(partitions):
+                    if partition.offset >= 0:
+                        assignment.append(partition)
+                    elif partition.offset == OFFSET_INVALID:
+                        assignment.append(
+                            self.__resolve_partition_starting_offset(partition)
+                        )
+                    else:
+                        raise ValueError("received unexpected offset")
 
-                    offsets = {
-                        Partition(Topic(i.topic), i.partition): i.offset
-                        for i in incremental_assignment
-                    }
+                offsets = {
+                    Partition(Topic(i.topic), i.partition): i.offset for i in assignment
+                }
 
-                    self.__incremental_assign(offsets)
+                self.__assign(offsets)
 
-                    # Ensure that all partitions are resumed on assignment to avoid
-                    # carrying over state from a previous assignment.
-                    self.resume([p for p in offsets])
+                # Ensure that all partitions are resumed on assignment to avoid
+                # carrying over state from a previous assignment.
+                self.resume([p for p in offsets])
 
-                except Exception:
-                    self.__state = KafkaConsumerState.ERROR
-                    raise
-
-            else:
-                try:
-                    assignment: MutableSequence[ConfluentTopicPartition] = []
-
-                    for partition in self.__consumer.committed(partitions):
-                        if partition.offset >= 0:
-                            assignment.append(partition)
-                        elif partition.offset == OFFSET_INVALID:
-                            assignment.append(
-                                self.__resolve_partition_starting_offset(partition)
-                            )
-                        else:
-                            raise ValueError("received unexpected offset")
-
-                    offsets = {
-                        Partition(Topic(i.topic), i.partition): i.offset
-                        for i in assignment
-                    }
-
-                    self.__assign(offsets)
-
-                    # Ensure that all partitions are resumed on assignment to avoid
-                    # carrying over state from a previous assignment.
-                    self.resume([p for p in offsets])
-
-                except Exception:
-                    self.__state = KafkaConsumerState.ERROR
-                    raise
+            except Exception:
+                self.__state = KafkaConsumerState.ERROR
+                raise
 
             try:
                 if on_assign is not None:
@@ -488,16 +445,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def __assign(self, offsets: Mapping[Partition, int]) -> None:
         self.__validate_offsets(offsets)
         self.__consumer.assign(
-            [
-                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
-                for partition, offset in offsets.items()
-            ]
-        )
-        self.__offsets.update(offsets)
-
-    def __incremental_assign(self, offsets: Mapping[Partition, int]) -> None:
-        self.__validate_offsets(offsets)
-        self.__consumer.incremental_assign(
             [
                 ConfluentTopicPartition(partition.topic.name, partition.index, offset)
                 for partition, offset in offsets.items()
