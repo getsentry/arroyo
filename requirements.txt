@@ -1,3 +1,5 @@
+avro>=1.11.1
 confluent-kafka>=1.9.0
 fastjsonschema>=2.16.2
+msgpack>=1.0.4
 python-rapidjson>=1.8
