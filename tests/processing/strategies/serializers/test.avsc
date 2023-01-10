@@ -1,0 +1,10 @@
+{
+  "namespace": "test.avro",
+  "type": "record",
+  "name": "Test",
+  "fields": [
+    { "name": "event_id", "type": "string" },
+    { "name": "project_id", "type": ["int"] },
+    { "name": "group_id", "type": ["int", "null"] }
+  ]
+}

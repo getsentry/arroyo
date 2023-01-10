@@ -1,0 +1,11 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Test json schema",
+    "type": "object",
+    "properties": {
+        "event_id": {"type": "string", "description": "32 character hex string"},
+        "project_id": {"type": "integer", "description": "Project ID"},
+        "group_id": {"type": "integer", "description": "Group ID"}
+    },
+    "required": ["event_id", "project_id"]
+}

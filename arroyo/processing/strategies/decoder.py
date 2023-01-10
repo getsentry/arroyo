@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from avro.io import BinaryDecoder, DatumReader
+from avro.errors import SchemaResolutionException
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Optional, Sequence, Tuple, TypeVar
+from io import BytesIO
 
 import fastjsonschema
+import msgpack
 import rapidjson
 
 from arroyo.backends.kafka import KafkaPayload
@@ -75,14 +79,7 @@ class Codec(ABC, Generic[T]):
     def decode(self, raw_data: bytes, validate: bool) -> T:
         """
         Decode bytes from Kafka message.
-        If validate is true, the validation is run.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def validate(self, data: T) -> None:
-        """
-        Runs the validation. Raises a ValidationError if the data is not valid.
+        If validate is true, validation is performed.
         """
         raise NotImplementedError
 
@@ -104,4 +101,42 @@ class JsonCodec(Codec[object]):
         try:
             self.__validate(data)
         except Exception as exc:
+            raise ValidationError from exc
+
+
+class MsgpackCodec(Codec[object]):
+    """
+    This codec assumes the schema is json.
+    """
+
+    def __init__(self, json_schema: Optional[object] = None) -> None:
+        if json_schema is not None:
+            self.__validate = fastjsonschema.compile(json_schema)
+        else:
+            self.__validate = lambda _: _
+
+    def decode(self, raw_data: bytes, validate: bool) -> object:
+        decoded = msgpack.unpackb(raw_data)
+        if validate:
+            self.validate(decoded)
+        return decoded
+
+    def validate(self, data: object) -> None:
+        try:
+            self.__validate(data)
+        except Exception as exc:
+            raise ValidationError from exc
+
+
+class AvroCodec(Codec[object]):
+    def __init__(self, avro_schema: object) -> None:
+        self.__schema = avro_schema
+        self.__reader = DatumReader(self.__schema)
+
+    def decode(self, raw_data: bytes, validate: bool) -> object:
+        assert validate is True, "Validation cannot be skipped for AvroCodec"
+        decoder = BinaryDecoder(BytesIO(raw_data))
+        try:
+            return self.__reader.read(decoder)
+        except SchemaResolutionException as exc:
             raise ValidationError from exc
