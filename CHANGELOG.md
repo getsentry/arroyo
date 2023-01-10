@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.4.0
+
+### Various fixes & improvements
+
+- feat(serializers): Add more decoders (#171) by @lynnagara
+- feat(reduce): Support greater flexibility in initial value (#170) by @lynnagara
+- auto publish to internal pypi on release (#169) by @asottile-sentry
+- feat: Remove support for cooperative-sticky partition assignment strategy (#168) by @lynnagara
+
 ## 2.3.1
 
 ### Various fixes & improvements
