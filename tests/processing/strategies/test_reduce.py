@@ -1,4 +1,4 @@
-from typing import Set
+from typing import Callable, Set
 from unittest.mock import Mock, call
 
 from arroyo.processing.strategies.reduce import Reduce
@@ -10,7 +10,7 @@ def test_reduce() -> None:
         result.add(value.payload)
         return result
 
-    initial_value: Set[int] = set()
+    initial_value: Callable[[], Set[int]] = lambda: set()
 
     next_step = Mock()
 
