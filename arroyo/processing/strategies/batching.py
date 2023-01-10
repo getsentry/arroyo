@@ -49,7 +49,7 @@ class BatchStep(ProcessingStrategy[TPayload]):
             max_batch_size,
             max_batch_time,
             accumulator,
-            [],
+            lambda: [],
             next_step,
         )
 
