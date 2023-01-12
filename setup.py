@@ -2,6 +2,10 @@ from typing import Sequence
 
 from setuptools import find_packages, setup
 
+AVRO_REQUIREMENTS = ["avro>=1.11.1"]
+JSON_REQUIREMENTS = ["python-rapidjson>=1.8", "fastjsonschema>=2.16.2"]
+MSGPACK_REQUIREMENTS = ["msgpack>=1.0.4", "fastjsonschema>=2.16.2"]
+
 
 def get_requirements() -> Sequence[str]:
     with open("requirements.txt") as fp:
@@ -29,4 +33,9 @@ setup(
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
+    extras_require={
+        "avro": AVRO_REQUIREMENTS,
+        "json": JSON_REQUIREMENTS,
+        "msgpack": MSGPACK_REQUIREMENTS,
+    },
 )
