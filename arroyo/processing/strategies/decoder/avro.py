@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from avro.errors import SchemaResolutionException
+from avro.errors import SchemaResolutionException  # pip install sentry-arroyo[avro]
 from avro.io import BinaryDecoder, DatumReader
 
 from arroyo.processing.strategies.decoder.base import Codec, ValidationError

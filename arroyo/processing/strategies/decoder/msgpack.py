@@ -1,6 +1,6 @@
 from typing import Optional
 
-import fastjsonschema
+import fastjsonschema  # pip install sentry-arroyo[msgpack]
 import msgpack
 
 from arroyo.processing.strategies.decoder.base import Codec, ValidationError
