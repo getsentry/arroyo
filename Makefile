@@ -5,7 +5,7 @@ setup-git:
 	pre-commit install --install-hooks
 
 install:
-	pip install -e .
+	pip install -e .[avro,json,msgpack]
 	pip install -r requirements-test.txt
 
 lint:
