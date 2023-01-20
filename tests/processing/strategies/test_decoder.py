@@ -11,13 +11,13 @@ import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies.decoder import (
-    AvroCodec,
     DecodedKafkaMessage,
-    JsonCodec,
     KafkaMessageDecoder,
-    MsgpackCodec,
     ValidationError,
 )
+from arroyo.processing.strategies.decoder.avro import AvroCodec
+from arroyo.processing.strategies.decoder.json import JsonCodec
+from arroyo.processing.strategies.decoder.msgpack import MsgpackCodec
 from arroyo.types import Message, Partition, Topic, Value
 
 
