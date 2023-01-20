@@ -3,6 +3,7 @@ from typing import Callable, Generic, MutableMapping, Optional, TypeVar
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
 from arroyo.types import BaseValue, Message, Partition, Value
+from arroyo.utils.metrics import get_metrics
 
 TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
@@ -29,7 +30,7 @@ class BatchBuilder(Generic[TPayload, TResult]):
         self.__accumulated_value = initial_value
         self.__count = 0
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__init_time = time.time()
+        self.init_time = time.time()
 
     def append(self, value: BaseValue[TPayload]) -> None:
         self.__offsets.update(value.committable)
@@ -40,8 +41,9 @@ class BatchBuilder(Generic[TPayload, TResult]):
     def build_if_ready(self) -> Optional[Value[TResult]]:
         if (
             self.__count >= self.__max_batch_size
-            or time.time() > self.__init_time + self.__max_batch_time
+            or time.time() > self.init_time + self.__max_batch_time
         ):
+
             return Value(payload=self.__accumulated_value, committable=self.__offsets)
         else:
             return None
@@ -75,6 +77,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         self.__initial_value = initial_value
         self.__next_step = next_step
         self.__batch_builder: Optional[BatchBuilder[TPayload, TResult]] = None
+        self.__metrics = get_metrics()
         self.__closed = False
 
     def __flush(self, force: bool) -> None:
@@ -90,6 +93,11 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         batch_msg = Message(batch)
 
         self.__next_step.submit(batch_msg)
+
+        self.__metrics.timing(
+            "arroyo.strategies.reduce.batch_time",
+            time.time() - self.__batch_builder.init_time,
+        )
 
         self.__batch_builder = None
 

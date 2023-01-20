@@ -58,15 +58,24 @@ Task Runners
    :undoc-members:
 
 Producers
---------------------------
+-----------------------------
 
 .. automodule:: arroyo.processing.strategies.produce
    :members:
    :undoc-members:
 
+Decoders
+-----------------------------
+
+Provides decoders and schema validation for messages
+
+.. automodule:: arroyo.processing.strategies.decoder
+   :members:
+   :undoc-members:
+
 
 Dead Letter Queue
---------------------------
+-----------------------------
 
 Arroyo's DLQ is subject to change, and will likely be redesigned from the
 ground up in an upcoming release.
