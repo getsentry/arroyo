@@ -31,12 +31,12 @@ Filters
    :members:
    :undoc-members:
 
-Collectors
+Batch and Unbatch
 -----------------------------
 
-Accumulate messages in a buffer and execute an operation on the batch when full
+Accumulate messages into a batch and pass to the next step.
 
-.. automodule:: arroyo.processing.strategies.collect
+.. automodule:: arroyo.processing.strategies.batching
    :members:
    :undoc-members:
 
