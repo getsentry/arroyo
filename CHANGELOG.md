@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.5.0
+
+### Various fixes & improvements
+
+- feat: Remove CollectStep and ParallelCollectStep (#173) by @lynnagara
+- feat(reduce): Record `arroyo.strategies.reduce.batch_time` (#175) by @lynnagara
+- docs: Add decoders section (#174) by @lynnagara
+- build: Make json, msgpack and avro optional dependencies (#172) by @lynnagara
+
 ## 2.4.0
 
 ### Various fixes & improvements
