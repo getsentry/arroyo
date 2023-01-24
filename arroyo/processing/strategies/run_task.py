@@ -22,9 +22,11 @@ from typing import (
     Sequence,
     Tuple,
     TypeVar,
+    Union,
+    cast,
 )
 
-from arroyo.processing.strategies.abstract import MessageRejected
+from arroyo.processing.strategies.abstract import FilteredPayload, MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
@@ -42,7 +44,9 @@ TResult = TypeVar("TResult")
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
-class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
+class RunTask(
+    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+):
     """
     Basic strategy to run a custom processing function on a message.
     """
@@ -50,15 +54,22 @@ class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], TResult],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
     ) -> None:
         self.__function = function
         self.__next_step = next_step
 
-    def submit(self, message: Message[TPayload]) -> None:
-        result = self.__function(message)
-        value = message.value.replace(result)
-        self.__next_step.submit(Message(value))
+    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+        if isinstance(message.value.payload, FilteredPayload):
+            self.__next_step.submit(
+                cast(Message[Union[FilteredPayload, TResult]], message)
+            )
+        else:
+            result = self.__function(cast(Message[TPayload], message))
+            new_message = message.replace(result)
+            self.__next_step.submit(
+                cast(Message[Union[FilteredPayload, TResult]], new_message)
+            )
 
     def poll(self) -> None:
         self.__next_step.poll()

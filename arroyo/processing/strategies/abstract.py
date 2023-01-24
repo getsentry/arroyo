@@ -118,3 +118,10 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         :param partitions: A mapping of a ``Partition`` to it's most recent offset.
         """
         raise NotImplementedError
+
+
+class FilteredPayload:
+    __slots__ = ()
+
+
+FILTERED_PAYLOAD = FilteredPayload()
