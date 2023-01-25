@@ -6,7 +6,7 @@ from typing import Deque, MutableSequence, Optional
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
-from arroyo.types import BaseValue, Message, TPayload
+from arroyo.types import BaseValue, FilteredPayload, Message, TPayload
 
 ValuesBatch = MutableSequence[BaseValue[TPayload]]
 
@@ -116,6 +116,7 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
         if self.__batch_to_send:
             raise MessageRejected
 
+        assert not isinstance(message.payload, FilteredPayload)
         self.__batch_to_send.extend(message.payload)
         try:
             self.__flush()

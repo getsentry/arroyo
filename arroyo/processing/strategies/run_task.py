@@ -22,18 +22,17 @@ from typing import (
     Sequence,
     Tuple,
     TypeVar,
-    Union,
     cast,
 )
 
-from arroyo.processing.strategies.abstract import FilteredPayload, MessageRejected
+from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import Message
+from arroyo.types import FilteredPayload, Message
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -44,9 +43,7 @@ TResult = TypeVar("TResult")
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
-class RunTask(
-    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
-):
+class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     """
     Basic strategy to run a custom processing function on a message.
     """
@@ -54,22 +51,18 @@ class RunTask(
     def __init__(
         self,
         function: Callable[[Message[TPayload]], TResult],
-        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
+        next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__function = function
         self.__next_step = next_step
 
-    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+    def submit(self, message: Message[TPayload]) -> None:
         if isinstance(message.value.payload, FilteredPayload):
-            self.__next_step.submit(
-                cast(Message[Union[FilteredPayload, TResult]], message)
-            )
+            self.__next_step.submit(cast(Message[TResult], message))
         else:
-            result = self.__function(cast(Message[TPayload], message))
+            result = self.__function(message)
             new_message = message.replace(result)
-            self.__next_step.submit(
-                cast(Message[Union[FilteredPayload, TResult]], new_message)
-            )
+            self.__next_step.submit(new_message)
 
     def poll(self) -> None:
         self.__next_step.poll()

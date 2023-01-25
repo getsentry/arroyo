@@ -2,12 +2,22 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, Mapping, Optional, Tuple
+from typing import Deque, Mapping, Optional, Tuple, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
-from arroyo.types import BrokerValue, Commit, Message, Partition, Topic, TPayload, Value
+from arroyo.types import (
+    FILTERED_PAYLOAD,
+    BrokerValue,
+    Commit,
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    TPayload,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +54,7 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Mapping[Partition, int], Future[BrokerValue[TPayload]]]
+            Tuple[Mapping[Partition, int], Optional[Future[BrokerValue[TPayload]]]]
         ] = deque()
 
         self.__closed = False
@@ -53,10 +63,16 @@ class Produce(ProcessingStrategy[TPayload]):
         while self.__queue:
             committable, future = self.__queue[0]
 
-            if not future.done():
+            if future is not None and not future.done():
                 break
 
-            message = Message(Value(future.result().payload, committable))
+            payload: Union[TPayload, FilteredPayload]
+            if future is None:
+                payload = FILTERED_PAYLOAD
+            else:
+                payload = future.result().payload
+
+            message = Message(Value(payload, committable))
 
             self.__queue.popleft()
             self.__next_step.poll()
@@ -68,12 +84,12 @@ class Produce(ProcessingStrategy[TPayload]):
         if len(self.__queue) >= self.__max_buffer_size:
             raise MessageRejected
 
-        self.__queue.append(
-            (
-                message.committable,
-                self.__producer.produce(self.__topic, message.payload),
-            )
-        )
+        if isinstance(message.payload, FilteredPayload):
+            producer_future = None
+        else:
+            producer_future = self.__producer.produce(self.__topic, message.payload)
+
+        self.__queue.append((message.committable, producer_future))
 
     def close(self) -> None:
         self.__closed = True
@@ -96,7 +112,13 @@ class Produce(ProcessingStrategy[TPayload]):
 
             committable, future = self.__queue.popleft()
 
-            message = Message(Value(future.result().payload, committable))
+            payload: Union[TPayload, FilteredPayload]
+            if future is None:
+                payload = FILTERED_PAYLOAD
+            else:
+                payload = future.result().payload
+
+            message = Message(Value(payload, committable))
 
             self.__next_step.poll()
             self.__next_step.submit(message)

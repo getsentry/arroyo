@@ -1,7 +1,6 @@
 import logging
-from typing import Callable, Optional, Union, cast
+from typing import Callable, Optional
 
-from arroyo.processing.strategies.abstract import FILTERED_PAYLOAD, FilteredPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
 from arroyo.types import Message, TPayload
 
@@ -16,7 +15,7 @@ class FilterStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], bool],
-        next_step: ProcessingStep[Union[FilteredPayload, TPayload]],
+        next_step: ProcessingStep[TPayload],
         consecutive_drop_limit: Optional[int] = None,
     ):
         self.__test_function = function
@@ -33,8 +32,7 @@ class FilterStep(ProcessingStep[TPayload]):
         assert not self.__closed
 
         if self.__test_function(message):
-            cast_message = cast(Message[Union[FilteredPayload, TPayload]], message)
-            self.__next_step.submit(cast_message)
+            self.__next_step.submit(message)
             self.__consecutive_drop_count = 0
         else:
             self.__consecutive_drop_count += 1
@@ -43,11 +41,8 @@ class FilterStep(ProcessingStep[TPayload]):
                 self.__consecutive_drop_limit is not None
                 and self.__consecutive_drop_count >= self.__consecutive_drop_limit
             ):
-                cast_message = cast(
-                    Message[Union[FilteredPayload, TPayload]],
-                    message.replace(FILTERED_PAYLOAD),
-                )
-                self.__next_step.submit(cast_message)
+                new_message = message.mark_filtered()
+                self.__next_step.submit(new_message)
                 self.__consecutive_drop_count = 0
 
     def close(self) -> None:
