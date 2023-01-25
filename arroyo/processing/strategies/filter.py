@@ -74,5 +74,6 @@ class FilterStep(ProcessingStep[TPayload]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
+        self.__flush_uncommitted_offsets(time.time())
         self.__next_step.close()
         self.__next_step.join(timeout)
