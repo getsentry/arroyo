@@ -1,8 +1,10 @@
 import logging
-from typing import Callable, Optional
+import time
+from typing import Callable, MutableMapping, Optional
 
+from arroyo.commit import CommitPolicy, CommitPolicyState
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
-from arroyo.types import Message, TPayload
+from arroyo.types import FILTERED_PAYLOAD, Message, Partition, TPayload, Value
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +18,20 @@ class FilterStep(ProcessingStep[TPayload]):
         self,
         function: Callable[[Message[TPayload]], bool],
         next_step: ProcessingStep[TPayload],
-        consecutive_drop_limit: Optional[int] = None,
+        commit_policy: Optional[CommitPolicy] = None,
     ):
         self.__test_function = function
         self.__next_step = next_step
-        self.__consecutive_drop_limit = consecutive_drop_limit
 
+        if commit_policy is not None:
+            self.__commit_policy_state: Optional[
+                CommitPolicyState
+            ] = commit_policy.get_state_machine()
+        else:
+            self.__commit_policy_state = None
+
+        self.__uncommitted_offsets: MutableMapping[Partition, int] = {}
         self.__closed = False
-        self.__consecutive_drop_count = 0
 
     def poll(self) -> None:
         self.__next_step.poll()
@@ -31,19 +39,30 @@ class FilterStep(ProcessingStep[TPayload]):
     def submit(self, message: Message[TPayload]) -> None:
         assert not self.__closed
 
-        if self.__test_function(message):
-            self.__next_step.submit(message)
-            self.__consecutive_drop_count = 0
-        else:
-            self.__consecutive_drop_count += 1
+        now = time.time()
 
-            if (
-                self.__consecutive_drop_limit is not None
-                and self.__consecutive_drop_count >= self.__consecutive_drop_limit
-            ):
-                new_message = message.mark_filtered()
-                self.__next_step.submit(new_message)
-                self.__consecutive_drop_count = 0
+        if self.__test_function(message):
+            if self.__commit_policy_state is not None:
+                self.__flush_uncommitted_offsets(now)
+            self.__next_step.submit(message)
+        elif self.__commit_policy_state is not None:
+            self.__uncommitted_offsets.update(message.committable)
+
+            if self.__commit_policy_state.should_commit(now, message.committable):
+                self.__flush_uncommitted_offsets(now)
+
+    def __flush_uncommitted_offsets(self, now: float) -> None:
+        if not self.__uncommitted_offsets:
+            return
+
+        new_message: Message[TPayload] = Message(
+            Value(FILTERED_PAYLOAD, self.__uncommitted_offsets)
+        )
+        self.__next_step.submit(new_message)
+
+        if self.__commit_policy_state is not None:
+            self.__commit_policy_state.did_commit(now, self.__uncommitted_offsets)
+        self.__uncommitted_offsets = {}
 
     def close(self) -> None:
         self.__closed = True
