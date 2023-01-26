@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -137,7 +137,7 @@ def test_batch_builder(
     batch = batch_builder.build_if_ready()
     if expected_ready:
         assert batch is not None
-        assert len(batch.payload_unchecked) == len(values_in)
+        assert len(batch.payload) == len(values_in)
         assert batch.committable == expected_offsets
     else:
         assert batch is None
@@ -277,11 +277,14 @@ def test_batch_join() -> None:
 def test_unbatch_step() -> None:
     msg: Message[ValuesBatch[str]] = Message(
         Value(
-            payload=[
-                broker_value(1, 1, "Message 1"),
-                broker_value(1, 2, "Message 2"),
-                broker_value(1, 3, "Message 3"),
-            ],
+            payload=cast(
+                ValuesBatch[str],
+                [
+                    broker_value(1, 1, "Message 1"),
+                    broker_value(1, 2, "Message 2"),
+                    broker_value(1, 3, "Message 3"),
+                ],
+            ),
             committable={Partition(Topic("test"), 1): 4},
         ),
     )

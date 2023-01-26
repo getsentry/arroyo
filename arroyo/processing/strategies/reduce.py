@@ -1,8 +1,8 @@
 import time
-from typing import Callable, Generic, MutableMapping, Optional, TypeVar
+from typing import Callable, Generic, MutableMapping, Optional, TypeVar, cast
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, Message, Partition, Value
+from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 from arroyo.utils.metrics import get_metrics
 
 TPayload = TypeVar("TPayload")
@@ -115,6 +115,10 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         """
         assert not self.__closed
 
+        if isinstance(message.payload, FilteredPayload):
+            self.__next_step.submit(message.mark_filtered())
+            return
+
         if self.__batch_builder is not None:
             self.__flush(force=False)
 
@@ -126,7 +130,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
                 max_batch_time=self.__max_batch_time,
             )
 
-        self.__batch_builder.append(message.value)
+        self.__batch_builder.append(cast(BaseValue[TPayload], message.value))
 
     def poll(self) -> None:
         assert not self.__closed

@@ -2,7 +2,7 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, Mapping, Optional, Tuple, Union
+from typing import Deque, Mapping, Optional, Tuple
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -66,13 +66,11 @@ class Produce(ProcessingStrategy[TPayload]):
             if future is not None and not future.done():
                 break
 
-            payload: Union[TPayload, FilteredPayload]
+            message: Message[TPayload]
             if future is None:
-                payload = FILTERED_PAYLOAD
+                message = Message(Value(FILTERED_PAYLOAD, committable))
             else:
-                payload = future.result().payload
-
-            message = Message(Value(payload, committable))
+                message = Message(Value(future.result().payload, committable))
 
             self.__queue.popleft()
             self.__next_step.poll()
@@ -112,13 +110,11 @@ class Produce(ProcessingStrategy[TPayload]):
 
             committable, future = self.__queue.popleft()
 
-            payload: Union[TPayload, FilteredPayload]
+            message: Message[TPayload]
             if future is None:
-                payload = FILTERED_PAYLOAD
+                message = Message(Value(FILTERED_PAYLOAD, committable))
             else:
-                payload = future.result().payload
-
-            message = Message(Value(payload, committable))
+                message = Message(Value(future.result().payload, committable))
 
             self.__next_step.poll()
             self.__next_step.submit(message)

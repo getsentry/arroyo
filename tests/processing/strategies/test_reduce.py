@@ -7,7 +7,7 @@ from arroyo.types import BaseValue, Message, Partition, Topic, Value
 
 def test_reduce() -> None:
     def accumulator(result: Set[int], value: BaseValue[int]) -> Set[int]:
-        result.add(value.payload_unchecked)
+        result.add(value.payload)
         return result
 
     initial_value: Callable[[], Set[int]] = lambda: set()

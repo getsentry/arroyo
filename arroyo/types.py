@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Mapping, Protocol, Type, TypeVar, Union, cast
+from typing import Generic, Mapping, Protocol, TypeVar, Union, cast
 
 TReplaced = TypeVar("TReplaced")
 
@@ -46,13 +46,17 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["value"]
 
-    value: BaseValue[TPayload]
+    value: BaseValue[Union[FilteredPayload, TPayload]]
 
     def __init__(
         self,
-        value: BaseValue[TPayload],
+        value: Union[
+            BaseValue[Union[FilteredPayload, TPayload]],
+            BaseValue[FilteredPayload],
+            BaseValue[TPayload],
+        ],
     ) -> None:
-        self.value = value
+        self.value = cast(BaseValue[Union[FilteredPayload, TPayload]], value)
 
     def __repr__(self) -> str:
         # XXX: Field values can't be excluded from ``__repr__`` with
@@ -75,7 +79,7 @@ class Message(Generic[TPayload]):
     def committable(self) -> Mapping[Partition, int]:
         return self.value.committable
 
-    def mark_filtered(self, _: Type[TReplaced]) -> Message[TReplaced]:
+    def mark_filtered(self) -> Message[TReplaced]:
         return cast(Message[TReplaced], self.replace(FILTERED_PAYLOAD))
 
     def replace(self, payload: Union[FilteredPayload, TReplaced]) -> Message[TReplaced]:
@@ -84,14 +88,14 @@ class Message(Generic[TPayload]):
 
 class BaseValue(Generic[TPayload]):
     @property
-    def payload(self) -> Union[TPayload, FilteredPayload]:
+    def payload(self) -> TPayload:
         raise NotImplementedError()
 
     @property
     def committable(self) -> Mapping[Partition, int]:
         raise NotImplementedError()
 
-    def replace(self, value: Union[FilteredPayload, TReplaced]) -> BaseValue[TReplaced]:
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
         raise NotImplementedError
 
 
@@ -103,26 +107,26 @@ class Value(BaseValue[TPayload]):
     """
 
     __slots__ = ["__payload", "__committable"]
-    __payload: Union[TPayload, FilteredPayload]
+    __payload: TPayload
     __committable: Mapping[Partition, int]
 
     def __init__(
         self,
-        payload: Union[FilteredPayload, TPayload],
+        payload: TPayload,
         committable: Mapping[Partition, int],
     ) -> None:
         self.__payload = payload
         self.__committable = committable
 
     @property
-    def payload(self) -> Union[TPayload, FilteredPayload]:
+    def payload(self) -> TPayload:
         return self.__payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:
         return self.__committable
 
-    def replace(self, value: Union[FilteredPayload, TReplaced]) -> BaseValue[TReplaced]:
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
         return Value(value, self.__committable)
 
 
@@ -134,14 +138,14 @@ class BrokerValue(BaseValue[TPayload]):
     """
 
     __slots__ = ["__payload", "partition", "offset", "timestamp"]
-    __payload: Union[TPayload, FilteredPayload]
+    __payload: TPayload
     partition: Partition
     offset: int
     timestamp: datetime
 
     def __init__(
         self,
-        payload: Union[TPayload, FilteredPayload],
+        payload: TPayload,
         partition: Partition,
         offset: int,
         timestamp: datetime,
@@ -151,11 +155,11 @@ class BrokerValue(BaseValue[TPayload]):
         self.offset = offset
         self.timestamp = timestamp
 
-    def replace(self, value: Union[FilteredPayload, TReplaced]) -> BaseValue[TReplaced]:
+    def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
         return BrokerValue(value, self.partition, self.offset, self.timestamp)
 
     @property
-    def payload(self) -> Union[TPayload, FilteredPayload]:
+    def payload(self) -> TPayload:
         return self.__payload
 
     @property

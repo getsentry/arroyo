@@ -119,7 +119,7 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
                 value = consumer.poll(10.0)
                 assert isinstance(value, BrokerValue)
-                assert value.payload_unchecked.value == b"0"
+                assert value.payload.value == b"0"
 
     def test_auto_offset_reset_latest(self) -> None:
         with self.get_topic() as topic:
@@ -159,8 +159,8 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
                 consumer.subscribe([topic])
                 result_message = consumer.poll(10.0)
                 assert result_message is not None
-                assert result_message.payload_unchecked.key == b"a"
-                assert result_message.payload_unchecked.value == b"0"
+                assert result_message.payload.key == b"a"
+                assert result_message.payload.value == b"0"
 
                 # make sure we reset our offset now
                 consumer.commit_offsets()

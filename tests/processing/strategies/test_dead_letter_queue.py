@@ -40,16 +40,15 @@ NOW = datetime.now()
 def kafka_message_to_invalid_kafka_message(
     message: Message[KafkaPayload], reason: str
 ) -> InvalidKafkaMessage:
-    consumer_payload = message.value
-    assert isinstance(consumer_payload, BrokerValue)
+    assert isinstance(message.value, BrokerValue)
     return InvalidKafkaMessage(
-        payload=consumer_payload.payload_unchecked.value,
-        timestamp=consumer_payload.timestamp,
-        topic=consumer_payload.partition.topic.name,
+        payload=message.payload_unchecked.value,
+        timestamp=message.value.timestamp,
+        topic=message.value.partition.topic.name,
         consumer_group="",
-        partition=consumer_payload.partition.index,
-        offset=consumer_payload.offset,
-        headers=consumer_payload.payload_unchecked.headers,
+        partition=message.value.partition.index,
+        offset=message.value.offset,
+        headers=message.payload_unchecked.headers,
         reason=reason,
     )
 

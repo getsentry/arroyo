@@ -40,7 +40,7 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
 
     def submit(self, message: Message[KafkaPayload]) -> None:
         if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(message.mark_filtered(DecodedKafkaMessage[T]))
+            self.__next_step.submit(message.mark_filtered())
         else:
             decoded_value = self.__codec.decode(
                 message.payload.value, validate=self.__validate

@@ -30,8 +30,7 @@ def index_data(
 ) -> ValuesBatch[KafkaPayload]:
     logger.info("Indexing %d messages", len(batch.payload_unchecked))
     parsed_msgs = [
-        json.loads(s.payload_unchecked.value.decode("utf-8"))
-        for s in batch.payload_unchecked
+        json.loads(s.payload.value.decode("utf-8")) for s in batch.payload_unchecked
     ]
     indexed_messages = resolve_index(parsed_msgs)
     ret: MutableSequence[BaseValue[KafkaPayload]] = []
