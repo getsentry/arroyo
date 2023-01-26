@@ -67,7 +67,9 @@ class Message(Generic[TPayload]):
 
     @property
     def payload_unchecked(self) -> TPayload:
-        return self.value.payload_unchecked
+        payload = self.payload
+        assert not isinstance(payload, FilteredPayload)
+        return payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:
@@ -84,11 +86,6 @@ class BaseValue(Generic[TPayload]):
     @property
     def payload(self) -> Union[TPayload, FilteredPayload]:
         raise NotImplementedError()
-
-    @property
-    def payload_unchecked(self) -> TPayload:
-        assert not isinstance(self.payload, FilteredPayload)
-        return self.payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:
