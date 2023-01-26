@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Mapping, Protocol, TypeVar, Union, cast
+from typing import Generic, Mapping, Protocol, Type, TypeVar, Union, cast
 
 TReplaced = TypeVar("TReplaced")
 
@@ -66,11 +66,15 @@ class Message(Generic[TPayload]):
         return self.value.payload
 
     @property
+    def payload_unchecked(self) -> TPayload:
+        return self.value.payload_unchecked
+
+    @property
     def committable(self) -> Mapping[Partition, int]:
         return self.value.committable
 
-    def mark_filtered(self) -> Message[TPayload]:
-        return cast(Message[TPayload], self.replace(FILTERED_PAYLOAD))
+    def mark_filtered(self, _: Type[TReplaced]) -> Message[TReplaced]:
+        return cast(Message[TReplaced], self.replace(FILTERED_PAYLOAD))
 
     def replace(self, payload: Union[FilteredPayload, TReplaced]) -> Message[TReplaced]:
         return Message(self.value.replace(payload))
@@ -80,6 +84,11 @@ class BaseValue(Generic[TPayload]):
     @property
     def payload(self) -> Union[TPayload, FilteredPayload]:
         raise NotImplementedError()
+
+    @property
+    def payload_unchecked(self) -> TPayload:
+        assert not isinstance(self.payload, FilteredPayload)
+        return self.payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:

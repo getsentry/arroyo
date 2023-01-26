@@ -10,7 +10,7 @@ def test_transform() -> None:
     next_step = Mock()
 
     def transform_function(message: Message[int]) -> int:
-        return message.payload * 2
+        return message.payload_unchecked * 2
 
     transform_step = TransformStep(transform_function, next_step)
 

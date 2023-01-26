@@ -28,11 +28,14 @@ def resolve_index(msgs: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, An
 def index_data(
     batch: Message[ValuesBatch[KafkaPayload]],
 ) -> ValuesBatch[KafkaPayload]:
-    logger.info("Indexing %d messages", len(batch.payload))
-    parsed_msgs = [json.loads(s.payload.value.decode("utf-8")) for s in batch.payload]
+    logger.info("Indexing %d messages", len(batch.payload_unchecked))
+    parsed_msgs = [
+        json.loads(s.payload_unchecked.value.decode("utf-8"))
+        for s in batch.payload_unchecked
+    ]
     indexed_messages = resolve_index(parsed_msgs)
     ret: MutableSequence[BaseValue[KafkaPayload]] = []
-    for i in range(0, len(batch.payload)):
+    for i in range(0, len(batch.payload_unchecked)):
         ret.append(
             Value(
                 payload=KafkaPayload(
@@ -40,7 +43,7 @@ def index_data(
                     headers=[],
                     value=json.dumps(indexed_messages[i]).encode(),
                 ),
-                committable=batch.payload[i].committable,
+                committable=batch.payload_unchecked[i].committable,
             )
         )
     return ret

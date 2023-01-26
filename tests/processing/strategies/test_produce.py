@@ -30,7 +30,7 @@ def test_produce() -> None:
 
     produced_message = broker_storage.consume(Partition(result_topic, 0), 0)
     assert produced_message is not None
-    assert produced_message.payload.value == value
+    assert produced_message.payload_unchecked.value == value
     assert broker_storage.consume(Partition(result_topic, 0), 1) is None
     assert next_step.submit.call_count == 0
     assert next_step.poll.call_count == 0
@@ -66,7 +66,7 @@ def test_produce_and_commit() -> None:
 
     produced_message = broker_storage.consume(Partition(result_topic, 0), 0)
     assert produced_message is not None
-    assert produced_message.payload.value == value
+    assert produced_message.payload_unchecked.value == value
     assert broker_storage.consume(Partition(result_topic, 0), 1) is None
     assert commit.call_count == 0
     strategy.poll()

@@ -128,9 +128,9 @@ def test_message_batch() -> None:
 
 def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(
-        message.payload.key,
-        message.payload.value * 2,
-        message.payload.headers,
+        message.payload_unchecked.key,
+        message.payload_unchecked.value * 2,
+        message.payload_unchecked.headers,
     )
 
 
@@ -195,16 +195,16 @@ NO_KEY = "No Key"
 
 
 def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
-    if message.payload.key is None:
+    if message.payload_unchecked.key is None:
         raise InvalidMessages(
             [
                 InvalidRawMessage(
-                    payload=str(message.payload),
+                    payload=str(message.payload_unchecked),
                     reason=NO_KEY,
                 )
             ]
         )
-    return message.payload
+    return message.payload_unchecked
 
 
 def test_parallel_transform_worker_bad_messages() -> None:
@@ -413,7 +413,7 @@ def test_parallel_run_task_bad_messages() -> None:
 
 
 def add_one(message: Message[int]) -> int:
-    return message.payload + 1
+    return message.payload_unchecked + 1
 
 
 def test_message_rejected() -> None:
