@@ -143,7 +143,7 @@ In a while the message should appear on the console:
 Create a streaming consumer
 ---------------------------
 
-Add a `ProcessingStragey` and `ProcessingStrategyFactory`.
+Add a `ProcessingStrategy` and `ProcessingStrategyFactory`.
 
 .. code-block:: Python
 

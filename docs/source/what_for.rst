@@ -126,7 +126,7 @@ operation. Here is how a simple Kafka Producer looks in code:
    producer = Producer(conf)
    def send_to_destination(message):
        # ❗This does not do what it says
-     # it writes to a buffer
+       # it writes to a buffer
        producer.produce("destination_topic", message)
        # this will actually block until the messages are produced
        # calling this after produce every time is very expensive,
