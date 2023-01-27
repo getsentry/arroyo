@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def hash_password(message: Message[KafkaPayload]) -> KafkaPayload:
     # Expected format of the message is {"username": "<username>", "password": "<password>"}
-    auth = json.loads(message.payload_unchecked.value)
+    auth = json.loads(message.assert_payload.value)
     hashed = hashlib.sha256(auth["password"].encode("utf-8")).hexdigest()
     data = json.dumps({"username": auth["username"], "password": hashed}).encode(
         "utf-8"

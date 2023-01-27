@@ -70,7 +70,7 @@ class Message(Generic[TPayload]):
         return self.value.payload
 
     @property
-    def payload_unchecked(self) -> TPayload:
+    def assert_payload(self) -> TPayload:
         payload = self.payload
         assert not isinstance(payload, FilteredPayload)
         return payload
