@@ -79,9 +79,6 @@ class Message(Generic[TPayload]):
     def committable(self) -> Mapping[Partition, int]:
         return self.value.committable
 
-    def mark_filtered(self) -> Message[TReplaced]:
-        return cast(Message[TReplaced], self.replace(FILTERED_PAYLOAD))
-
     def replace(self, payload: Union[FilteredPayload, TReplaced]) -> Message[TReplaced]:
         return Message(self.value.replace(payload))
 

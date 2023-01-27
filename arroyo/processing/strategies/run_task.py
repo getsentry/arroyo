@@ -32,7 +32,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import FilteredPayload, Message
+from arroyo.types import BaseValue, FilteredPayload, Message
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
 
     def __init__(
         self,
-        function: Callable[[Message[TPayload]], TResult],
+        function: Callable[[BaseValue[TPayload]], TResult],
         next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__function = function
@@ -60,7 +60,7 @@ class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         if isinstance(message.value.payload, FilteredPayload):
             self.__next_step.submit(cast(Message[TResult], message))
         else:
-            result = self.__function(message)
+            result = self.__function(cast(BaseValue[TPayload], message.value))
             new_message = message.replace(result)
             self.__next_step.submit(new_message)
 
@@ -97,14 +97,16 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
 
     def __init__(
         self,
-        processing_function: Callable[[Message[TPayload]], TResult],
+        processing_function: Callable[[BaseValue[TPayload]], TResult],
         concurrency: int,
         max_pending_futures: int,
         next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Message[TPayload], Future[TResult]]] = deque()
+        self.__queue: Deque[
+            Tuple[Message[TPayload], Optional[Future[TResult]]]
+        ] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
         self.__closed = False
@@ -115,29 +117,35 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
         if len(self.__queue) > self.__max_pending_futures:
             raise MessageRejected
 
-        self.__queue.append(
-            (
-                message,
-                self.__executor.submit(self.__function, message),
+        future: Optional[Future[TResult]]
+        if not isinstance(message.value.payload, FilteredPayload):
+            future = self.__executor.submit(
+                self.__function, cast(BaseValue[TPayload], message.value)
             )
-        )
+        else:
+            future = None
+
+        self.__queue.append((message, future))
 
     def poll(self) -> None:
         while self.__queue:
             message, future = self.__queue[0]
+            next_message: Message[TResult]
 
-            if not future.done():
-                break
+            if future is not None:
+                if not future.done():
+                    break
 
-            # Will raise if the future errored
-            result = future.result()
+                # Will raise if the future errored
+                result = future.result()
+                payload = message.value.replace(result)
+                next_message = Message(payload)
+            else:
+                # The message is filtered, and therefore the payload is
+                # FilteredPayload
+                next_message = cast(Message[TResult], message)
 
             self.__queue.popleft()
-
-            payload = message.value.replace(result)
-
-            next_message = Message(payload)
-
             self.__next_step.poll()
             self.__next_step.submit(next_message)
 
@@ -151,12 +159,21 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
                 break
 
             message, future = self.__queue.popleft()
+            next_message: Message[TResult]
 
-            result = future.result(remaining)
+            if future is not None:
+                if not future.done():
+                    break
 
-            payload = message.value.replace(result)
+                # Will raise if the future errored
+                result = future.result()
+                payload = message.value.replace(result)
+                next_message = Message(payload)
+            else:
+                # The message is filtered, and therefore the payload is
+                # FilteredPayload
+                next_message = cast(Message[TResult], message)
 
-            next_message = Message(payload)
             self.__next_step.poll()
             self.__next_step.submit(next_message)
 

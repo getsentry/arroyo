@@ -116,7 +116,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         assert not self.__closed
 
         if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(message.mark_filtered())
+            self.__next_step.submit(cast(Message[TResult], message))
             return
 
         if self.__batch_builder is not None:

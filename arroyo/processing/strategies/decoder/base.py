@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, Optional, Sequence, Tuple, TypeVar, cast
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
@@ -18,7 +18,7 @@ class DecodedKafkaMessage(Generic[T]):
     headers: Sequence[Tuple[str, bytes]]
 
 
-class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
+class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload], Generic[T]):
     """
     Decode messages to be forwarded to the next step. Optional validation.
     This strategy accepts a KafkaPayload and only performs validation on the
@@ -40,7 +40,7 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
 
     def submit(self, message: Message[KafkaPayload]) -> None:
         if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(message.mark_filtered())
+            self.__next_step.submit(cast(Message[DecodedKafkaMessage[T]], message))
         else:
             decoded_value = self.__codec.decode(
                 message.payload.value, validate=self.__validate

@@ -341,9 +341,9 @@ def test_batch_unbatch() -> None:
     """
 
     def transformer(
-        msg: Message[ValuesBatch[str]],
+        batch: BaseValue[ValuesBatch[str]],
     ) -> ValuesBatch[str]:
-        return [sub_msg.replace("Transformed") for sub_msg in msg.assert_payload]
+        return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 
     final_step = Mock()
     next_step: TransformStep[ValuesBatch[str], ValuesBatch[str]] = TransformStep(

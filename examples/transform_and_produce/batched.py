@@ -15,7 +15,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.batching import ValuesBatch
-from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
+from arroyo.types import BaseValue, Commit, Partition, Topic, Value
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +26,13 @@ def resolve_index(msgs: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, An
 
 
 def index_data(
-    batch: Message[ValuesBatch[KafkaPayload]],
+    batch: BaseValue[ValuesBatch[KafkaPayload]],
 ) -> ValuesBatch[KafkaPayload]:
-    logger.info("Indexing %d messages", len(batch.assert_payload))
-    parsed_msgs = [
-        json.loads(s.payload.value.decode("utf-8")) for s in batch.assert_payload
-    ]
+    logger.info("Indexing %d messages", len(batch.payload))
+    parsed_msgs = [json.loads(s.payload.value.decode("utf-8")) for s in batch.payload]
     indexed_messages = resolve_index(parsed_msgs)
     ret: MutableSequence[BaseValue[KafkaPayload]] = []
-    for i in range(0, len(batch.assert_payload)):
+    for i in range(0, len(batch.payload)):
         ret.append(
             Value(
                 payload=KafkaPayload(
@@ -42,7 +40,7 @@ def index_data(
                     headers=[],
                     value=json.dumps(indexed_messages[i]).encode(),
                 ),
-                committable=batch.assert_payload[i].committable,
+                committable=batch.payload[i].committable,
             )
         )
     return ret
