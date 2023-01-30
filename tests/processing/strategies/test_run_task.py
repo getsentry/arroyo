@@ -22,7 +22,7 @@ from arroyo.processing.strategies.run_task import (
     ValueTooLarge,
     parallel_run_task_worker_apply,
 )
-from arroyo.types import BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -126,11 +126,11 @@ def test_message_batch() -> None:
     smm.shutdown()
 
 
-def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
+def transform_payload_expand(value: BaseValue[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(
-        message.assert_payload.key,
-        message.assert_payload.value * 2,
-        message.assert_payload.headers,
+        value.payload.key,
+        value.payload.value * 2,
+        value.payload.headers,
     )
 
 
@@ -194,17 +194,18 @@ def test_parallel_run_task_worker_apply() -> None:
 NO_KEY = "No Key"
 
 
-def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
-    if message.assert_payload.key is None:
+def fail_bad_messages(value: BaseValue[KafkaPayload]) -> KafkaPayload:
+    if value.payload.key is None:
         raise InvalidMessages(
             [
                 InvalidRawMessage(
-                    payload=str(message.assert_payload),
+                    payload=str(value.payload),
                     reason=NO_KEY,
                 )
             ]
         )
-    return message.assert_payload
+
+    return value.payload
 
 
 def test_parallel_transform_worker_bad_messages() -> None:
@@ -412,8 +413,8 @@ def test_parallel_run_task_bad_messages() -> None:
     assert next_step.submit.call_count == 4
 
 
-def add_one(message: Message[int]) -> int:
-    return message.assert_payload + 1
+def add_one(value: BaseValue[int]) -> int:
+    return value.payload + 1
 
 
 def test_message_rejected() -> None:

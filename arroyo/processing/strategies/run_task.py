@@ -226,7 +226,7 @@ class MessageBatch(Generic[TPayload]):
     def get_content_size(self) -> int:
         return self.__offset
 
-    def __getitem__(self, index: int) -> Any:
+    def __getitem__(self, index: int) -> Message[TPayload]:
         """
         Get a message in this batch by its index.
 
@@ -250,12 +250,15 @@ class MessageBatch(Generic[TPayload]):
         # was still "alive" in a different part of the processing pipeline, the
         # contents of the message would be liable to be corrupted (at best --
         # possibly causing a data leak/security issue at worst.)
-        return pickle.loads(
-            data,
-            buffers=[
-                self.block.buf[offset : offset + length].tobytes()
-                for offset, length in buffers
-            ],
+        return cast(
+            Message[TPayload],
+            pickle.loads(
+                data,
+                buffers=[
+                    self.block.buf[offset : offset + length].tobytes()
+                    for offset, length in buffers
+                ],
+            ),
         )
 
     def __iter__(self) -> Iterator[Message[TPayload]]:
@@ -350,7 +353,7 @@ class ParallelRunTaskResult(Generic[TResult]):
 
 
 def parallel_run_task_worker_apply(
-    function: Callable[[Message[TPayload]], TResult],
+    function: Callable[[BaseValue[TPayload]], TResult],
     input_batch: MessageBatch[TPayload],
     output_block: SharedMemory,
     start_index: int = 0,
@@ -363,8 +366,15 @@ def parallel_run_task_worker_apply(
     while next_index_to_process < len(input_batch):
         message = input_batch[next_index_to_process]
 
+        # Theory: Doing this check in the subprocess is cheaper because we
+        # shouldn't get a high volume of FilteredPayloads on average.
+        if isinstance(message.value.payload, FilteredPayload):
+            valid_messages_transformed.append(cast(Message[TResult], message))
+            next_index_to_process += 1
+            continue
+
         try:
-            result = function(message)
+            result = function(cast(BaseValue[TPayload], message.value))
         except InvalidMessages as e:
             invalid_messages += e.messages
             next_index_to_process += 1
@@ -405,7 +415,7 @@ def parallel_run_task_worker_apply(
 class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TResult]):
     def __init__(
         self,
-        function: Callable[[Message[TPayload]], TResult],
+        function: Callable[[BaseValue[TPayload]], TResult],
         next_step: ProcessingStep[TResult],
         num_processes: int,
         max_batch_size: int,
