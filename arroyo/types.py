@@ -50,6 +50,17 @@ class Message(Generic[TPayload]):
 
     def __init__(
         self,
+        # We want to be able to pass all these types since we consider
+        # `TPayload` in `BaseValue[TPayload]` covariant in this particular
+        # context, but not in others, so it isn't.
+        #
+        # Example: `BaseValue[T]` should auto-cast to
+        # `BaseValue[Union[FilteredPayload, T]]` for this particular function
+        # call, but mypy considers them incompatible types.
+        #
+        # One could also solve this by changing `TPayload` definition to be
+        # covariant, but that type parameter is used in some contexts where
+        # it's less clear whether covariance is desired.
         value: Union[
             BaseValue[Union[FilteredPayload, TPayload]],
             BaseValue[FilteredPayload],
