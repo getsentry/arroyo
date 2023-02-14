@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Mapping, Optional
+from typing import Optional
 
 import fastjsonschema  # pip install sentry-arroyo[json]
 import rapidjson
@@ -19,14 +19,8 @@ class JsonCodec(Codec[object]):
         json_schema_raise_failures: bool = True,
     ) -> None:
         self.__metrics = get_metrics()
-        self.__metrics_tags: Mapping[str, str]
         self.__json_schema_raise_failures = json_schema_raise_failures
         self.__json_schema_name = json_schema_name
-
-        if json_schema_name:
-            self.__metrics_tags = {"schema_name": json_schema_name}
-        else:
-            self.__metrics_tags = {}
 
         if json_schema is not None:
             self.__validate = fastjsonschema.compile(json_schema)
@@ -37,12 +31,11 @@ class JsonCodec(Codec[object]):
         start = time.time()
         decoded = rapidjson.loads(raw_data)
 
-        after_decoded = time.time() - start
+        after_decoded = time.time()
 
         self.__metrics.timing(
             "arroyo.strategies.decoder.json.loads",
-            after_decoded,
-            tags=self.__metrics_tags,
+            after_decoded - start,
         )
 
         if validate:
@@ -50,7 +43,6 @@ class JsonCodec(Codec[object]):
             self.__metrics.timing(
                 "arroyo.strategies.decoder.json.validate",
                 time.time() - after_decoded,
-                tags=self.__metrics_tags,
             )
         return decoded
 
@@ -60,7 +52,6 @@ class JsonCodec(Codec[object]):
         except Exception as exc:
             self.__metrics.increment(
                 "arroyo.strategies.decoder.json.validate.failure",
-                tags=self.__metrics_tags,
             )
             if self.__json_schema_raise_failures:
                 raise ValidationError from exc
