@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Deque, MutableSequence, Optional
+from typing import Deque, MutableSequence, Optional, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
@@ -102,13 +102,13 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
         next_step: ProcessingStrategy[TPayload],
     ) -> None:
         self.__next_step = next_step
-        self.__batch_to_send: Deque[BaseValue[TPayload]] = deque()
+        self.__batch_to_send: Deque[Message[TPayload]] = deque()
         self.__closed = False
 
     def __flush(self) -> None:
         while self.__batch_to_send:
             msg = self.__batch_to_send[0]
-            self.__next_step.submit(Message(msg))
+            self.__next_step.submit(msg)
             self.__batch_to_send.popleft()
 
     def submit(self, message: Message[ValuesBatch[TPayload]]) -> None:
@@ -116,8 +116,10 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
         if self.__batch_to_send:
             raise MessageRejected
 
-        assert not isinstance(message.payload, FilteredPayload)
-        self.__batch_to_send.extend(message.payload)
+        if isinstance(message.payload, FilteredPayload):
+            self.__batch_to_send.append(cast(Message[TPayload], message))
+        else:
+            self.__batch_to_send.extend(map(Message, message.payload))
         try:
             self.__flush()
         except MessageRejected:
