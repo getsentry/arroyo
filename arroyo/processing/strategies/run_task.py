@@ -24,9 +24,7 @@ from typing import (
     TypeVar,
 )
 
-from arroyo.processing.strategies.abstract import MessageRejected
-from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
@@ -381,11 +379,13 @@ def parallel_run_task_worker_apply(
     )
 
 
-class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TResult]):
+class RunTaskWithMultiprocessing(
+    ProcessingStrategy[TPayload], Generic[TPayload, TResult]
+):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], TResult],
-        next_step: ProcessingStep[TResult],
+        next_step: ProcessingStrategy[TResult],
         num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
