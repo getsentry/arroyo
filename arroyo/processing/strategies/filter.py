@@ -1,13 +1,13 @@
 import logging
 from typing import Callable, Optional
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import Message, TPayload
 
 logger = logging.getLogger(__name__)
 
 
-class FilterStep(ProcessingStep[TPayload]):
+class FilterStep(ProcessingStrategy[TPayload]):
     """
     Determines if a message should be submitted to the next processing step.
     """
@@ -15,7 +15,7 @@ class FilterStep(ProcessingStep[TPayload]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], bool],
-        next_step: ProcessingStep[TPayload],
+        next_step: ProcessingStrategy[TPayload],
     ):
         self.__test_function = function
         self.__next_step = next_step

@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessages,
 )
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 RECEIVED_MESSAGE_METRIC = "dlq.received_message"
 
 
-class DeadLetterQueue(ProcessingStep[TPayload]):
+class DeadLetterQueue(ProcessingStrategy[TPayload]):
     """
     DLQ Processing Step.
 
@@ -26,7 +26,7 @@ class DeadLetterQueue(ProcessingStep[TPayload]):
 
     def __init__(
         self,
-        next_step: ProcessingStep[TPayload],
+        next_step: ProcessingStrategy[TPayload],
         policy: DeadLetterQueuePolicy,
     ) -> None:
         self.__next_step = next_step
