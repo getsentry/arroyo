@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 from typing import Optional
 
@@ -17,10 +18,12 @@ class JsonCodec(Codec[object]):
         json_schema: Optional[object] = None,
         json_schema_name: Optional[str] = None,
         json_schema_raise_failures: bool = True,
+        metrics_sample_rate: float = 0.0,
     ) -> None:
         self.__metrics = get_metrics()
         self.__json_schema_raise_failures = json_schema_raise_failures
         self.__json_schema_name = json_schema_name
+        self.__metrics_sample_rate = metrics_sample_rate
 
         if json_schema is not None:
             self.__validate = fastjsonschema.compile(json_schema)
@@ -33,17 +36,23 @@ class JsonCodec(Codec[object]):
 
         after_decoded = time.time()
 
-        self.__metrics.timing(
-            "arroyo.strategies.decoder.json.loads",
-            after_decoded - start,
+        metrics_sample_decision = (
+            self.__metrics_sample_rate and random.random() < self.__metrics_sample_rate
         )
+
+        if metrics_sample_decision:
+            self.__metrics.timing(
+                "arroyo.strategies.decoder.json.loads",
+                after_decoded - start,
+            )
 
         if validate:
             self.validate(decoded)
-            self.__metrics.timing(
-                "arroyo.strategies.decoder.json.validate",
-                time.time() - after_decoded,
-            )
+            if metrics_sample_decision:
+                self.__metrics.timing(
+                    "arroyo.strategies.decoder.json.validate",
+                    time.time() - after_decoded,
+                )
         return decoded
 
     def validate(self, data: object) -> None:
