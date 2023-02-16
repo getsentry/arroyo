@@ -1,5 +1,16 @@
 # Changelog and versioning
 
+## 2.5.1
+
+### Various fixes & improvements
+
+- fix(produce): Fix closing next step (#183) by @lynnagara
+- fix(reduce): Ensure next step is properly closed (#182) by @lynnagara
+- ref: Don't alias ProcessingStrategy as ProcessingStep (#181) by @lynnagara
+- ref: upgrade isort to work around poetry breakage (#179) by @asottile-sentry
+- fix: Documentation typos (#178) by @markstory
+- build: Split avro, json, msgpack into separate modules (#176) by @lynnagara
+
 ## 2.5.0
 
 ### Various fixes & improvements
