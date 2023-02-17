@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.5.2
+
+- No documented changes.
+
 ## 2.5.1
 
 ### Various fixes & improvements
