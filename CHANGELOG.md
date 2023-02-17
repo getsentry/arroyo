@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.5.3
+
+### Various fixes & improvements
+
+- fix(decoder): Fix importing optional dependencies (#184) by @lynnagara
+
 ## 2.5.2
 
 - No documented changes.
