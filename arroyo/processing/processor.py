@@ -69,6 +69,7 @@ class StreamProcessor(Generic[TPayload]):
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TPayload],
         commit_policy: CommitPolicy,
+        join_timeout: Optional[float] = None,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -83,7 +84,7 @@ class StreamProcessor(Generic[TPayload]):
         self.__paused_timestamp: Optional[float] = None
 
         self.__commit_policy_state = commit_policy.get_state_machine()
-
+        self.__join_timeout = join_timeout
         self.__shutdown_requested = False
 
         def _close_strategy() -> None:
@@ -96,7 +97,7 @@ class StreamProcessor(Generic[TPayload]):
             self.__processing_strategy.close()
 
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
-            self.__processing_strategy.join()
+            self.__processing_strategy.join(self.__join_timeout)
 
             logger.info(
                 "%r exited successfully, releasing assignment.",
