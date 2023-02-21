@@ -27,9 +27,11 @@ class Partition:
 
 TPayload = TypeVar("TPayload")
 
+TMessagePayload = TypeVar("TMessagePayload", covariant=True)
+
 
 @dataclass(unsafe_hash=True)
-class Message(Generic[TPayload]):
+class Message(Generic[TMessagePayload]):
     """
     Contains a payload and partitions to be committed after processing.
     Can either represent a single message from a Kafka broker (BrokerValue)
@@ -39,11 +41,11 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["value"]
 
-    value: BaseValue[TPayload]
+    value: BaseValue[TMessagePayload]
 
     def __init__(
         self,
-        value: BaseValue[TPayload],
+        value: BaseValue[TMessagePayload],
     ) -> None:
         self.value = value
 
@@ -55,7 +57,7 @@ class Message(Generic[TPayload]):
         return f"{type(self).__name__}({self.committable!r})"
 
     @property
-    def payload(self) -> TPayload:
+    def payload(self) -> TMessagePayload:
         return self.value.payload
 
     @property
@@ -141,6 +143,13 @@ class BrokerValue(BaseValue[TPayload]):
     @property
     def next_offset(self) -> int:
         return self.offset + 1
+
+
+class FilteredPayload:
+    __slots__ = ()
+
+
+FILTERED_PAYLOAD = FilteredPayload()
 
 
 class Commit(Protocol):
