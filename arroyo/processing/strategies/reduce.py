@@ -1,8 +1,8 @@
 import time
-from typing import Callable, Generic, MutableMapping, Optional, TypeVar
+from typing import Callable, Generic, MutableMapping, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, Message, Partition, Value
+from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 from arroyo.utils.metrics import get_metrics
 
 TPayload = TypeVar("TPayload")
@@ -32,9 +32,12 @@ class BatchBuilder(Generic[TPayload, TResult]):
         self.__offsets: MutableMapping[Partition, int] = {}
         self.init_time = time.time()
 
-    def append(self, value: BaseValue[TPayload]) -> None:
+    def append(self, value: BaseValue[Union[FilteredPayload, TPayload]]) -> None:
         self.__offsets.update(value.committable)
-        self.__accumulated_value = self.__accumulator(self.__accumulated_value, value)
+        if not isinstance(value.payload, FilteredPayload):
+            self.__accumulated_value = self.__accumulator(
+                self.__accumulated_value, cast(BaseValue[TPayload], value)
+            )
 
         self.__count += 1
 
@@ -52,7 +55,9 @@ class BatchBuilder(Generic[TPayload, TResult]):
         return Value(payload=self.__accumulated_value, committable=self.__offsets)
 
 
-class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
+class Reduce(
+    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+):
     """
     Accumulates messages until the max size or max time condition is hit.
     The accumulator function is run on each message in the order it is received.
@@ -69,7 +74,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         max_batch_time: float,
         accumulator: Accumulator[TResult, TPayload],
         initial_value: Callable[[], TResult],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
     ) -> None:
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
@@ -101,7 +106,7 @@ class Reduce(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
 
         self.__batch_builder = None
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
         """
         Accumulates messages in the current batch.
         A new batch is created at the first message received.

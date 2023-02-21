@@ -5,12 +5,12 @@ from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
 from typing import Callable, Generic, Mapping, Optional, Sequence, Union
 
-from arroyo.types import BrokerValue, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
 logger = logging.getLogger(__name__)
 
 
-class Consumer(Generic[TPayload], ABC):
+class Consumer(Generic[TStrategyPayload], ABC):
     """
     This abstract class provides an interface for consuming messages from a
     multiplexed collection of partitioned topic streams.
@@ -62,7 +62,9 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self, timeout: Optional[float] = None) -> Optional[BrokerValue[TPayload]]:
+    def poll(
+        self, timeout: Optional[float] = None
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
         """
         Fetch a message from the consumer. If no message is available before
         the timeout, ``None`` is returned.
@@ -164,11 +166,11 @@ class Consumer(Generic[TPayload], ABC):
         raise NotImplementedError
 
 
-class Producer(Generic[TPayload], ABC):
+class Producer(Generic[TStrategyPayload], ABC):
     @abstractmethod
     def produce(
-        self, destination: Union[Topic, Partition], payload: TPayload
-    ) -> Future[BrokerValue[TPayload]]:
+        self, destination: Union[Topic, Partition], payload: TStrategyPayload
+    ) -> Future[BrokerValue[TStrategyPayload]]:
         """
         Produce to a topic or partition.
         """

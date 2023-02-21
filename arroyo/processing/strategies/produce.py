@@ -2,17 +2,25 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future
-from typing import Deque, Mapping, Optional, Tuple
+from typing import Deque, Optional, Tuple, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
-from arroyo.types import BrokerValue, Commit, Message, Partition, Topic, TPayload, Value
+from arroyo.types import (
+    BrokerValue,
+    Commit,
+    FilteredPayload,
+    Message,
+    Topic,
+    TStrategyPayload,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class Produce(ProcessingStrategy[TPayload]):
+class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     """
     This strategy can be used to produce Kafka messages to a destination topic. A typical use
     case could be to consume messages from one topic, apply some transformations and then output
@@ -33,9 +41,9 @@ class Produce(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        producer: Producer[TPayload],
+        producer: Producer[TStrategyPayload],
         topic: Topic,
-        next_step: ProcessingStrategy[TPayload],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
         max_buffer_size: int = 10000,
     ):
         self.__producer = producer
@@ -44,36 +52,46 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__max_buffer_size = max_buffer_size
 
         self.__queue: Deque[
-            Tuple[Mapping[Partition, int], Future[BrokerValue[TPayload]]]
+            Tuple[
+                Message[Union[FilteredPayload, TStrategyPayload]],
+                Optional[Future[BrokerValue[TStrategyPayload]]],
+            ]
         ] = deque()
 
         self.__closed = False
 
     def poll(self) -> None:
         while self.__queue:
-            committable, future = self.__queue[0]
+            original_message, future = self.__queue[0]
 
-            if not future.done():
-                break
+            if future is None:
+                message = original_message
+            else:
+                if not future.done():
+                    break
 
-            message = Message(Value(future.result().payload, committable))
+                message = Message(
+                    Value(future.result().payload, original_message.committable)
+                )
 
             self.__queue.popleft()
             self.__next_step.poll()
             self.__next_step.submit(message)
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         assert not self.__closed
 
         if len(self.__queue) >= self.__max_buffer_size:
             raise MessageRejected
 
-        self.__queue.append(
-            (
-                message.committable,
-                self.__producer.produce(self.__topic, message.payload),
-            )
-        )
+        future: Optional[Future[BrokerValue[TStrategyPayload]]] = None
+
+        if not isinstance(message.payload, FilteredPayload):
+            future = self.__producer.produce(self.__topic, message.payload)
+
+        self.__queue.append((message, future))
 
     def close(self) -> None:
         self.__closed = True
@@ -94,9 +112,17 @@ class Produce(ProcessingStrategy[TPayload]):
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
                 break
 
-            committable, future = self.__queue.popleft()
+            original_message, future = self.__queue.popleft()
 
-            message = Message(Value(future.result().payload, committable))
+            if future is None:
+                message = original_message
+            else:
+                if not future.done():
+                    break
+
+                message = Message(
+                    Value(future.result().payload, original_message.committable)
+                )
 
             self.__next_step.poll()
             self.__next_step.submit(message)
@@ -104,7 +130,7 @@ class Produce(ProcessingStrategy[TPayload]):
         self.__next_step.join(remaining)
 
 
-class ProduceAndCommit(ProcessingStrategy[TPayload]):
+class ProduceAndCommit(ProcessingStrategy[TStrategyPayload]):
     """
     This strategy produces then commits offsets. It doesn't do much on
     on it's own since it is simply the Produce and CommitOffsets strategies
@@ -116,19 +142,19 @@ class ProduceAndCommit(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        producer: Producer[TPayload],
+        producer: Producer[TStrategyPayload],
         topic: Topic,
         commit: Commit,
         max_buffer_size: int = 10000,
     ):
-        self.__strategy: Produce[TPayload] = Produce(
+        self.__strategy: Produce[TStrategyPayload] = Produce(
             producer, topic, CommitOffsets(commit), max_buffer_size
         )
 
     def poll(self) -> None:
         self.__strategy.poll()
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[TStrategyPayload]) -> None:
         self.__strategy.submit(message)
 
     def close(self) -> None:

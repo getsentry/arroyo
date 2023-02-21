@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generic, Mapping, Optional
 
-from arroyo.types import Commit, Message, Partition, TPayload
+from arroyo.types import Commit, Message, Partition, TPayload, TStrategyPayload
 
 
 class MessageRejected(Exception):
@@ -96,7 +96,7 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
         raise NotImplementedError
 
 
-class ProcessingStrategyFactory(ABC, Generic[TPayload]):
+class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
     """
     A ProcessingStrategyFactory is used to wrap a series of
     ProcessingStrategy steps, and calls `create_with_partitions`
@@ -109,7 +109,7 @@ class ProcessingStrategyFactory(ABC, Generic[TPayload]):
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TPayload]:
+    ) -> ProcessingStrategy[TStrategyPayload]:
         """
         Instantiate and return a ``ProcessingStrategy`` instance.
 

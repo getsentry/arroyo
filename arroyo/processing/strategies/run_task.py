@@ -22,6 +22,8 @@ from typing import (
     Sequence,
     Tuple,
     TypeVar,
+    Union,
+    cast,
 )
 
 from arroyo.processing.strategies.abstract import MessageRejected
@@ -31,18 +33,20 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import Message
+from arroyo.types import FilteredPayload, Message
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
 
-TPayload = TypeVar("TPayload")
+TPayload = TypeVar("TPayload", contravariant=True)
 TResult = TypeVar("TResult")
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
-class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
+class RunTask(
+    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+):
     """
     Basic strategy to run a custom processing function on a message.
     """
@@ -50,15 +54,18 @@ class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], TResult],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
     ) -> None:
         self.__function = function
         self.__next_step = next_step
 
-    def submit(self, message: Message[TPayload]) -> None:
-        result = self.__function(message)
-        value = message.value.replace(result)
-        self.__next_step.submit(Message(value))
+    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+        if isinstance(message.payload, FilteredPayload):
+            self.__next_step.submit(cast(Message[TResult], message))
+        else:
+            result = self.__function(cast(Message[TPayload], message))
+            value = message.value.replace(result)
+            self.__next_step.submit(Message(value))
 
     def poll(self) -> None:
         self.__next_step.poll()
@@ -73,7 +80,9 @@ class RunTask(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
         self.__next_step.terminate()
 
 
-class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult]):
+class RunTaskInThreads(
+    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+):
     """
     This strategy can be used to run IO-bound tasks in parallel.
 
@@ -96,44 +105,52 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
         processing_function: Callable[[Message[TPayload]], TResult],
         concurrency: int,
         max_pending_futures: int,
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
-        self.__queue: Deque[Tuple[Message[TPayload], Future[TResult]]] = deque()
+        self.__queue: Deque[
+            Tuple[Message[Union[FilteredPayload, TPayload]], Optional[Future[TResult]]]
+        ] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
         self.__closed = False
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
         assert not self.__closed
         # The list of pending futures is too long, tell the stream processor to slow down
         if len(self.__queue) > self.__max_pending_futures:
             raise MessageRejected
 
-        self.__queue.append(
-            (
-                message,
-                self.__executor.submit(self.__function, message),
+        future: Optional[Future[TResult]]
+        if not isinstance(message.payload, FilteredPayload):
+            future = self.__executor.submit(
+                self.__function, cast(Message[TPayload], message)
             )
-        )
+        else:
+            future = None
+
+        self.__queue.append((message, future))
 
     def poll(self) -> None:
         while self.__queue:
             message, future = self.__queue[0]
+            next_message: Message[TResult]
 
-            if not future.done():
-                break
+            if future is not None:
+                if not future.done():
+                    break
 
-            # Will raise if the future errored
-            result = future.result()
+                # Will raise if the future errored
+                result = future.result()
+                payload = message.value.replace(result)
+                next_message = Message(payload)
+            else:
+                # The message is filtered, and therefore the payload is
+                # FilteredPayload
+                next_message = cast(Message[TResult], message)
 
             self.__queue.popleft()
-
-            payload = message.value.replace(result)
-
-            next_message = Message(payload)
-
             self.__next_step.poll()
             self.__next_step.submit(next_message)
 
@@ -147,12 +164,21 @@ class RunTaskInThreads(ProcessingStrategy[TPayload], Generic[TPayload, TResult])
                 break
 
             message, future = self.__queue.popleft()
+            next_message: Message[TResult]
 
-            result = future.result(remaining)
+            if future is not None:
+                if not future.done():
+                    break
 
-            payload = message.value.replace(result)
+                # Will raise if the future errored
+                result = future.result()
+                payload = message.value.replace(result)
+                next_message = Message(payload)
+            else:
+                # The message is filtered, and therefore the payload is
+                # FilteredPayload
+                next_message = cast(Message[TResult], message)
 
-            next_message = Message(payload)
             self.__next_step.poll()
             self.__next_step.submit(next_message)
 
@@ -205,7 +231,7 @@ class MessageBatch(Generic[TPayload]):
     def get_content_size(self) -> int:
         return self.__offset
 
-    def __getitem__(self, index: int) -> Any:
+    def __getitem__(self, index: int) -> Message[TPayload]:
         """
         Get a message in this batch by its index.
 
@@ -229,12 +255,15 @@ class MessageBatch(Generic[TPayload]):
         # was still "alive" in a different part of the processing pipeline, the
         # contents of the message would be liable to be corrupted (at best --
         # possibly causing a data leak/security issue at worst.)
-        return pickle.loads(
-            data,
-            buffers=[
-                self.block.buf[offset : offset + length].tobytes()
-                for offset, length in buffers
-            ],
+        return cast(
+            Message[TPayload],
+            pickle.loads(
+                data,
+                buffers=[
+                    self.block.buf[offset : offset + length].tobytes()
+                    for offset, length in buffers
+                ],
+            ),
         )
 
     def __iter__(self) -> Iterator[Message[TPayload]]:
@@ -341,6 +370,13 @@ def parallel_run_task_worker_apply(
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
         message = input_batch[next_index_to_process]
+
+        # Theory: Doing this check in the subprocess is cheaper because we
+        # shouldn't get a high volume of FilteredPayloads on average.
+        if isinstance(message.value.payload, FilteredPayload):
+            valid_messages_transformed.append(cast(Message[TResult], message))
+            next_index_to_process += 1
+            continue
 
         try:
             result = function(message)

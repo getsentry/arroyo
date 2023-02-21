@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Callable, MutableMapping, Optional, Union
+from typing import Callable, MutableMapping, Optional, Union, cast
 
 from arroyo.commit import CommitPolicy, CommitPolicyState
 from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
@@ -16,7 +16,7 @@ from arroyo.types import (
 logger = logging.getLogger(__name__)
 
 
-class FilterStep(ProcessingStep[TPayload]):
+class FilterStep(ProcessingStep[Union[FilteredPayload, TPayload]]):
     """
     Determines if a message should be submitted to the next processing step.
     """
@@ -43,12 +43,14 @@ class FilterStep(ProcessingStep[TPayload]):
     def poll(self) -> None:
         self.__next_step.poll()
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
         assert not self.__closed
 
         now = time.time()
 
-        if self.__test_function(message):
+        if not isinstance(message.payload, FilteredPayload) and self.__test_function(
+            cast(Message[TPayload], message)
+        ):
             if self.__commit_policy_state is not None:
                 self.__flush_uncommitted_offsets(now)
             self.__next_step.submit(message)

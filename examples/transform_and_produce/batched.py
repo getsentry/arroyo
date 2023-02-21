@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Mapping, MutableSequence, Sequence
+from typing import Any, Mapping, MutableSequence, Sequence, Union
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies import (
@@ -15,7 +15,15 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.batching import ValuesBatch
-from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
+from arroyo.types import (
+    BaseValue,
+    Commit,
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +54,9 @@ def index_data(
     return ret
 
 
-class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+class BatchedIndexerStrategyFactory(
+    ProcessingStrategyFactory[Union[FilteredPayload, KafkaPayload]]
+):
     """
     This strategy factory provides an example of the use of BatchStep
     and UnbatchStep.
@@ -70,17 +80,17 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[KafkaPayload]:
+    ) -> ProcessingStrategy[Union[FilteredPayload, KafkaPayload]]:
+
+        unbatch = UnbatchStep(
+            next_step=Produce(self.__producer, self.__topic, CommitOffsets(commit))
+        )
 
         return BatchStep(
             max_batch_size=10,
             max_batch_time=2.0,
             next_step=TransformStep(
                 function=index_data,
-                next_step=UnbatchStep(
-                    next_step=Produce(
-                        self.__producer, self.__topic, CommitOffsets(commit)
-                    )
-                ),
+                next_step=unbatch,
             ),
         )

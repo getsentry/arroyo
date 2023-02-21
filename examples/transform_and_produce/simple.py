@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from typing import Mapping
+from typing import Mapping, Union
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.processing.strategies import CommitOffsets, Produce, TransformStep
@@ -9,7 +9,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, Topic
+from arroyo.types import Commit, FilteredPayload, Message, Partition, Topic
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,9 @@ def hash_password(message: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(key=None, value=data, headers=[])
 
 
-class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+class HashPasswordAndProduceStrategyFactory(
+    ProcessingStrategyFactory[Union[FilteredPayload, KafkaPayload]]
+):
     """
     A factory which builds the strategy.
 
@@ -44,7 +46,7 @@ class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPaylo
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[KafkaPayload]:
+    ) -> ProcessingStrategy[Union[FilteredPayload, KafkaPayload]]:
 
         return TransformStep(
             function=hash_password,
