@@ -62,9 +62,9 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         policy = self.__commit_policy_state
 
         if policy is None or policy.should_commit(now, message.committable):
-            self.__maybe_flush_uncommitted_offsets(now)
+            self.__flush_uncommitted_offsets(now)
 
-    def __maybe_flush_uncommitted_offsets(self, now: float) -> None:
+    def __flush_uncommitted_offsets(self, now: float) -> None:
         if not self.__uncommitted_offsets:
             return
 
@@ -88,6 +88,6 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__maybe_flush_uncommitted_offsets(time.time())
+        self.__flush_uncommitted_offsets(time.time())
         self.__next_step.close()
         self.__next_step.join(timeout)

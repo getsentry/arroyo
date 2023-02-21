@@ -9,11 +9,11 @@ import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import BrokerValue, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 from tests.assertions import assert_changes, assert_does_not_change
 
 
-class StreamsTestMixin(ABC, Generic[TPayload]):
+class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def get_topic(self, partitions: int = 1) -> ContextManager[Topic]:
         raise NotImplementedError
@@ -21,15 +21,15 @@ class StreamsTestMixin(ABC, Generic[TPayload]):
     @abstractmethod
     def get_consumer(
         self, group: Optional[str] = None, enable_end_of_partition: bool = True
-    ) -> Consumer[TPayload]:
+    ) -> Consumer[TStrategyPayload]:
         raise NotImplementedError
 
     @abstractmethod
-    def get_producer(self) -> Producer[TPayload]:
+    def get_producer(self) -> Producer[TStrategyPayload]:
         raise NotImplementedError
 
     @abstractmethod
-    def get_payloads(self) -> Iterator[TPayload]:
+    def get_payloads(self) -> Iterator[TStrategyPayload]:
         raise NotImplementedError
 
     def test_consumer(self) -> None:
