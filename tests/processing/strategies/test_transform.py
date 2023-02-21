@@ -1,16 +1,17 @@
 from datetime import datetime
+from typing import cast
 from unittest.mock import Mock, call
 
 from arroyo.processing.strategies.transform import TransformStep
-from arroyo.types import BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes
 
 
 def test_transform() -> None:
     next_step = Mock()
 
-    def transform_function(message: Message[int]) -> int:
-        return message.payload * 2
+    def transform_function(value: BaseValue[int]) -> int:
+        return value.payload * 2
 
     transform_step = TransformStep(transform_function, next_step)
 
@@ -21,7 +22,10 @@ def test_transform() -> None:
 
     assert next_step.submit.call_args == call(
         Message(
-            Value(transform_function(original_message), original_message.committable)
+            Value(
+                transform_function(cast(BaseValue[int], original_message.value)),
+                original_message.committable,
+            )
         )
     )
 
@@ -47,7 +51,7 @@ def test_transform() -> None:
     assert next_step.submit.call_args == call(
         Message(
             BrokerValue(
-                transform_function(original_broker_message),
+                transform_function(cast(BaseValue[int], original_broker_message.value)),
                 broker_payload.partition,
                 broker_payload.offset,
                 broker_payload.timestamp,

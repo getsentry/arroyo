@@ -120,6 +120,10 @@ class Reduce(
         """
         assert not self.__closed
 
+        if isinstance(message.payload, FilteredPayload):
+            self.__next_step.submit(cast(Message[TResult], message))
+            return
+
         if self.__batch_builder is not None:
             self.__flush(force=False)
 
@@ -131,7 +135,7 @@ class Reduce(
                 max_batch_time=self.__max_batch_time,
             )
 
-        self.__batch_builder.append(message.value)
+        self.__batch_builder.append(cast(BaseValue[TPayload], message.value))
 
     def poll(self) -> None:
         assert not self.__closed

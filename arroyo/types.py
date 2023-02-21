@@ -31,6 +31,13 @@ TMessagePayload = TypeVar("TMessagePayload", covariant=True)
 TStrategyPayload = TypeVar("TStrategyPayload", contravariant=True)
 
 
+class FilteredPayload:
+    __slots__ = ()
+
+
+FILTERED_PAYLOAD = FilteredPayload()
+
+
 @dataclass(unsafe_hash=True)
 class Message(Generic[TMessagePayload]):
     """
@@ -60,6 +67,12 @@ class Message(Generic[TMessagePayload]):
     @property
     def payload(self) -> TMessagePayload:
         return self.value.payload
+
+    @property
+    def assert_payload(self) -> TMessagePayload:
+        payload = self.payload
+        assert not isinstance(payload, FilteredPayload)
+        return payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:
@@ -150,13 +163,6 @@ class BrokerValue(BaseValue[TMessagePayload]):
     @property
     def next_offset(self) -> int:
         return self.offset + 1
-
-
-class FilteredPayload:
-    __slots__ = ()
-
-
-FILTERED_PAYLOAD = FilteredPayload()
 
 
 class Commit(Protocol):

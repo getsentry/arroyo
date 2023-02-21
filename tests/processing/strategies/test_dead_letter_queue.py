@@ -40,16 +40,15 @@ NOW = datetime.now()
 def kafka_message_to_invalid_kafka_message(
     message: Message[KafkaPayload], reason: str
 ) -> InvalidKafkaMessage:
-    consumer_payload = message.value
-    assert isinstance(consumer_payload, BrokerValue)
+    assert isinstance(message.value, BrokerValue)
     return InvalidKafkaMessage(
-        payload=consumer_payload.payload.value,
-        timestamp=consumer_payload.timestamp,
-        topic=consumer_payload.partition.topic.name,
+        payload=message.assert_payload.value,
+        timestamp=message.value.timestamp,
+        topic=message.value.partition.topic.name,
         consumer_group="",
-        partition=consumer_payload.partition.index,
-        offset=consumer_payload.offset,
-        headers=consumer_payload.payload.headers,
+        partition=message.value.partition.index,
+        offset=message.value.offset,
+        headers=message.assert_payload.headers,
         reason=reason,
     )
 
@@ -94,11 +93,11 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         reason: str = ""
 
         try:
-            message.payload.value.decode("utf-8")
+            message.assert_payload.value.decode("utf-8")
         except UnicodeDecodeError:
             reason = BAD_PAYLOAD
         else:
-            if message.payload.key is None:
+            if message.assert_payload.key is None:
                 reason = NO_KEY
 
         if reason:
@@ -124,7 +123,7 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         """
         Some processing we want to happen per message.
         """
-        if message.payload.key is None:
+        if message.assert_payload.key is None:
             raise InvalidMessages(
                 [kafka_message_to_invalid_kafka_message(message, NO_KEY)]
             )
@@ -401,6 +400,6 @@ def assert_produced_message_is_expected(
 ) -> None:
     assert produced_message is not None
     # produced message should have appropriate info
-    dead_letter_payload = produced_message.payload.value
+    dead_letter_payload = produced_message.assert_payload.value
     dead_letter_dict = json.loads(dead_letter_payload)
     assert dead_letter_dict == expected_dict

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, Optional, Sequence, Tuple, TypeVar, cast
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import Message
+from arroyo.types import FilteredPayload, Message
 
 T = TypeVar("T")
 
@@ -18,7 +18,7 @@ class DecodedKafkaMessage(Generic[T]):
     headers: Sequence[Tuple[str, bytes]]
 
 
-class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
+class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload], Generic[T]):
     """
     Decode messages to be forwarded to the next step. Optional validation.
     This strategy accepts a KafkaPayload and only performs validation on the
@@ -39,14 +39,17 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload]):
         self.__next_step.poll()
 
     def submit(self, message: Message[KafkaPayload]) -> None:
-        decoded_value = self.__codec.decode(
-            message.payload.value, validate=self.__validate
-        )
+        if isinstance(message.payload, FilteredPayload):
+            self.__next_step.submit(cast(Message[DecodedKafkaMessage[T]], message))
+        else:
+            decoded_value = self.__codec.decode(
+                message.payload.value, validate=self.__validate
+            )
 
-        decoded = DecodedKafkaMessage(
-            message.payload.key, decoded_value, message.payload.headers
-        )
-        self.__next_step.submit(Message(message.value.replace(decoded)))
+            decoded = DecodedKafkaMessage(
+                message.payload.key, decoded_value, message.payload.headers
+            )
+            self.__next_step.submit(Message(message.value.replace(decoded)))
 
     def close(self) -> None:
         self.__next_step.close()
