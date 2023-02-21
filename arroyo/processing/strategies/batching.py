@@ -37,9 +37,7 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self,
         max_batch_size: int,
         max_batch_time: float,
-        next_step: ProcessingStrategy[
-            Union[FilteredPayload, ValuesBatch[TStrategyPayload]]
-        ],
+        next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
     ) -> None:
         def accumulator(
             result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
@@ -110,7 +108,9 @@ class UnbatchStep(
         next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
     ) -> None:
         self.__next_step = next_step
-        self.__batch_to_send: Deque[Message[TStrategyPayload]] = deque()
+        self.__batch_to_send: Deque[
+            Message[Union[FilteredPayload, TStrategyPayload]]
+        ] = deque()
         self.__closed = False
 
     def __flush(self) -> None:
@@ -126,8 +126,19 @@ class UnbatchStep(
         if self.__batch_to_send:
             raise MessageRejected
 
+        # XXX: BatchStep puts the committable offsets of FilteredPayloads onto
+        # `message.committable`. Those offsets are currently discarded
+        # entirely. We unbatch the inner list of payloads of `message` and
+        # discard the message wrapper.
+        #
+        # A correct solution would take the `committable` of the outer message
+        # and "meld" it onto the last inner message, and/or fabricate a new
+        # Message[FilteredPayload]
+
         if isinstance(message.payload, FilteredPayload):
-            self.__batch_to_send.append(cast(Message[TStrategyPayload], message))
+            self.__batch_to_send.append(
+                cast(Message[Union[FilteredPayload, TStrategyPayload]], message)
+            )
         else:
             self.__batch_to_send.extend(map(Message, message.payload))
         try:

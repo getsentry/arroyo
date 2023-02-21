@@ -39,7 +39,7 @@ class BatchBuilder(Generic[TPayload, TResult]):
                 self.__accumulated_value, cast(BaseValue[TPayload], value)
             )
 
-        self.__count += 1
+            self.__count += 1
 
     def build_if_ready(self) -> Optional[Value[TResult]]:
         if (
@@ -74,7 +74,7 @@ class Reduce(
         max_batch_time: float,
         accumulator: Accumulator[TResult, TPayload],
         initial_value: Callable[[], TResult],
-        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
+        next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
