@@ -3,7 +3,7 @@ import time
 from typing import Callable, MutableMapping, Optional, Union, cast
 
 from arroyo.commit import CommitPolicy, CommitPolicyState
-from arroyo.processing.strategies.abstract import ProcessingStrategy as ProcessingStep
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import (
     FILTERED_PAYLOAD,
     FilteredPayload,
@@ -16,7 +16,7 @@ from arroyo.types import (
 logger = logging.getLogger(__name__)
 
 
-class FilterStep(ProcessingStep[Union[FilteredPayload, TPayload]]):
+class FilterStep(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
     """
     Determines if a message should be submitted to the next processing step.
     """
@@ -24,7 +24,7 @@ class FilterStep(ProcessingStep[Union[FilteredPayload, TPayload]]):
     def __init__(
         self,
         function: Callable[[Message[TPayload]], bool],
-        next_step: ProcessingStep[Union[FilteredPayload, TPayload]],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TPayload]],
         commit_policy: Optional[CommitPolicy] = None,
     ):
         self.__test_function = function

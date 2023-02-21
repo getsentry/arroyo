@@ -170,6 +170,7 @@ class Reduce(
                 except MessageRejected:
                     pass
 
+        self.__next_step.close()
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
         )

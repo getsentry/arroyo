@@ -95,7 +95,6 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
     def close(self) -> None:
         self.__closed = True
-        self.__next_step.close()
 
     def terminate(self) -> None:
         self.__closed = True
@@ -127,6 +126,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             self.__next_step.poll()
             self.__next_step.submit(message)
 
+        self.__next_step.close()
         self.__next_step.join(remaining)
 
 
