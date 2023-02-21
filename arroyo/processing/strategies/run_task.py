@@ -33,19 +33,19 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
 )
-from arroyo.types import FilteredPayload, Message
+from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
 
-TPayload = TypeVar("TPayload", contravariant=True)
 TResult = TypeVar("TResult")
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
 class RunTask(
-    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+    ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
+    Generic[TStrategyPayload, TResult],
 ):
     """
     Basic strategy to run a custom processing function on a message.
@@ -53,17 +53,19 @@ class RunTask(
 
     def __init__(
         self,
-        function: Callable[[Message[TPayload]], TResult],
+        function: Callable[[Message[TStrategyPayload]], TResult],
         next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
     ) -> None:
         self.__function = function
         self.__next_step = next_step
 
-    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         if isinstance(message.payload, FilteredPayload):
             self.__next_step.submit(cast(Message[TResult], message))
         else:
-            result = self.__function(cast(Message[TPayload], message))
+            result = self.__function(cast(Message[TStrategyPayload], message))
             value = message.value.replace(result)
             self.__next_step.submit(Message(value))
 
@@ -81,7 +83,8 @@ class RunTask(
 
 
 class RunTaskInThreads(
-    ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
+    ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
+    Generic[TStrategyPayload, TResult],
 ):
     """
     This strategy can be used to run IO-bound tasks in parallel.
@@ -102,7 +105,7 @@ class RunTaskInThreads(
 
     def __init__(
         self,
-        processing_function: Callable[[Message[TPayload]], TResult],
+        processing_function: Callable[[Message[TStrategyPayload]], TResult],
         concurrency: int,
         max_pending_futures: int,
         next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
@@ -110,13 +113,18 @@ class RunTaskInThreads(
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
         self.__queue: Deque[
-            Tuple[Message[Union[FilteredPayload, TPayload]], Optional[Future[TResult]]]
+            Tuple[
+                Message[Union[FilteredPayload, TStrategyPayload]],
+                Optional[Future[TResult]],
+            ]
         ] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
         self.__closed = False
 
-    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         assert not self.__closed
         # The list of pending futures is too long, tell the stream processor to slow down
         if len(self.__queue) > self.__max_pending_futures:
@@ -125,7 +133,7 @@ class RunTaskInThreads(
         future: Optional[Future[TResult]]
         if not isinstance(message.payload, FilteredPayload):
             future = self.__executor.submit(
-                self.__function, cast(Message[TPayload], message)
+                self.__function, cast(Message[TStrategyPayload], message)
             )
         else:
             future = None
@@ -211,7 +219,7 @@ class ValueTooLarge(ValueError):
     """
 
 
-class MessageBatch(Generic[TPayload]):
+class MessageBatch(Generic[TStrategyPayload]):
     """
     Contains a sequence of ``Message`` instances that are intended to be
     shared across processes.
@@ -231,7 +239,7 @@ class MessageBatch(Generic[TPayload]):
     def get_content_size(self) -> int:
         return self.__offset
 
-    def __getitem__(self, index: int) -> Message[TPayload]:
+    def __getitem__(self, index: int) -> Message[TStrategyPayload]:
         """
         Get a message in this batch by its index.
 
@@ -256,7 +264,7 @@ class MessageBatch(Generic[TPayload]):
         # contents of the message would be liable to be corrupted (at best --
         # possibly causing a data leak/security issue at worst.)
         return cast(
-            Message[TPayload],
+            Message[TStrategyPayload],
             pickle.loads(
                 data,
                 buffers=[
@@ -266,7 +274,7 @@ class MessageBatch(Generic[TPayload]):
             ),
         )
 
-    def __iter__(self) -> Iterator[Message[TPayload]]:
+    def __iter__(self) -> Iterator[Message[TStrategyPayload]]:
         """
         Iterate through the messages contained in this batch.
 
@@ -276,7 +284,7 @@ class MessageBatch(Generic[TPayload]):
         for i in range(len(self.__items)):
             yield self[i]
 
-    def append(self, message: Message[TPayload]) -> None:
+    def append(self, message: Message[TStrategyPayload]) -> None:
         """
         Add a message to this batch.
 
@@ -308,9 +316,12 @@ class MessageBatch(Generic[TPayload]):
         self.__items.append((data, buffers))
 
 
-class BatchBuilder(Generic[TPayload]):
+class BatchBuilder(Generic[TStrategyPayload]):
     def __init__(
-        self, batch: MessageBatch[TPayload], max_batch_size: int, max_batch_time: float
+        self,
+        batch: MessageBatch[TStrategyPayload],
+        max_batch_size: int,
+        max_batch_time: float,
     ) -> None:
         self.__batch = batch
         self.__max_batch_size = max_batch_size
@@ -319,7 +330,7 @@ class BatchBuilder(Generic[TPayload]):
     def __len__(self) -> int:
         return len(self.__batch)
 
-    def append(self, message: Message[TPayload]) -> None:
+    def append(self, message: Message[TStrategyPayload]) -> None:
         self.__batch.append(message)
 
     def ready(self) -> bool:
@@ -330,7 +341,7 @@ class BatchBuilder(Generic[TPayload]):
         else:
             return False
 
-    def build(self) -> MessageBatch[TPayload]:
+    def build(self) -> MessageBatch[TStrategyPayload]:
         return self.__batch
 
 
@@ -358,8 +369,8 @@ class ParallelRunTaskResult(Generic[TResult]):
 
 
 def parallel_run_task_worker_apply(
-    function: Callable[[Message[TPayload]], TResult],
-    input_batch: MessageBatch[TPayload],
+    function: Callable[[Message[TStrategyPayload]], TResult],
+    input_batch: MessageBatch[TStrategyPayload],
     output_block: SharedMemory,
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
@@ -417,10 +428,12 @@ def parallel_run_task_worker_apply(
     )
 
 
-class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TResult]):
+class RunTaskWithMultiprocessing(
+    ProcessingStep[TStrategyPayload], Generic[TStrategyPayload, TResult]
+):
     def __init__(
         self,
-        function: Callable[[Message[TPayload]], TResult],
+        function: Callable[[Message[TStrategyPayload]], TResult],
         next_step: ProcessingStep[TResult],
         num_processes: int,
         max_batch_size: int,
@@ -453,11 +466,11 @@ class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TRe
             for _ in range(num_processes)
         ]
 
-        self.__batch_builder: Optional[BatchBuilder[TPayload]] = None
+        self.__batch_builder: Optional[BatchBuilder[TStrategyPayload]] = None
 
         self.__processes: Deque[
             Tuple[
-                MessageBatch[TPayload],
+                MessageBatch[TStrategyPayload],
                 AsyncResult[ParallelRunTaskResult[TResult]],
                 MutableSequence[InvalidMessage],
             ]
@@ -594,7 +607,7 @@ class RunTaskWithMultiprocessing(ProcessingStep[TPayload], Generic[TPayload, TRe
             self.__max_batch_time,
         )
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[TStrategyPayload]) -> None:
         assert not self.__closed
 
         if self.__batch_builder is None:

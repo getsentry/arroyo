@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generic, Mapping, Optional
 
-from arroyo.types import Commit, Message, Partition, TPayload, TStrategyPayload
+from arroyo.types import Commit, Message, Partition, TStrategyPayload
 
 
 class MessageRejected(Exception):
@@ -14,7 +14,7 @@ class MessageRejected(Exception):
     pass
 
 
-class ProcessingStrategy(ABC, Generic[TPayload]):
+class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
     """
     A processing strategy defines how a stream processor processes messages
     during the course of a single assignment. The processor is instantiated
@@ -42,7 +42,7 @@ class ProcessingStrategy(ABC, Generic[TPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[TStrategyPayload]) -> None:
         """
         Submit a message for processing.
 
