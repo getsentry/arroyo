@@ -429,7 +429,8 @@ def parallel_run_task_worker_apply(
 
 
 class RunTaskWithMultiprocessing(
-    ProcessingStep[TStrategyPayload], Generic[TStrategyPayload, TResult]
+    ProcessingStep[Union[FilteredPayload, TStrategyPayload]],
+    Generic[TStrategyPayload, TResult],
 ):
     def __init__(
         self,
@@ -466,7 +467,9 @@ class RunTaskWithMultiprocessing(
             for _ in range(num_processes)
         ]
 
-        self.__batch_builder: Optional[BatchBuilder[TStrategyPayload]] = None
+        self.__batch_builder: Optional[
+            BatchBuilder[Union[FilteredPayload, TStrategyPayload]]
+        ] = None
 
         self.__processes: Deque[
             Tuple[
@@ -607,7 +610,9 @@ class RunTaskWithMultiprocessing(
             self.__max_batch_time,
         )
 
-    def submit(self, message: Message[TStrategyPayload]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         assert not self.__closed
 
         if self.__batch_builder is None:
