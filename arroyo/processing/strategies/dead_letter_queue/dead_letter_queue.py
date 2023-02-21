@@ -8,7 +8,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
 )
-from arroyo.types import Message, TPayload
+from arroyo.types import Message, TStrategyPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 RECEIVED_MESSAGE_METRIC = "dlq.received_message"
 
 
-class DeadLetterQueue(ProcessingStrategy[TPayload]):
+class DeadLetterQueue(ProcessingStrategy[TStrategyPayload]):
     """
     DLQ Processing Step.
 
@@ -26,7 +26,7 @@ class DeadLetterQueue(ProcessingStrategy[TPayload]):
 
     def __init__(
         self,
-        next_step: ProcessingStrategy[TPayload],
+        next_step: ProcessingStrategy[TStrategyPayload],
         policy: DeadLetterQueuePolicy,
     ) -> None:
         self.__next_step = next_step
@@ -40,7 +40,7 @@ class DeadLetterQueue(ProcessingStrategy[TPayload]):
         except InvalidMessages as e:
             self._handle_invalid_messages(e)
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[TStrategyPayload]) -> None:
         assert not self.__closed
         try:
             self.__next_step.submit(message)

@@ -9,22 +9,22 @@ from arroyo.types import (
     FilteredPayload,
     Message,
     Partition,
-    TPayload,
+    TStrategyPayload,
     Value,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class FilterStep(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
+class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     """
     Determines if a message should be submitted to the next processing step.
     """
 
     def __init__(
         self,
-        function: Callable[[Message[TPayload]], bool],
-        next_step: ProcessingStrategy[Union[FilteredPayload, TPayload]],
+        function: Callable[[Message[TStrategyPayload]], bool],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
         commit_policy: Optional[CommitPolicy] = None,
     ):
         self.__test_function = function
@@ -43,34 +43,39 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
     def poll(self) -> None:
         self.__next_step.poll()
 
-    def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         assert not self.__closed
 
         now = time.time()
 
         if not isinstance(message.payload, FilteredPayload) and self.__test_function(
-            cast(Message[TPayload], message)
+            cast(Message[TStrategyPayload], message)
         ):
-            if self.__commit_policy_state is not None:
-                self.__flush_uncommitted_offsets(now)
+            for partition in message.committable:
+                self.__uncommitted_offsets.pop(partition, None)
             self.__next_step.submit(message)
         elif self.__commit_policy_state is not None:
             self.__uncommitted_offsets.update(message.committable)
 
-            if self.__commit_policy_state.should_commit(now, message.committable):
-                self.__flush_uncommitted_offsets(now)
+        policy = self.__commit_policy_state
 
-    def __flush_uncommitted_offsets(self, now: float) -> None:
+        if policy is None or policy.should_commit(now, message.committable):
+            self.__maybe_flush_uncommitted_offsets(now)
+
+    def __maybe_flush_uncommitted_offsets(self, now: float) -> None:
         if not self.__uncommitted_offsets:
             return
 
-        new_message: Message[Union[FilteredPayload, TPayload]] = Message(
+        new_message: Message[Union[FilteredPayload, TStrategyPayload]] = Message(
             Value(FILTERED_PAYLOAD, self.__uncommitted_offsets)
         )
         self.__next_step.submit(new_message)
 
         if self.__commit_policy_state is not None:
             self.__commit_policy_state.did_commit(now, self.__uncommitted_offsets)
+
         self.__uncommitted_offsets = {}
 
     def close(self) -> None:
@@ -83,6 +88,6 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TPayload]]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__flush_uncommitted_offsets(time.time())
+        self.__maybe_flush_uncommitted_offsets(time.time())
         self.__next_step.close()
         self.__next_step.join(timeout)

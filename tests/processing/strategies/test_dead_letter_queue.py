@@ -42,13 +42,13 @@ def kafka_message_to_invalid_kafka_message(
 ) -> InvalidKafkaMessage:
     assert isinstance(message.value, BrokerValue)
     return InvalidKafkaMessage(
-        payload=message.assert_payload.value,
+        payload=message.payload_unfiltered.value,
         timestamp=message.value.timestamp,
         topic=message.value.partition.topic.name,
         consumer_group="",
         partition=message.value.partition.index,
         offset=message.value.offset,
-        headers=message.assert_payload.headers,
+        headers=message.payload_unfiltered.headers,
         reason=reason,
     )
 
@@ -93,11 +93,11 @@ class FakeProcessingStep(ProcessingStrategy[KafkaPayload]):
         reason: str = ""
 
         try:
-            message.assert_payload.value.decode("utf-8")
+            message.payload_unfiltered.value.decode("utf-8")
         except UnicodeDecodeError:
             reason = BAD_PAYLOAD
         else:
-            if message.assert_payload.key is None:
+            if message.payload_unfiltered.key is None:
                 reason = NO_KEY
 
         if reason:
@@ -123,7 +123,7 @@ class FakeBatchingProcessingStep(FakeProcessingStep):
         """
         Some processing we want to happen per message.
         """
-        if message.assert_payload.key is None:
+        if message.payload_unfiltered.key is None:
             raise InvalidMessages(
                 [kafka_message_to_invalid_kafka_message(message, NO_KEY)]
             )
@@ -400,6 +400,6 @@ def assert_produced_message_is_expected(
 ) -> None:
     assert produced_message is not None
     # produced message should have appropriate info
-    dead_letter_payload = produced_message.assert_payload.value
+    dead_letter_payload = produced_message.payload_unfiltered.value
     dead_letter_dict = json.loads(dead_letter_payload)
     assert dead_letter_dict == expected_dict

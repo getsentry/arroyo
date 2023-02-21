@@ -25,8 +25,6 @@ class Partition:
     index: int
 
 
-TPayload = TypeVar("TPayload")
-
 TMessagePayload = TypeVar("TMessagePayload", covariant=True)
 TStrategyPayload = TypeVar("TStrategyPayload", contravariant=True)
 
@@ -69,7 +67,7 @@ class Message(Generic[TMessagePayload]):
         return self.value.payload
 
     @property
-    def assert_payload(self) -> TMessagePayload:
+    def payload_unfiltered(self) -> TMessagePayload:
         payload = self.payload
         assert not isinstance(payload, FilteredPayload)
         return payload

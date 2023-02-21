@@ -8,10 +8,10 @@ from arroyo.processing.strategies.run_task import (
 from arroyo.processing.strategies.run_task import (
     parallel_run_task_worker_apply as parallel_transform_worker_apply,
 )
-from arroyo.types import TPayload
+from arroyo.types import TStrategyPayload
 
 
-class TransformStep(RunTask[TPayload, TResult]):
+class TransformStep(RunTask[TStrategyPayload, TResult]):
     """
     Transforms a message and submits the transformed value to the next
     processing step.
@@ -23,7 +23,7 @@ class TransformStep(RunTask[TPayload, TResult]):
     pass
 
 
-class ParallelTransformStep(RunTaskWithMultiprocessing[TPayload, TResult]):
+class ParallelTransformStep(RunTaskWithMultiprocessing[TStrategyPayload, TResult]):
     """
     Transforms a message in parallel and submits the transformed value to
     the next processing step.

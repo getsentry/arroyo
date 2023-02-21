@@ -49,7 +49,6 @@ def test_commit_policy_basic() -> None:
     next_step = Mock()
 
     def test_function(message: Message[bool]) -> bool:
-        assert not isinstance(message.payload, FilteredPayload)
         return message.payload
 
     filter_step = FilterStep(
@@ -101,3 +100,29 @@ def test_commit_policy_basic() -> None:
     ]
 
     assert next_step.join.call_count == 2
+
+
+def test_commit_policy_filtered_messages_alternating() -> None:
+    topic = Topic("topic")
+    next_step = Mock()
+
+    def test_function(message: Message[bool]) -> bool:
+        return message.payload
+
+    filter_step = FilterStep(
+        test_function, next_step, commit_policy=CommitPolicy(None, 3)
+    )
+
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1})))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2})))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3})))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4})))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5})))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6})))
+
+    assert next_step.submit.mock_calls == [
+        call(Message(Value(True, {Partition(topic, 1): 1}))),
+        call(Message(Value(True, {Partition(topic, 1): 3}))),
+        call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 4}))),
+        call(Message(Value(True, {Partition(topic, 1): 5}))),
+    ]
