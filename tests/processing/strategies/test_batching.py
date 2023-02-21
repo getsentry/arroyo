@@ -341,7 +341,7 @@ def test_batch_unbatch() -> None:
     """
 
     def transformer(
-        batch: BaseValue[ValuesBatch[str]],
+        batch: Message[ValuesBatch[str]],
     ) -> ValuesBatch[str]:
         return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 

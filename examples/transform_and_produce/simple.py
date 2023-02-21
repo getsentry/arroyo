@@ -9,12 +9,12 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BaseValue, Commit, Partition, Topic
+from arroyo.types import Commit, Message, Partition, Topic
 
 logger = logging.getLogger(__name__)
 
 
-def hash_password(value: BaseValue[KafkaPayload]) -> KafkaPayload:
+def hash_password(value: Message[KafkaPayload]) -> KafkaPayload:
     # Expected format of the message is {"username": "<username>", "password": "<password>"}
     auth = json.loads(value.payload.value)
     hashed = hashlib.sha256(auth["password"].encode("utf-8")).hexdigest()

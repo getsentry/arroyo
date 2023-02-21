@@ -22,7 +22,7 @@ from arroyo.processing.strategies.run_task import (
     ValueTooLarge,
     parallel_run_task_worker_apply,
 )
-from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
@@ -126,7 +126,7 @@ def test_message_batch() -> None:
     smm.shutdown()
 
 
-def transform_payload_expand(value: BaseValue[KafkaPayload]) -> KafkaPayload:
+def transform_payload_expand(value: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(
         value.payload.key,
         value.payload.value * 2,
@@ -194,7 +194,7 @@ def test_parallel_run_task_worker_apply() -> None:
 NO_KEY = "No Key"
 
 
-def fail_bad_messages(value: BaseValue[KafkaPayload]) -> KafkaPayload:
+def fail_bad_messages(value: Message[KafkaPayload]) -> KafkaPayload:
     if value.payload.key is None:
         raise InvalidMessages(
             [
@@ -413,7 +413,7 @@ def test_parallel_run_task_bad_messages() -> None:
     assert next_step.submit.call_count == 4
 
 
-def add_one(value: BaseValue[int]) -> int:
+def add_one(value: Message[int]) -> int:
     return value.payload + 1
 
 
