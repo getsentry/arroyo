@@ -119,6 +119,9 @@ class StreamProcessor(Generic[TPayload]):
             logger.info("New partitions assigned: %r", partitions)
             if partitions:
                 if self.__processing_strategy is not None:
+                    logger.exception(
+                        "Partition assignment while processing strategy active"
+                    )
                     _close_strategy()
                 _create_strategy(partitions)
 
