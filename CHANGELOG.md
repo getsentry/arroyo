@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.6.0
+
+### Various fixes & improvements
+
+- feat: Configurable strategy join timeout (#187) by @lynnagara
+- feat: Log exception if processing strategy exists on assignment (#186) by @lynnagara
+
 ## 2.5.3
 
 ### Various fixes & improvements
