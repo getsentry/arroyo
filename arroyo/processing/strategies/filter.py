@@ -84,7 +84,7 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
         policy = self.__commit_policy_state
 
-        if policy is None or policy.should_commit(now, message.committable):
+        if policy is not None and policy.should_commit(now, message.committable):
             self.__flush_uncommitted_offsets(now)
 
     def __flush_uncommitted_offsets(self, now: float) -> None:
