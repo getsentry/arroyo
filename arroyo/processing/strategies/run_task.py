@@ -613,6 +613,8 @@ class RunTaskWithMultiprocessing(
                     if deadline is not None
                     else None
                 )
+            except multiprocessing.TimeoutError:
+                pass
             except InvalidMessages as e:
                 invalid_messages += e.messages
 
