@@ -4,7 +4,7 @@ import pytest
 
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.types import TPayload
+from arroyo.types import TStrategyPayload
 from arroyo.utils.clock import TestingClock
 from arroyo.utils.metrics import configure_metrics
 from tests.metrics import TestingMetricsBackend
@@ -21,5 +21,5 @@ def clear_metrics_state() -> Iterator[None]:
 
 
 @pytest.fixture
-def broker() -> Iterator[LocalBroker[TPayload]]:
+def broker() -> Iterator[LocalBroker[TStrategyPayload]]:
     yield LocalBroker(MemoryMessageStorage(), TestingClock())

@@ -126,11 +126,11 @@ def test_message_batch() -> None:
     smm.shutdown()
 
 
-def transform_payload_expand(message: Message[KafkaPayload]) -> KafkaPayload:
+def transform_payload_expand(value: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(
-        message.payload.key,
-        message.payload.value * 2,
-        message.payload.headers,
+        value.payload.key,
+        value.payload.value * 2,
+        value.payload.headers,
     )
 
 
@@ -194,17 +194,18 @@ def test_parallel_run_task_worker_apply() -> None:
 NO_KEY = "No Key"
 
 
-def fail_bad_messages(message: Message[KafkaPayload]) -> KafkaPayload:
-    if message.payload.key is None:
+def fail_bad_messages(value: Message[KafkaPayload]) -> KafkaPayload:
+    if value.payload.key is None:
         raise InvalidMessages(
             [
                 InvalidRawMessage(
-                    payload=str(message.payload),
+                    payload=str(value.payload),
                     reason=NO_KEY,
                 )
             ]
         )
-    return message.payload
+
+    return value.payload
 
 
 def test_parallel_transform_worker_bad_messages() -> None:
@@ -412,8 +413,8 @@ def test_parallel_run_task_bad_messages() -> None:
     assert next_step.submit.call_count == 4
 
 
-def add_one(message: Message[int]) -> int:
-    return message.payload + 1
+def add_one(value: Message[int]) -> int:
+    return value.payload + 1
 
 
 def test_message_rejected() -> None:

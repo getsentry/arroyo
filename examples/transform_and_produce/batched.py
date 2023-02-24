@@ -72,15 +72,17 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
 
+        unbatch: UnbatchStep[KafkaPayload] = UnbatchStep(
+            next_step=Produce(self.__producer, self.__topic, CommitOffsets(commit))
+        )
+
+        transform = TransformStep(
+            function=index_data,
+            next_step=unbatch,
+        )
+
         return BatchStep(
             max_batch_size=10,
             max_batch_time=2.0,
-            next_step=TransformStep(
-                function=index_data,
-                next_step=UnbatchStep(
-                    next_step=Produce(
-                        self.__producer, self.__topic, CommitOffsets(commit)
-                    )
-                ),
-            ),
+            next_step=transform,
         )

@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -277,11 +277,14 @@ def test_batch_join() -> None:
 def test_unbatch_step() -> None:
     msg: Message[ValuesBatch[str]] = Message(
         Value(
-            payload=[
-                broker_value(1, 1, "Message 1"),
-                broker_value(1, 2, "Message 2"),
-                broker_value(1, 3, "Message 3"),
-            ],
+            payload=cast(
+                ValuesBatch[str],
+                [
+                    broker_value(1, 1, "Message 1"),
+                    broker_value(1, 2, "Message 2"),
+                    broker_value(1, 3, "Message 3"),
+                ],
+            ),
             committable={Partition(Topic("test"), 1): 4},
         ),
     )
@@ -338,9 +341,9 @@ def test_batch_unbatch() -> None:
     """
 
     def transformer(
-        msg: Message[ValuesBatch[str]],
+        batch: Message[ValuesBatch[str]],
     ) -> ValuesBatch[str]:
-        return [sub_msg.replace("Transformed") for sub_msg in msg.payload]
+        return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 
     final_step = Mock()
     next_step: TransformStep[ValuesBatch[str], ValuesBatch[str]] = TransformStep(

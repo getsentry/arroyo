@@ -8,15 +8,15 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, TPayload
+from arroyo.types import Commit, Message, Partition, TStrategyPayload
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessingStrategyProfilerWrapper(ProcessingStrategy[TPayload]):
+class ProcessingStrategyProfilerWrapper(ProcessingStrategy[TStrategyPayload]):
     def __init__(
         self,
-        strategy: ProcessingStrategy[TPayload],
+        strategy: ProcessingStrategy[TStrategyPayload],
         profiler: Profile,
         output_path: str,
     ) -> None:
@@ -27,7 +27,7 @@ class ProcessingStrategyProfilerWrapper(ProcessingStrategy[TPayload]):
     def poll(self) -> None:
         self.__strategy.poll()
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(self, message: Message[TStrategyPayload]) -> None:
         self.__strategy.submit(message)
 
     def close(self) -> None:
@@ -50,10 +50,12 @@ class ProcessingStrategyProfilerWrapper(ProcessingStrategy[TPayload]):
         self.__profiler.dump_stats(self.__output_path)
 
 
-class ProcessingStrategyProfilerWrapperFactory(ProcessingStrategyFactory[TPayload]):
+class ProcessingStrategyProfilerWrapperFactory(
+    ProcessingStrategyFactory[TStrategyPayload]
+):
     def __init__(
         self,
-        strategy_factory: ProcessingStrategyFactory[TPayload],
+        strategy_factory: ProcessingStrategyFactory[TStrategyPayload],
         output_directory: str,
     ) -> None:
         self.__strategy_factory = strategy_factory
@@ -64,7 +66,7 @@ class ProcessingStrategyProfilerWrapperFactory(ProcessingStrategyFactory[TPayloa
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TPayload]:
+    ) -> ProcessingStrategy[TStrategyPayload]:
         profiler = Profile()
         profiler.enable()
         return ProcessingStrategyProfilerWrapper(

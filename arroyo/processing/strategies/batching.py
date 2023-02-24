@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Deque, MutableSequence, Optional
+from typing import Deque, MutableSequence, Optional, Union, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
-from arroyo.types import BaseValue, Message, TPayload
+from arroyo.types import BaseValue, FilteredPayload, Message, TStrategyPayload
 
-ValuesBatch = MutableSequence[BaseValue[TPayload]]
+ValuesBatch = MutableSequence[BaseValue[TStrategyPayload]]
 
 
-class BatchStep(ProcessingStrategy[TPayload]):
+class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     """
     Accumulates messages into a batch. When the batch is full, this
     strategy submits it to the next step.
@@ -37,15 +37,17 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self,
         max_batch_size: int,
         max_batch_time: float,
-        next_step: ProcessingStrategy[ValuesBatch[TPayload]],
+        next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
     ) -> None:
         def accumulator(
-            result: ValuesBatch[TPayload], value: BaseValue[TPayload]
-        ) -> ValuesBatch[TPayload]:
+            result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
+        ) -> ValuesBatch[TStrategyPayload]:
             result.append(value)
             return result
 
-        self.__reduce_step: Reduce[TPayload, ValuesBatch[TPayload]] = Reduce(
+        self.__reduce_step: Reduce[
+            TStrategyPayload, ValuesBatch[TStrategyPayload]
+        ] = Reduce(
             max_batch_size,
             max_batch_time,
             accumulator,
@@ -53,7 +55,9 @@ class BatchStep(ProcessingStrategy[TPayload]):
             next_step,
         )
 
-    def submit(self, message: Message[TPayload]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
         """
         Accumulates messages in the current batch.
         A new batch is created at the first message received.
@@ -85,7 +89,9 @@ class BatchStep(ProcessingStrategy[TPayload]):
         self.__reduce_step.join(timeout)
 
 
-class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
+class UnbatchStep(
+    ProcessingStrategy[Union[FilteredPayload, ValuesBatch[TStrategyPayload]]]
+):
     """
     This processing step receives batches and explodes them thus sending
     the content to the next step message by message.
@@ -99,24 +105,42 @@ class UnbatchStep(ProcessingStrategy[ValuesBatch[TPayload]]):
 
     def __init__(
         self,
-        next_step: ProcessingStrategy[TPayload],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
     ) -> None:
         self.__next_step = next_step
-        self.__batch_to_send: Deque[BaseValue[TPayload]] = deque()
+        self.__batch_to_send: Deque[
+            Message[Union[FilteredPayload, TStrategyPayload]]
+        ] = deque()
         self.__closed = False
 
     def __flush(self) -> None:
         while self.__batch_to_send:
             msg = self.__batch_to_send[0]
-            self.__next_step.submit(Message(msg))
+            self.__next_step.submit(msg)
             self.__batch_to_send.popleft()
 
-    def submit(self, message: Message[ValuesBatch[TPayload]]) -> None:
+    def submit(
+        self, message: Message[Union[FilteredPayload, ValuesBatch[TStrategyPayload]]]
+    ) -> None:
         assert not self.__closed
         if self.__batch_to_send:
             raise MessageRejected
 
-        self.__batch_to_send.extend(message.payload)
+        # XXX: BatchStep puts the committable offsets of FilteredPayloads onto
+        # `message.committable`. Those offsets are currently discarded
+        # entirely. We unbatch the inner list of payloads of `message` and
+        # discard the message wrapper.
+        #
+        # A correct solution would take the `committable` of the outer message
+        # and "meld" it onto the last inner message, and/or fabricate a new
+        # Message[FilteredPayload]
+
+        if isinstance(message.payload, FilteredPayload):
+            self.__batch_to_send.append(
+                cast(Message[Union[FilteredPayload, TStrategyPayload]], message)
+            )
+        else:
+            self.__batch_to_send.extend(map(Message, message.payload))
         try:
             self.__flush()
         except MessageRejected:

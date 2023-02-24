@@ -25,11 +25,19 @@ class Partition:
     index: int
 
 
-TPayload = TypeVar("TPayload")
+TMessagePayload = TypeVar("TMessagePayload", covariant=True)
+TStrategyPayload = TypeVar("TStrategyPayload", contravariant=True)
+
+
+class FilteredPayload:
+    __slots__ = ()
+
+
+FILTERED_PAYLOAD = FilteredPayload()
 
 
 @dataclass(unsafe_hash=True)
-class Message(Generic[TPayload]):
+class Message(Generic[TMessagePayload]):
     """
     Contains a payload and partitions to be committed after processing.
     Can either represent a single message from a Kafka broker (BrokerValue)
@@ -39,11 +47,11 @@ class Message(Generic[TPayload]):
 
     __slots__ = ["value"]
 
-    value: BaseValue[TPayload]
+    value: BaseValue[TMessagePayload]
 
     def __init__(
         self,
-        value: BaseValue[TPayload],
+        value: BaseValue[TMessagePayload],
     ) -> None:
         self.value = value
 
@@ -55,8 +63,14 @@ class Message(Generic[TPayload]):
         return f"{type(self).__name__}({self.committable!r})"
 
     @property
-    def payload(self) -> TPayload:
+    def payload(self) -> TMessagePayload:
         return self.value.payload
+
+    @property
+    def payload_unfiltered(self) -> TMessagePayload:
+        payload = self.payload
+        assert not isinstance(payload, FilteredPayload)
+        return payload
 
     @property
     def committable(self) -> Mapping[Partition, int]:
@@ -66,9 +80,9 @@ class Message(Generic[TPayload]):
         return Message(self.value.replace(payload))
 
 
-class BaseValue(Generic[TPayload]):
+class BaseValue(Generic[TMessagePayload]):
     @property
-    def payload(self) -> TPayload:
+    def payload(self) -> TMessagePayload:
         raise NotImplementedError()
 
     @property
@@ -80,22 +94,24 @@ class BaseValue(Generic[TPayload]):
 
 
 @dataclass(unsafe_hash=True)
-class Value(BaseValue[TPayload]):
+class Value(BaseValue[TMessagePayload]):
     """
     Any other payload that may not map 1:1 to a single message from a
     consumer. May represent a batch spanning many partitions.
     """
 
     __slots__ = ["__payload", "__committable"]
-    __payload: TPayload
+    __payload: TMessagePayload
     __committable: Mapping[Partition, int]
 
-    def __init__(self, payload: TPayload, committable: Mapping[Partition, int]) -> None:
+    def __init__(
+        self, payload: TMessagePayload, committable: Mapping[Partition, int]
+    ) -> None:
         self.__payload = payload
         self.__committable = committable
 
     @property
-    def payload(self) -> TPayload:
+    def payload(self) -> TMessagePayload:
         return self.__payload
 
     @property
@@ -107,20 +123,24 @@ class Value(BaseValue[TPayload]):
 
 
 @dataclass(unsafe_hash=True)
-class BrokerValue(BaseValue[TPayload]):
+class BrokerValue(BaseValue[TMessagePayload]):
     """
     A payload received from the consumer or producer after it is done producing.
     Partition, offset, and timestamp values are present.
     """
 
     __slots__ = ["__payload", "partition", "offset", "timestamp"]
-    __payload: TPayload
+    __payload: TMessagePayload
     partition: Partition
     offset: int
     timestamp: datetime
 
     def __init__(
-        self, payload: TPayload, partition: Partition, offset: int, timestamp: datetime
+        self,
+        payload: TMessagePayload,
+        partition: Partition,
+        offset: int,
+        timestamp: datetime,
     ):
         self.__payload = payload
         self.partition = partition
@@ -131,7 +151,7 @@ class BrokerValue(BaseValue[TPayload]):
         return BrokerValue(value, self.partition, self.offset, self.timestamp)
 
     @property
-    def payload(self) -> TPayload:
+    def payload(self) -> TMessagePayload:
         return self.__payload
 
     @property

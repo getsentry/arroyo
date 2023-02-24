@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerValue, Message, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class MetricsBuffer:
             self.flush()
 
 
-class StreamProcessor(Generic[TPayload]):
+class StreamProcessor(Generic[TStrategyPayload]):
     """
     A stream processor manages the relationship between a ``Consumer``
     instance and a ``ProcessingStrategy``, ensuring that processing
@@ -65,9 +65,9 @@ class StreamProcessor(Generic[TPayload]):
 
     def __init__(
         self,
-        consumer: Consumer[TPayload],
+        consumer: Consumer[TStrategyPayload],
         topic: Topic,
-        processor_factory: ProcessingStrategyFactory[TPayload],
+        processor_factory: ProcessingStrategyFactory[TStrategyPayload],
         commit_policy: CommitPolicy,
         join_timeout: Optional[float] = None,
     ) -> None:
@@ -75,9 +75,11 @@ class StreamProcessor(Generic[TPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[ProcessingStrategy[TPayload]] = None
+        self.__processing_strategy: Optional[
+            ProcessingStrategy[TStrategyPayload]
+        ] = None
 
-        self.__message: Optional[BrokerValue[TPayload]] = None
+        self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
         # ``pause`` occurred or the time the pause metric was last recorded.

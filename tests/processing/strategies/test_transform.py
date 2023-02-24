@@ -9,8 +9,8 @@ from tests.assertions import assert_changes
 def test_transform() -> None:
     next_step = Mock()
 
-    def transform_function(message: Message[int]) -> int:
-        return message.payload * 2
+    def transform_function(value: Message[int]) -> int:
+        return value.payload * 2
 
     transform_step = TransformStep(transform_function, next_step)
 
@@ -21,7 +21,10 @@ def test_transform() -> None:
 
     assert next_step.submit.call_args == call(
         Message(
-            Value(transform_function(original_message), original_message.committable)
+            Value(
+                transform_function(original_message),
+                original_message.committable,
+            )
         )
     )
 

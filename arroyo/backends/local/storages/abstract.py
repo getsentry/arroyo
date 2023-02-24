@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Generic, Iterator, Optional
 
-from arroyo.types import BrokerValue, Partition, Topic, TPayload
+from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
 
 class TopicExists(Exception):
@@ -20,7 +20,7 @@ class PartitionDoesNotExist(Exception):
         self.partition = partition
 
 
-class MessageStorage(ABC, Generic[TPayload]):
+class MessageStorage(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def create_topic(self, topic: Topic, partitions: int) -> None:
         """
@@ -61,7 +61,7 @@ class MessageStorage(ABC, Generic[TPayload]):
     @abstractmethod
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerValue[TPayload]]:
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
         """
         Consume a message from the provided partition, reading from the given
         offset. If no message exists at the given offset when reading from
@@ -79,8 +79,8 @@ class MessageStorage(ABC, Generic[TPayload]):
 
     @abstractmethod
     def produce(
-        self, partition: Partition, payload: TPayload, timestamp: datetime
-    ) -> BrokerValue[TPayload]:
+        self, partition: Partition, payload: TStrategyPayload, timestamp: datetime
+    ) -> BrokerValue[TStrategyPayload]:
         """
         Produce a single message to the provided partition.
 
