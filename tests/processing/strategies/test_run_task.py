@@ -63,7 +63,9 @@ def test_run_task() -> None:
     assert next_step.submit.call_count == 2
 
 
-def test_run_task_in_threads() -> None:
+@pytest.mark.parametrize("poll_after_msg", (True, False))
+@pytest.mark.parametrize("poll_before_join", (True, False))
+def test_run_task_in_threads(poll_after_msg: bool, poll_before_join: bool) -> None:
     mock_func = mock.Mock()
     next_step = mock.Mock()
 
@@ -71,23 +73,26 @@ def test_run_task_in_threads() -> None:
     partition = Partition(Topic("topic"), 0)
 
     strategy.submit(Message(BrokerValue(b"hello", partition, 0, datetime.now())))
-    strategy.poll()
+    if poll_after_msg:
+        strategy.poll()
     strategy.submit(Message(BrokerValue(b"world", partition, 1, datetime.now())))
-    strategy.poll()
+    if poll_after_msg:
+        strategy.poll()
 
-    # Wait for async functions to finish
-    retries = 10
+    if poll_before_join:
+        # Wait for async functions to finish
+        retries = 10
 
-    for _i in range(0, retries):
-        if mock_func.call_count < 2 or next_step.submit.call_count < 2:
-            strategy.poll()
-            time.sleep(0.1)
-        else:
-            break
+        for _i in range(0, retries):
+            if mock_func.call_count < 2 or next_step.submit.call_count < 2:
+                strategy.poll()
+                time.sleep(0.1)
+            else:
+                break
 
-    assert mock_func.call_count == 2
-    assert next_step.poll.call_count == 2
-    assert next_step.submit.call_count == 2
+        assert mock_func.call_count == 2
+        assert next_step.poll.call_count == 2
+        assert next_step.submit.call_count == 2
 
     strategy.join()
     strategy.close()
