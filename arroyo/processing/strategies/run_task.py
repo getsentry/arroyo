@@ -173,11 +173,8 @@ class RunTaskInThreads(
             next_message: Message[TResult]
 
             if future is not None:
-                if not future.done():
-                    break
-
                 # Will raise if the future errored
-                result = future.result()
+                result = future.result(remaining)
                 payload = message.value.replace(result)
                 next_message = Message(payload)
             else:
