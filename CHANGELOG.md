@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.7.0
+
+### Various fixes & improvements
+
+- fix(filter-strategy): Options to commit filtered messages, take 2 (#185) by @untitaker
+- fix: Fix multiprocessing join (#189) by @lynnagara
+- build: Run CI on Python 3.11 (#188) by @lynnagara
+
 ## 2.6.0
 
 ### Various fixes & improvements
