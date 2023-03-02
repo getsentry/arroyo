@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.7.1
+
+### Various fixes & improvements
+
+- fix(run_task): Fix bug where join() would not actually wait for tasks (#190) by @untitaker
+
 ## 2.7.0
 
 ### Various fixes & improvements
