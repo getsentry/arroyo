@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import time
-from collections import deque
-from typing import Deque, MutableSequence, Optional, Union, cast
+from typing import MutableSequence, Optional, Sequence, Union
 
-from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
+from arroyo.processing.strategies.unfold import Unfold
 from arroyo.types import BaseValue, FilteredPayload, Message, TStrategyPayload
 
 ValuesBatch = MutableSequence[BaseValue[TStrategyPayload]]
@@ -107,76 +106,26 @@ class UnbatchStep(
         self,
         next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
     ) -> None:
-        self.__next_step = next_step
-        self.__batch_to_send: Deque[
-            Message[Union[FilteredPayload, TStrategyPayload]]
-        ] = deque()
-        self.__closed = False
+        def generator(
+            values: ValuesBatch[TStrategyPayload],
+        ) -> MutableSequence[TStrategyPayload]:
+            return [value.payload for value in values]
 
-    def __flush(self) -> None:
-        while self.__batch_to_send:
-            msg = self.__batch_to_send[0]
-            self.__next_step.submit(msg)
-            self.__batch_to_send.popleft()
+        self.__unfold_step = Unfold(generator, next_step)
 
     def submit(
         self, message: Message[Union[FilteredPayload, ValuesBatch[TStrategyPayload]]]
     ) -> None:
-        assert not self.__closed
-        if self.__batch_to_send:
-            raise MessageRejected
-
-        # XXX: BatchStep puts the committable offsets of FilteredPayloads onto
-        # `message.committable`. Those offsets are currently discarded
-        # entirely. We unbatch the inner list of payloads of `message` and
-        # discard the message wrapper.
-        #
-        # A correct solution would take the `committable` of the outer message
-        # and "meld" it onto the last inner message, and/or fabricate a new
-        # Message[FilteredPayload]
-
-        if isinstance(message.payload, FilteredPayload):
-            self.__batch_to_send.append(
-                cast(Message[Union[FilteredPayload, TStrategyPayload]], message)
-            )
-        else:
-            self.__batch_to_send.extend(map(Message, message.payload))
-        try:
-            self.__flush()
-        except MessageRejected:
-            # The messages are stored in self.__batch_to_send ready for
-            # the next call to `poll`.
-            pass
+        self.__unfold_step.submit(message)
 
     def poll(self) -> None:
-        assert not self.__closed
-
-        try:
-            self.__flush()
-        except MessageRejected:
-            pass
-
-        self.__next_step.poll()
+        self.__unfold_step.poll()
 
     def close(self) -> None:
-        self.__closed = True
+        self.__unfold_step.poll()
 
     def terminate(self) -> None:
-        """
-        Terminates the strategy by joining the following step.
-        This method throws away the current batch if any.
-        """
-        self.__closed = True
+        self.__unfold_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        deadline = time.time() + timeout if timeout is not None else None
-        while deadline is None or time.time() < deadline:
-            try:
-                self.__flush()
-                break
-            except MessageRejected:
-                pass
-
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        self.__unfold_step.join(timeout)

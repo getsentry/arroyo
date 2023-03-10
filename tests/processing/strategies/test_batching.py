@@ -289,14 +289,16 @@ def test_unbatch_step() -> None:
         ),
     )
 
+    partition = Partition(Topic("test"), 1)
+
     next_step = Mock()
     unbatch_step = UnbatchStep[str](next_step)
     unbatch_step.submit(msg)
     next_step.submit.assert_has_calls(
         [
-            call(message(1, 1, "Message 1")),
-            call(message(1, 2, "Message 2")),
-            call(message(1, 3, "Message 3")),
+            call(Message(Value("Message 1", {}))),
+            call(Message(Value("Message 2", {}))),
+            call(Message(Value("Message 3", {partition: 4}))),
         ]
     )
 
@@ -315,9 +317,9 @@ def test_unbatch_step() -> None:
     unbatch_step.poll()
     next_step.submit.assert_has_calls(
         [
-            call(message(1, 1, "Message 1")),
-            call(message(1, 2, "Message 2")),
-            call(message(1, 3, "Message 3")),
+            call(Message(Value("Message 1", {}))),
+            call(Message(Value("Message 2", {}))),
+            call(Message(Value("Message 3", {partition: 4}))),
         ]
     )
 
@@ -328,9 +330,9 @@ def test_unbatch_step() -> None:
 
     next_step.submit.assert_has_calls(
         [
-            call(message(1, 1, "Message 1")),
-            call(message(1, 2, "Message 2")),
-            call(message(1, 3, "Message 3")),
+            call(Message(Value("Message 1", {}))),
+            call(Message(Value("Message 2", {}))),
+            call(Message(Value("Message 3", {partition: 4}))),
         ]
     )
 
@@ -362,10 +364,12 @@ def test_batch_unbatch() -> None:
         final_step.submit.assert_not_called()
         pipeline.poll()
 
+    partition = Partition(Topic("test"), 1)
+
     final_step.submit.assert_has_calls(
         [
-            call(message(1, 1, "Transformed")),
-            call(message(1, 2, "Transformed")),
-            call(message(1, 3, "Transformed")),
+            call(Message(Value("Transformed", {}))),
+            call(Message(Value("Transformed", {}))),
+            call(Message(Value("Transformed", {partition: 4}))),
         ]
     )

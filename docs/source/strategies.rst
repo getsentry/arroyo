@@ -40,7 +40,7 @@ Accumulate messages into a batch and pass to the next step.
    :members:
    :undoc-members:
 
-Reducers
+Reduce (Fold)
 -----------------------------
 
 Accumulate messages based on a custom accumulator function
@@ -49,6 +49,14 @@ Accumulate messages based on a custom accumulator function
    :members:
    :undoc-members:
 
+Unfold
+-----------------------------
+
+Generates a sequence of messages from a single message based on a custom generator function
+
+.. automodule:: arroyo.processing.strategies.unfold
+   :members:
+   :undoc-members:
 
 Task Runners
 -----------------------------
