@@ -121,6 +121,14 @@ class Consumer(Generic[TStrategyPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def assign(self, offsets: Mapping[Partition, int]) -> None:
+        """
+        Set the consumer partition assignment to the provided offsets and
+        start consuming.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def seek(self, offsets: Mapping[Partition, int]) -> None:
         """
         Update the working offsets for the provided partitions.

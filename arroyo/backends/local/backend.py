@@ -175,12 +175,16 @@ class LocalConsumer(Consumer[TStrategyPayload]):
     def group(self) -> str:
         return self.__group
 
+    def assign(self, offsets: Mapping[Partition, int]) -> None:
+        self.__offsets = {**offsets}
+
     def __assign(
         self, subscription: Subscription, offsets: Mapping[Partition, int]
     ) -> None:
-        self.__offsets = {**offsets}
         if subscription.assignment_callback is not None:
             subscription.assignment_callback(offsets)
+        else:
+            self.assign(offsets)
 
     def __revoke(
         self, subscription: Subscription, partitions: Sequence[Partition]

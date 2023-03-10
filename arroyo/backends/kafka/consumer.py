@@ -281,7 +281,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                     Partition(Topic(i.topic), i.partition): i.offset for i in assignment
                 }
 
-                self.__assign(offsets)
+                # If the on_assign callback is provided, it is responsible for calling consumer.assign()
+                # with the relevant partitions and offsets. Otherwsie all partitions will be assigned by
+                # default.
+                if on_assign is not None:
+                    on_assign(offsets)
+                else:
+                    self.assign(offsets)
 
                 # Ensure that all partitions are resumed on assignment to avoid
                 # carrying over state from a previous assignment.
@@ -291,11 +297,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 self.__state = KafkaConsumerState.ERROR
                 raise
 
-            try:
-                if on_assign is not None:
-                    on_assign(offsets)
-            finally:
-                self.__state = KafkaConsumerState.CONSUMING
+            self.__state = KafkaConsumerState.CONSUMING
 
         def revocation_callback(
             consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
@@ -442,7 +444,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if invalid_offsets:
             raise ConsumerError(f"invalid offsets: {invalid_offsets!r}")
 
-    def __assign(self, offsets: Mapping[Partition, int]) -> None:
+    def assign(self, offsets: Mapping[Partition, int]) -> None:
         self.__validate_offsets(offsets)
         self.__consumer.assign(
             [

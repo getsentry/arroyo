@@ -119,6 +119,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
 
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
+            self.__consumer.assign(partitions)
             logger.info("New partitions assigned: %r", partitions)
             if partitions:
                 if self.__processing_strategy is not None:
