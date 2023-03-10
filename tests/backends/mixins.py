@@ -241,6 +241,7 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             def on_assign(partitions: Mapping[Partition, int]) -> None:
                 # NOTE: This will eventually need to be controlled by a generalized
                 # consumer auto offset reset setting.
+                consumer.assign(partitions)
 
                 assert (
                     partitions
