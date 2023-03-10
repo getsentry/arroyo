@@ -50,6 +50,8 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             def _assignment_callback(partitions: Mapping[Partition, int]) -> None:
                 assert partitions == {Partition(topic, 0): messages[0].offset}
 
+                consumer.assign(partitions)
+
                 consumer.seek({Partition(topic, 0): messages[1].offset})
 
                 with pytest.raises(ConsumerError):
