@@ -198,7 +198,7 @@ Add a `ProcessingStrategy` and `ProcessingStrategyFactory`.
         ) -> ProcessingStrategy[KafkaPayload]:
             return ConsumerStrategy(commit, partitions)
 
-The code above is orchestrated by the Arroyo runtime called `StreamingProcessor`.
+The code above is orchestrated by the Arroyo runtime called `StreamProcessor`.
 
 .. code-block:: Python
 

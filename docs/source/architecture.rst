@@ -123,4 +123,4 @@ Common examples are:
   dead-letter queue strategy wraps this logic and intercepts *InvalidMessage* exceptions
   sending the content to a dedicated topic.
 
-All high level strategies are in `the strategies module <https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies>`_.
+All strategies included with Arroyo are in `the strategies module <https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies>`_.
