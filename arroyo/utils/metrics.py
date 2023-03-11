@@ -14,18 +14,27 @@ class Metrics(Protocol):
     def increment(
         self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
     ) -> None:
+        """
+        Increments a counter metric by a given value.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def gauge(
         self, name: str, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
+        """
+        Sets a gauge metric to the given value.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def timing(
         self, name: str, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
+        """
+        Records a timing metric.
+        """
         raise NotImplementedError
 
 
