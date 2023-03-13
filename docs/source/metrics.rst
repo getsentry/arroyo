@@ -19,19 +19,19 @@ This can be done like so:
             self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
         ) -> None:
             # Increment a counter by the given value.
-            pass
+            record_incr(name, value, tags)
 
         def gauge(
             self, name: str, value: Union[int, float], tags: Optional[Tags] = None
         ) -> None:
             # Sets a gauge metric to the given value.
-            pass
+            record_gauge(name, value, tags)
 
         def timing(
             self, name: str, value: Union[int, float], tags: Optional[Tags] = None
         ) -> None:
             # Emit a timing metric with the given value.
-            pass
+            record_timing(name, value, tags)
 
     metrics_backend = Metrics()
 
