@@ -11,4 +11,5 @@ Contents:
    architecture
    strategies
    offsets
+   dlqs
    metrics
