@@ -12,3 +12,4 @@ Contents:
    strategies
    offsets
    dlqs
+   metrics

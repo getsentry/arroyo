@@ -144,41 +144,13 @@ Create a streaming consumer
 ---------------------------
 
 Add a `ProcessingStrategy` and `ProcessingStrategyFactory`.
+Here we are using the `RunTask` strategy which runs a custom function over each message.
 
 .. code-block:: Python
 
-    class ConsumerStrategy(ProcessingStrategy[KafkaPayload]):
-        """
-        The strategy implements the streaming interface.
-        The runtime submits work to the strategy via the `submit`
-        method. Which is supposed to not be blocking.
-        Periodically the runtime invokes `poll` which is where the
-        work is supposed to be done.
-        """
-
-        def __init__(
-            self,
-            commit: Commit,
-            partitions: Mapping[Partition, int],
-        ):
-            print(f"Partitions assigned {partitions}")
-
-        def poll(self) -> None:
-            pass
-
-        def submit(self, message: Message[KafkaPayload]) -> None:
-            # Receives work to do
-            print(f"MSG: {message.payload}")
-
-        def close(self) -> None:
-            pass
-
-        def terminate(self) -> None:
-            print("Terminating")
-
-        def join(self, timeout: Optional[float] = None) -> None:
-            pass
-
+    def handle_message(message: Message[KafkaPayload]) -> Message[KafkaPayload]:
+        print(f"MSG: {message.payload}")
+        return message
 
     class ConsumerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         """
@@ -187,16 +159,12 @@ Add a `ProcessingStrategy` and `ProcessingStrategyFactory`.
         consumer, while it is destroyed when partitions are revoked or the
         consumer is closed
         """
-
-        def __init__(self):
-            pass
-
         def create_with_partitions(
             self,
             commit: Commit,
             partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
-            return ConsumerStrategy(commit, partitions)
+            return RunTask(handle_message, CommitOffsets(commit))
 
 The code above is orchestrated by the Arroyo runtime called `StreamProcessor`.
 
@@ -211,60 +179,42 @@ The code above is orchestrated by the Arroyo runtime called `StreamProcessor`.
     processor.run()
 
 The main consumer loop is managed by the `StreamProcessor` no need to periodically poll the
-consumer. The `StreamingStrategy` works by inversion of control.
+consumer. The `ConsumerStrategy` works by inversion of control.
 
 Add some useful logic
 ---------------------
 
-Now we will add some logic to the `ProcessingStrategy` to produce messages on a second topic.
+Now we will chain the `Produce` strategy to produce messages on a second topic after the message is logged
 
 .. code-block:: Python
 
-    class ConsumerStrategy(ProcessingStrategy[KafkaPayload]):
-        def __init__(
+    class ConsumerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+        """
+        The factory manages the lifecycle of the `ProcessingStrategy`.
+        A strategy is created every time new partitions are assigned to the
+        consumer, while it is destroyed when partitions are revoked or the
+        consumer is closed
+        """
+        def create_with_partitions(
             self,
             commit: Commit,
             partitions: Mapping[Partition, int],
-        ):
-            print(f"Partitions assigned {partitions}")
-            self.__callbacks = []
-            self.__producer = KafkaProducer(
+        ) -> ProcessingStrategy[KafkaPayload]:
+            producer = KafkaProducer(
                 build_kafka_configuration(
                     default_config={},
                     bootstrap_servers=BOOTSTRAP_SERVERS,
                 )
             )
 
-        def poll(self) -> None:
-            while self.__callbacks and self.__callbacks[0].future.done():
-                self.__callbacks.popleft()
-
-        def submit(self, message: Message[KafkaPayload]) -> None:
-            # do something with the message
-            # The produce operation is asynchronous
-            callback = self.__producer.produce(
-                destination=Topic("dest-topic"),
-                payload=message.payload
+            return RunTask(
+                handle_message,
+                Produce(producer, Topic("dest-topic"), CommitOffsets(commit))
             )
-            self.__callbacks.append(callback)
 
-        def close(self) -> None:
-            self.__producer.close()
-
-        def terminate(self) -> None:
-            print("Terminating")
-
-        def join(self, timeout: Optional[float] = None) -> None:
-            while self.__callbacks
-                c = self.__callbacks.popleft()
-                c.result()
-
-This code asynchronously produces all messages received. When `submit` is invoked, the message is
-produced asynchronously. The method is not blocking.
-The `produce` returns a callback as a future. If we wanted to do something with the result we would
-do it in the poll on the completed callback. When the consumer is stopped, or the partitions are
-revoked, we wait for all the missing callbacks to complete in the `join` method.
-
+The message is first passed to the `RunTask` strategy which simply logs the message and submits
+the output to the next step. The `Produce` strategy produces the message asynchronously. Once
+the message is produced, the `CommitOffsets` strategy commits the offset of the message.
 
 Further examples
 ================
