@@ -3,10 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Mapping, Optional
+from typing import Any, Generic, Mapping, Optional
 
 from arroyo.backends.kafka import KafkaPayload, KafkaProducer
-from arroyo.types import BrokerValue, Partition, Topic
+from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
 
 class InvalidMessage(Exception):
@@ -56,7 +56,7 @@ class DlqLimitState:
         self.__invalid_messages = invalid_messages or {}
         self.__invalid_consecutive_messages = invalid_consecutive_messages or {}
 
-    def should_accept(self, value: BrokerValue[KafkaPayload]) -> bool:
+    def should_accept(self, value: BrokerValue[TStrategyPayload]) -> bool:
         if self.__limit.max_invalid_ratio is not None:
             invalid = self.__invalid_messages.get(value.partition, 0)
             valid = self.__valid_messages.get(value.partition, 0)
@@ -76,11 +76,11 @@ class DlqLimitState:
         return True
 
 
-class DlqProducer(ABC):
+class DlqProducer(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def produce(
-        self, value: BrokerValue[KafkaPayload]
-    ) -> Future[BrokerValue[KafkaPayload]]:
+        self, value: BrokerValue[TStrategyPayload]
+    ) -> Future[BrokerValue[TStrategyPayload]]:
         """
         Produce a message to DLQ.
         """
@@ -95,7 +95,7 @@ class DlqProducer(ABC):
         raise NotImplementedError
 
 
-class NoopDlqProducer(DlqProducer):
+class NoopDlqProducer(DlqProducer[Any]):
     """
     Drops all invalid messages
     """
@@ -113,7 +113,7 @@ class NoopDlqProducer(DlqProducer):
         return DlqLimitState(limit)
 
 
-class KafkaDlqProducer(DlqProducer):
+class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     """
     KafkaDLQProducer forwards invalid messages to a Kafka topic
     """
@@ -134,12 +134,12 @@ class KafkaDlqProducer(DlqProducer):
 
 
 @dataclass(frozen=True)
-class DlqPolicy:
+class DlqPolicy(Generic[TStrategyPayload]):
     """
     DLQ policy defines the DLQ configuration, and is passed to the stream processor
     upon creation of the consumer. It consists of the DLQ producer implementation and
     any limits that should be applied.
     """
 
-    producer: DlqProducer
+    producer: DlqProducer[TStrategyPayload]
     limit: DlqLimit
