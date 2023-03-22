@@ -4,7 +4,7 @@ import logging
 import time
 from collections import defaultdict
 from enum import Enum
-from typing import Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
@@ -14,7 +14,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Message, Partition, Topic
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class MetricsBuffer:
             self.flush()
 
 
-class StreamProcessor(Generic[TStrategyPayload]):
+class StreamProcessor:
     """
     A stream processor manages the relationship between a ``Consumer``
     instance and a ``ProcessingStrategy``, ensuring that processing
@@ -65,9 +65,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def __init__(
         self,
-        consumer: Consumer[TStrategyPayload],
+        consumer: Consumer,
         topic: Topic,
-        processor_factory: ProcessingStrategyFactory[TStrategyPayload],
+        processor_factory: ProcessingStrategyFactory[KafkaPayload],
         commit_policy: CommitPolicy,
         join_timeout: Optional[float] = None,
     ) -> None:
@@ -75,11 +75,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[
-            ProcessingStrategy[TStrategyPayload]
-        ] = None
+        self.__processing_strategy: Optional[ProcessingStrategy[KafkaPayload]] = None
 
-        self.__message: Optional[BrokerValue[TStrategyPayload]] = None
+        self.__message: Optional[BrokerValue[KafkaPayload]] = None
 
         # If the consumer is in the paused state, this is when the last call to
         # ``pause`` occurred or the time the pause metric was last recorded.

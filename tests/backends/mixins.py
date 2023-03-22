@@ -2,18 +2,18 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
-from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
+from typing import ContextManager, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest
 
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.errors import ConsumerError, EndOfPartition, OffsetOutOfRange
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 from tests.assertions import assert_changes, assert_does_not_change
 
 
-class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
+class StreamsTestMixin(ABC):
     @abstractmethod
     def get_topic(self, partitions: int = 1) -> ContextManager[Topic]:
         raise NotImplementedError
@@ -21,15 +21,15 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def get_consumer(
         self, group: Optional[str] = None, enable_end_of_partition: bool = True
-    ) -> Consumer[TStrategyPayload]:
+    ) -> Consumer:
         raise NotImplementedError
 
     @abstractmethod
-    def get_producer(self) -> Producer[TStrategyPayload]:
+    def get_producer(self) -> Producer:
         raise NotImplementedError
 
     @abstractmethod
-    def get_payloads(self) -> Iterator[TStrategyPayload]:
+    def get_payloads(self) -> Iterator[KafkaPayload]:
         raise NotImplementedError
 
     def test_consumer(self) -> None:

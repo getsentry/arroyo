@@ -5,7 +5,6 @@ from concurrent.futures import Future
 from datetime import datetime
 from enum import Enum
 from functools import partial
-from pickle import PickleBuffer
 from threading import Event
 from typing import (
     Any,
@@ -13,13 +12,10 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
-    NamedTuple,
     Optional,
     Sequence,
     Set,
-    SupportsIndex,
     Tuple,
-    Type,
     Union,
 )
 
@@ -43,7 +39,7 @@ from arroyo.errors import (
     OffsetOutOfRange,
     TransportError,
 )
-from arroyo.types import BrokerValue, Partition, Topic
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
@@ -61,21 +57,6 @@ class InvalidState(RuntimeError):
 
 
 Headers = Sequence[Tuple[str, bytes]]
-
-
-class KafkaPayload(NamedTuple):
-    key: Optional[bytes]
-    value: bytes
-    headers: Headers
-
-    def __reduce_ex__(self, protocol: SupportsIndex) -> Tuple[Type[KafkaPayload], Any]:
-        if int(protocol) >= 5:
-            return (
-                type(self),
-                (self.key, PickleBuffer(self.value), self.headers),
-            )
-        else:
-            return type(self), (self.key, self.value, self.headers)
 
 
 def as_kafka_configuration_bool(value: Any) -> bool:
@@ -105,7 +86,7 @@ def as_kafka_configuration_bool(value: Any) -> bool:
     raise TypeError(f"cannot interpret {value!r} as boolean")
 
 
-class KafkaConsumer(Consumer[KafkaPayload]):
+class KafkaConsumer(Consumer):
     """
     If a non-cooperative partition assignment strategy is selected,
     the behavior of this consumer differs slightly from the Confluent
@@ -622,7 +603,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         return self.__state is KafkaConsumerState.CLOSED
 
 
-class KafkaProducer(Producer[KafkaPayload]):
+class KafkaProducer(Producer):
     def __init__(self, configuration: Mapping[str, Any]) -> None:
         self.__configuration = configuration
 

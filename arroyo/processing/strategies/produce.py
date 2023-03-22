@@ -11,16 +11,16 @@ from arroyo.types import (
     BrokerValue,
     Commit,
     FilteredPayload,
+    KafkaPayload,
     Message,
     Topic,
-    TStrategyPayload,
     Value,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
+class Produce(ProcessingStrategy[Union[FilteredPayload, KafkaPayload]]):
     """
     This strategy can be used to produce Kafka messages to a destination topic. A typical use
     case could be to consume messages from one topic, apply some transformations and then output
@@ -41,9 +41,9 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
     def __init__(
         self,
-        producer: Producer[TStrategyPayload],
+        producer: Producer,
         topic: Topic,
-        next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
+        next_step: ProcessingStrategy[Union[FilteredPayload, KafkaPayload]],
         max_buffer_size: int = 10000,
     ):
         self.__producer = producer
@@ -53,8 +53,8 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
         self.__queue: Deque[
             Tuple[
-                Message[Union[FilteredPayload, TStrategyPayload]],
-                Optional[Future[BrokerValue[TStrategyPayload]]],
+                Message[Union[FilteredPayload, KafkaPayload]],
+                Optional[Future[BrokerValue[KafkaPayload]]],
             ]
         ] = deque()
 
@@ -78,15 +78,13 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             self.__next_step.poll()
             self.__next_step.submit(message)
 
-    def submit(
-        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
-    ) -> None:
+    def submit(self, message: Message[Union[FilteredPayload, KafkaPayload]]) -> None:
         assert not self.__closed
 
         if len(self.__queue) >= self.__max_buffer_size:
             raise MessageRejected
 
-        future: Optional[Future[BrokerValue[TStrategyPayload]]] = None
+        future: Optional[Future[BrokerValue[KafkaPayload]]] = None
 
         if not isinstance(message.payload, FilteredPayload):
             future = self.__producer.produce(self.__topic, message.payload)
@@ -130,7 +128,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__next_step.join(remaining)
 
 
-class ProduceAndCommit(ProcessingStrategy[TStrategyPayload]):
+class ProduceAndCommit(ProcessingStrategy[KafkaPayload]):
     """
     This strategy produces then commits offsets. It doesn't do much on
     on it's own since it is simply the Produce and CommitOffsets strategies
@@ -142,19 +140,19 @@ class ProduceAndCommit(ProcessingStrategy[TStrategyPayload]):
 
     def __init__(
         self,
-        producer: Producer[TStrategyPayload],
+        producer: Producer,
         topic: Topic,
         commit: Commit,
         max_buffer_size: int = 10000,
     ):
-        self.__strategy: Produce[TStrategyPayload] = Produce(
+        self.__strategy = Produce(
             producer, topic, CommitOffsets(commit), max_buffer_size
         )
 
     def poll(self) -> None:
         self.__strategy.poll()
 
-    def submit(self, message: Message[TStrategyPayload]) -> None:
+    def submit(self, message: Message[KafkaPayload]) -> None:
         self.__strategy.submit(message)
 
     def close(self) -> None:

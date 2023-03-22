@@ -4,7 +4,6 @@ from concurrent.futures import Future
 from typing import Deque, Optional
 
 from arroyo.backends.abstract import Producer
-from arroyo.backends.kafka.consumer import KafkaPayload
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
     InvalidMessage,
     InvalidMessages,
@@ -12,7 +11,7 @@ from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
 from arroyo.processing.strategies.dead_letter_queue.policies.abstract import (
     DeadLetterQueuePolicy,
 )
-from arroyo.types import BrokerValue, Topic
+from arroyo.types import BrokerValue, KafkaPayload, Topic
 from arroyo.utils.metrics import get_metrics
 
 MAX_QUEUE_SIZE = 5000
@@ -23,9 +22,7 @@ class ProduceInvalidMessagePolicy(DeadLetterQueuePolicy):
     Produces given InvalidMessages to a dead letter topic.
     """
 
-    def __init__(
-        self, producer: Producer[KafkaPayload], dead_letter_topic: Topic
-    ) -> None:
+    def __init__(self, producer: Producer, dead_letter_topic: Topic) -> None:
         self.__closed = False
         self.__metrics = get_metrics()
         self.__dead_letter_topic = dead_letter_topic

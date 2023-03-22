@@ -9,7 +9,6 @@ from threading import Lock, RLock
 from typing import (
     Callable,
     Deque,
-    Generic,
     Mapping,
     MutableMapping,
     MutableSequence,
@@ -23,16 +22,16 @@ from typing import (
 from arroyo.backends.abstract import Consumer, Producer
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.errors import ConsumerError, EndOfPartition
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 from arroyo.utils.clock import Clock, SystemClock
 
 system_clock = SystemClock()
 
 
-class LocalBroker(Generic[TStrategyPayload]):
+class LocalBroker:
     def __init__(
         self,
-        message_storage: MessageStorage[TStrategyPayload],
+        message_storage: MessageStorage,
         clock: Clock = system_clock,
     ) -> None:
         self.__message_storage = message_storage
@@ -45,19 +44,19 @@ class LocalBroker(Generic[TStrategyPayload]):
         # The active subscriptions are stored by consumer group as a mapping
         # between the consumer and it's subscribed topics.
         self.__subscriptions: MutableMapping[
-            str, MutableMapping[LocalConsumer[TStrategyPayload], Sequence[Topic]]
+            str, MutableMapping[LocalConsumer, Sequence[Topic]]
         ] = defaultdict(dict)
 
         self.__lock = Lock()
 
     def get_consumer(
         self, group: str, enable_end_of_partition: bool = False
-    ) -> Consumer[TStrategyPayload]:
+    ) -> Consumer:
         return LocalConsumer(
             self, group, enable_end_of_partition=enable_end_of_partition
         )
 
-    def get_producer(self) -> Producer[TStrategyPayload]:
+    def get_producer(self) -> Producer:
         return LocalProducer(self)
 
     def create_topic(self, topic: Topic, partitions: int) -> None:
@@ -69,15 +68,15 @@ class LocalBroker(Generic[TStrategyPayload]):
             return self.__message_storage.get_partition_count(topic)
 
     def produce(
-        self, partition: Partition, payload: TStrategyPayload
-    ) -> BrokerValue[TStrategyPayload]:
+        self, partition: Partition, payload: KafkaPayload
+    ) -> BrokerValue[KafkaPayload]:
         with self.__lock:
             return self.__message_storage.produce(
                 partition, payload, datetime.fromtimestamp(self.__clock.time())
             )
 
     def subscribe(
-        self, consumer: LocalConsumer[TStrategyPayload], topics: Sequence[Topic]
+        self, consumer: LocalConsumer, topics: Sequence[Topic]
     ) -> Mapping[Partition, int]:
         with self.__lock:
             if self.__subscriptions[consumer.group]:
@@ -105,9 +104,7 @@ class LocalBroker(Generic[TStrategyPayload]):
 
         return assignment
 
-    def unsubscribe(
-        self, consumer: LocalConsumer[TStrategyPayload]
-    ) -> Sequence[Partition]:
+    def unsubscribe(self, consumer: LocalConsumer) -> Sequence[Partition]:
         with self.__lock:
             partitions: MutableSequence[Partition] = []
             for topic in self.__subscriptions[consumer.group].pop(consumer):
@@ -119,13 +116,13 @@ class LocalBroker(Generic[TStrategyPayload]):
 
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         with self.__lock:
             return self.__message_storage.consume(partition, offset)
 
     def commit(
         self,
-        consumer: LocalConsumer[TStrategyPayload],
+        consumer: LocalConsumer,
         offsets: Mapping[Partition, int],
     ) -> None:
         with self.__lock:
@@ -139,10 +136,10 @@ class Subscription(NamedTuple):
     revocation_callback: Optional[Callable[[Sequence[Partition]], None]]
 
 
-class LocalConsumer(Consumer[TStrategyPayload]):
+class LocalConsumer(Consumer):
     def __init__(
         self,
-        broker: LocalBroker[TStrategyPayload],
+        broker: LocalBroker,
         group: str,
         enable_end_of_partition: bool = False,
     ) -> None:
@@ -230,7 +227,7 @@ class LocalConsumer(Consumer[TStrategyPayload]):
 
     def poll(
         self, timeout: Optional[float] = None
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
@@ -360,16 +357,16 @@ class LocalConsumer(Consumer[TStrategyPayload]):
         return self.__closed
 
 
-class LocalProducer(Producer[TStrategyPayload]):
-    def __init__(self, broker: LocalBroker[TStrategyPayload]) -> None:
+class LocalProducer(Producer):
+    def __init__(self, broker: LocalBroker) -> None:
         self.__broker = broker
 
         self.__lock = Lock()
         self.__closed = False
 
     def produce(
-        self, destination: Union[Topic, Partition], payload: TStrategyPayload
-    ) -> Future[BrokerValue[TStrategyPayload]]:
+        self, destination: Union[Topic, Partition], payload: KafkaPayload
+    ) -> Future[BrokerValue[KafkaPayload]]:
         with self.__lock:
             assert not self.__closed
 
@@ -386,7 +383,7 @@ class LocalProducer(Producer[TStrategyPayload]):
             else:
                 raise TypeError("invalid destination type")
 
-            future: Future[BrokerValue[TStrategyPayload]] = Future()
+            future: Future[BrokerValue[KafkaPayload]] = Future()
             future.set_running_or_notify_cancel()
             try:
                 message = self.__broker.produce(partition, payload)

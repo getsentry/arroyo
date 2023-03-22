@@ -3,13 +3,13 @@ import json
 import logging
 from typing import Mapping
 
-from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
+from arroyo.backends.kafka.consumer import KafkaProducer
 from arroyo.processing.strategies import CommitOffsets, Produce, TransformStep
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, Topic
+from arroyo.types import Commit, KafkaPayload, Message, Partition, Topic
 
 logger = logging.getLogger(__name__)
 

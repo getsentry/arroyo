@@ -8,13 +8,13 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 
 
-class MemoryMessageStorage(MessageStorage[TStrategyPayload]):
+class MemoryMessageStorage(MessageStorage):
     def __init__(self) -> None:
         self.__topics: MutableMapping[
-            Topic, Sequence[MutableSequence[Tuple[TStrategyPayload, datetime]]]
+            Topic, Sequence[MutableSequence[Tuple[KafkaPayload, datetime]]]
         ] = {}
 
     def create_topic(self, topic: Topic, partitions: int) -> None:
@@ -40,7 +40,7 @@ class MemoryMessageStorage(MessageStorage[TStrategyPayload]):
 
     def __get_messages(
         self, partition: Partition
-    ) -> MutableSequence[Tuple[TStrategyPayload, datetime]]:
+    ) -> MutableSequence[Tuple[KafkaPayload, datetime]]:
         # TODO: Maybe this should be enforced in the ``Partition`` constructor?
         if not partition.index >= 0:
             raise PartitionDoesNotExist(partition)
@@ -54,7 +54,7 @@ class MemoryMessageStorage(MessageStorage[TStrategyPayload]):
 
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         messages = self.__get_messages(partition)
 
         try:
@@ -67,8 +67,8 @@ class MemoryMessageStorage(MessageStorage[TStrategyPayload]):
         return BrokerValue(payload, partition, offset, timestamp)
 
     def produce(
-        self, partition: Partition, payload: TStrategyPayload, timestamp: datetime
-    ) -> BrokerValue[TStrategyPayload]:
+        self, partition: Partition, payload: KafkaPayload, timestamp: datetime
+    ) -> BrokerValue[KafkaPayload]:
         messages = self.__get_messages(partition)
 
         offset = len(messages)

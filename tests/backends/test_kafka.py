@@ -68,7 +68,7 @@ def get_topic(
         assert future.result() is None
 
 
-class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
+class KafkaStreamsTestCase(StreamsTestMixin, TestCase):
 
     configuration = build_kafka_configuration(
         {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}

@@ -5,7 +5,6 @@ from unittest import mock
 import pytest
 
 from arroyo.backends.local.backend import LocalBroker
-from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
@@ -14,7 +13,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
+from arroyo.types import BrokerValue, Commit, KafkaPayload, Message, Partition, Topic
 from arroyo.utils.clock import TestingClock
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import TestingMetricsBackend, Timing
@@ -31,9 +30,7 @@ def test_stream_processor_lifecycle() -> None:
     metrics = TestingMetricsBackend
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE
-        )
+        processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
     # The processor should accept heartbeat messages without an assignment or
     # active processor.
@@ -149,9 +146,7 @@ def test_stream_processor_termination_on_error() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE
-    )
+    processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
     assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
     assignment_callback({Partition(topic, 0): 0})
@@ -173,9 +168,7 @@ def test_stream_processor_create_with_partitions() -> None:
     factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE
-        )
+        processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -218,13 +211,13 @@ def test_stream_processor_create_with_partitions() -> None:
     assert factory.create_with_partitions.call_count == 3
 
 
-class CommitOffsets(ProcessingStrategy[int]):
+class CommitOffsets(ProcessingStrategy[KafkaPayload]):
     def __init__(self, commit: Commit) -> None:
         self.__commit = commit
 
-    def submit(self, message: Message[int]) -> None:
+    def submit(self, message: Message[KafkaPayload]) -> None:
         # If we get a message with value of 1, force commit
-        if message.payload == 1:
+        if int(message.payload.value) == 1:
             self.__commit(
                 message.committable,
                 force=True,
@@ -247,17 +240,17 @@ class CommitOffsets(ProcessingStrategy[int]):
         pass
 
 
-class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
+class CommitOffsetsFactory(ProcessingStrategyFactory[KafkaPayload]):
     def create_with_partitions(
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[int]:
+    ) -> ProcessingStrategy[KafkaPayload]:
         return CommitOffsets(commit)
 
 
 def run_commit_policy_test(
-    topic: Topic, given_messages: Sequence[Message[int]], policy: CommitPolicy
+    topic: Topic, given_messages: Sequence[Message[KafkaPayload]], policy: CommitPolicy
 ) -> Sequence[int]:
     commit = mock.Mock()
     consumer = mock.Mock()
@@ -265,7 +258,7 @@ def run_commit_policy_test(
 
     factory = CommitOffsetsFactory()
 
-    processor: StreamProcessor[int] = StreamProcessor(
+    processor = StreamProcessor(
         consumer,
         topic,
         factory,
@@ -298,14 +291,16 @@ def test_stream_processor_commit_policy() -> None:
 
     commit_every_second_message = CommitPolicy(None, 2)
 
+    payload = KafkaPayload(key=None, value=b"0", headers=[])
+
     assert run_commit_policy_test(
         topic,
         [
-            Message(BrokerValue(0, Partition(topic, 0), 0, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 1, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 2, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 5, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 10, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 0, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 1, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 2, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 5, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 10, datetime.now())),
         ],
         commit_every_second_message,
     ) == [
@@ -326,13 +321,15 @@ def test_stream_processor_commit_policy_multiple_partitions() -> None:
 
     commit_every_second_message = CommitPolicy(None, 2)
 
+    payload = KafkaPayload(key=None, value=b"0", headers=[])
+
     assert run_commit_policy_test(
         topic,
         [
-            Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 400, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 200, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 1), 400, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 0), 400, datetime.now())),
+            Message(BrokerValue(payload, Partition(topic, 1), 400, datetime.now())),
         ],
         commit_every_second_message,
     ) == [
@@ -352,7 +349,16 @@ def test_stream_processor_commit_policy_always() -> None:
 
     assert run_commit_policy_test(
         topic,
-        [Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now()))],
+        [
+            Message(
+                BrokerValue(
+                    KafkaPayload(key=None, value=b"0", headers=[]),
+                    Partition(topic, 0),
+                    200,
+                    datetime.now(),
+                )
+            )
+        ],
         IMMEDIATE,
     ) == [
         # IMMEDIATE policy can commit on the first message (even
@@ -370,16 +376,30 @@ def test_stream_processor_commit_policy_every_two_seconds() -> None:
 
     now = datetime.now()
 
+    payload = KafkaPayload(key=None, value=b"0", headers=[])
+
     assert run_commit_policy_test(
         topic,
         [
-            Message(BrokerValue(0, Partition(topic, 0), 0, now)),
-            Message(BrokerValue(0, Partition(topic, 0), 1, now + timedelta(seconds=1))),
-            Message(BrokerValue(0, Partition(topic, 0), 2, now + timedelta(seconds=2))),
-            Message(BrokerValue(0, Partition(topic, 0), 3, now + timedelta(seconds=3))),
-            Message(BrokerValue(0, Partition(topic, 0), 4, now + timedelta(seconds=4))),
-            Message(BrokerValue(0, Partition(topic, 0), 5, now + timedelta(seconds=5))),
-            Message(BrokerValue(0, Partition(topic, 0), 6, now + timedelta(seconds=6))),
+            Message(BrokerValue(payload, Partition(topic, 0), 0, now)),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 1, now + timedelta(seconds=1))
+            ),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 2, now + timedelta(seconds=2))
+            ),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 3, now + timedelta(seconds=3))
+            ),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 4, now + timedelta(seconds=4))
+            ),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 5, now + timedelta(seconds=5))
+            ),
+            Message(
+                BrokerValue(payload, Partition(topic, 0), 6, now + timedelta(seconds=6))
+            ),
         ],
         commit_every_two_seconds,
     ) == [
@@ -405,7 +425,7 @@ def test_commit_policy_bench(
     num_partitions = 1
     now = datetime.now()
 
-    storage: MessageStorage[int] = MemoryMessageStorage()
+    storage = MemoryMessageStorage()
     storage.create_topic(topic, num_partitions)
 
     broker = LocalBroker(storage, TestingClock())
@@ -414,7 +434,7 @@ def test_commit_policy_bench(
 
     factory = CommitOffsetsFactory()
 
-    processor: StreamProcessor[int] = StreamProcessor(
+    processor = StreamProcessor(
         consumer,
         topic,
         factory,
@@ -423,7 +443,11 @@ def test_commit_policy_bench(
 
     def inner() -> None:
         for i in range(num_messages):
-            storage.produce(Partition(topic, i % num_partitions), i, now)
+            storage.produce(
+                Partition(topic, i % num_partitions),
+                KafkaPayload(key=None, value=str(i).encode("utf-8"), headers=[]),
+                now,
+            )
 
         for _ in range(num_messages):
             processor._run_once()

@@ -2,9 +2,39 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Mapping, Protocol, TypeVar
+from pickle import PickleBuffer
+from typing import (
+    Any,
+    Generic,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Protocol,
+    Sequence,
+    SupportsIndex,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 TReplaced = TypeVar("TReplaced")
+
+Headers = Sequence[Tuple[str, bytes]]
+
+
+class KafkaPayload(NamedTuple):
+    key: Optional[bytes]
+    value: bytes
+    headers: Headers
+
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Tuple[Type[KafkaPayload], Any]:
+        if int(protocol) >= 5:
+            return (
+                type(self),
+                (self.key, PickleBuffer(self.value), self.headers),
+            )
+        else:
+            return type(self), (self.key, self.value, self.headers)
 
 
 @dataclass(order=True, unsafe_hash=True)

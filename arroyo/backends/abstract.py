@@ -3,14 +3,14 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
-from typing import Callable, Generic, Mapping, Optional, Sequence, Union
+from typing import Callable, Mapping, Optional, Sequence, Union
 
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 
 logger = logging.getLogger(__name__)
 
 
-class Consumer(Generic[TStrategyPayload], ABC):
+class Consumer(ABC):
     """
     This abstract class provides an interface for consuming messages from a
     multiplexed collection of partitioned topic streams.
@@ -64,7 +64,7 @@ class Consumer(Generic[TStrategyPayload], ABC):
     @abstractmethod
     def poll(
         self, timeout: Optional[float] = None
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         """
         Fetch a message from the consumer. If no message is available before
         the timeout, ``None`` is returned.
@@ -166,11 +166,11 @@ class Consumer(Generic[TStrategyPayload], ABC):
         raise NotImplementedError
 
 
-class Producer(Generic[TStrategyPayload], ABC):
+class Producer(ABC):
     @abstractmethod
     def produce(
-        self, destination: Union[Topic, Partition], payload: TStrategyPayload
-    ) -> Future[BrokerValue[TStrategyPayload]]:
+        self, destination: Union[Topic, Partition], payload: KafkaPayload
+    ) -> Future[BrokerValue[KafkaPayload]]:
         """
         Produce to a topic or partition.
         """

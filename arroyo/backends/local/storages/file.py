@@ -24,17 +24,17 @@ from arroyo.backends.local.storages.abstract import (
     TopicExists,
 )
 from arroyo.errors import OffsetOutOfRange
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import BrokerValue, KafkaPayload, Partition, Topic
 from arroyo.utils.codecs import Codec
 
 
 @dataclass(unsafe_hash=True)
-class FileValue(BrokerValue[TStrategyPayload]):
+class FileValue(BrokerValue[KafkaPayload]):
     _next_offset: int
 
     def __init__(
         self,
-        payload: TStrategyPayload,
+        payload: KafkaPayload,
         partition: Partition,
         offset: int,
         timestamp: datetime,
@@ -48,8 +48,8 @@ class FileValue(BrokerValue[TStrategyPayload]):
         return self._next_offset
 
 
-class PickleCodec(Codec[bytes, Tuple[TStrategyPayload, datetime]]):
-    def encode(self, value: Tuple[TStrategyPayload, datetime]) -> bytes:
+class PickleCodec(Codec[bytes, Tuple[KafkaPayload, datetime]]):
+    def encode(self, value: Tuple[KafkaPayload, datetime]) -> bytes:
         return pickle.dumps(value)
 
     def decode(self, value: bytes) -> Any:
@@ -85,11 +85,11 @@ class InvalidChecksum(ValueError):
     pass
 
 
-class FileMessageStorage(MessageStorage[TStrategyPayload]):
+class FileMessageStorage(MessageStorage):
     def __init__(
         self,
         directory: str,
-        codec: Codec[bytes, Tuple[TStrategyPayload, datetime]] = PickleCodec(),
+        codec: Codec[bytes, Tuple[KafkaPayload, datetime]] = PickleCodec(),
     ) -> None:
         self.__directory = Path(directory)
         assert self.__directory.exists() and self.__directory.is_dir()
@@ -159,8 +159,8 @@ class FileMessageStorage(MessageStorage[TStrategyPayload]):
         return len(self.__get_file_partitions_for_topic(topic))
 
     def produce(
-        self, partition: Partition, payload: TStrategyPayload, timestamp: datetime
-    ) -> BrokerValue[TStrategyPayload]:
+        self, partition: Partition, payload: KafkaPayload, timestamp: datetime
+    ) -> BrokerValue[KafkaPayload]:
         encoded = self.__codec.encode((payload, timestamp))
         file = self.__get_file_partition(partition).writer
         offset = file.tell()
@@ -172,7 +172,7 @@ class FileMessageStorage(MessageStorage[TStrategyPayload]):
 
     def consume(
         self, partition: Partition, offset: int
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
+    ) -> Optional[BrokerValue[KafkaPayload]]:
         file_partition = self.__get_file_partition(partition)
         file = file_partition.reader
 

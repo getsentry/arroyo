@@ -336,7 +336,7 @@ def test_produce_invalid_messages(
     invalid_message_no_key: Message[KafkaPayload],
     invalid_message_bad_value: Message[KafkaPayload],
     processing_step: FakeProcessingStep,
-    broker: LocalBroker[KafkaPayload],
+    broker: LocalBroker,
 ) -> None:
     producer = broker.get_producer()
     topic = Topic("test-dead-letter-topic")

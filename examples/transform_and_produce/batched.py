@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Any, Mapping, MutableSequence, Sequence
 
-from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
+from arroyo.backends.kafka.consumer import KafkaProducer
 from arroyo.processing.strategies import (
     BatchStep,
     CommitOffsets,
@@ -15,7 +15,15 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.batching import ValuesBatch
-from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
+from arroyo.types import (
+    BaseValue,
+    Commit,
+    KafkaPayload,
+    Message,
+    Partition,
+    Topic,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 

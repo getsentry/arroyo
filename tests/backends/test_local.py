@@ -19,18 +19,18 @@ from arroyo.backends.local.storages.abstract import (
 )
 from arroyo.backends.local.storages.file import FileMessageStorage, InvalidChecksum
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.types import Partition, Topic
+from arroyo.types import KafkaPayload, Partition, Topic
 from arroyo.utils.clock import TestingClock
 from tests.backends.mixins import StreamsTestMixin
 
 
-class LocalStreamsTestMixin(StreamsTestMixin[int]):
+class LocalStreamsTestMixin(StreamsTestMixin):
     def setUp(self) -> None:
         self.storage = self.get_message_storage()
         self.broker = LocalBroker(self.storage, TestingClock())
 
     @abstractmethod
-    def get_message_storage(self) -> MessageStorage[int]:
+    def get_message_storage(self) -> MessageStorage:
         raise NotImplementedError
 
     @contextlib.contextmanager
@@ -41,17 +41,18 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
 
     def get_consumer(
         self, group: Optional[str] = None, enable_end_of_partition: bool = True
-    ) -> Consumer[int]:
+    ) -> Consumer:
         return self.broker.get_consumer(
             group if group is not None else uuid.uuid1().hex,
             enable_end_of_partition=enable_end_of_partition,
         )
 
-    def get_producer(self) -> Producer[int]:
+    def get_producer(self) -> Producer:
         return self.broker.get_producer()
 
-    def get_payloads(self) -> Iterator[int]:
-        return itertools.count()
+    def get_payloads(self) -> Iterator[KafkaPayload]:
+        for i in itertools.count():
+            yield KafkaPayload(key=None, value=str(i).encode("utf-8"), headers=[])
 
     @pytest.mark.xfail(strict=True, reason="rebalancing not implemented")
     def test_pause_resume_rebalancing(self) -> None:
@@ -77,7 +78,11 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
             self.storage.consume(Partition(Topic("invalid"), 0), 0)
 
         with pytest.raises(TopicDoesNotExist):
-            self.storage.produce(Partition(Topic("invalid"), 0), 0, datetime.now())
+            self.storage.produce(
+                Partition(Topic("invalid"), 0),
+                KafkaPayload(key=None, value=b"0", headers=[]),
+                datetime.now(),
+            )
 
         with pytest.raises(PartitionDoesNotExist):
             self.storage.consume(Partition(topic, -1), 0)
@@ -86,10 +91,18 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
             self.storage.consume(Partition(topic, partitions + 1), 0)
 
         with pytest.raises(PartitionDoesNotExist):
-            self.storage.produce(Partition(topic, -1), 0, datetime.now())
+            self.storage.produce(
+                Partition(topic, -1),
+                KafkaPayload(key=None, value=b"0", headers=[]),
+                datetime.now(),
+            )
 
         with pytest.raises(PartitionDoesNotExist):
-            self.storage.produce(Partition(topic, partitions + 1), 0, datetime.now())
+            self.storage.produce(
+                Partition(topic, partitions + 1),
+                KafkaPayload(key=None, value=b"0", headers=[]),
+                datetime.now(),
+            )
 
         self.storage.delete_topic(topic)
 
@@ -98,7 +111,7 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
 
 
 class LocalStreamsMemoryStorageTestCase(LocalStreamsTestMixin, TestCase):
-    def get_message_storage(self) -> MessageStorage[int]:
+    def get_message_storage(self) -> MessageStorage:
         return MemoryMessageStorage()
 
 
@@ -107,7 +120,7 @@ class LocalStreamsFileStorageTestCase(LocalStreamsTestMixin, TestCase):
         self.directory = TemporaryDirectory()
         super().setUp()
 
-    def get_message_storage(self) -> MessageStorage[int]:
+    def get_message_storage(self) -> MessageStorage:
         return FileMessageStorage(self.directory.name)
 
     def test_unaligned_offset(self) -> None:
@@ -115,7 +128,9 @@ class LocalStreamsFileStorageTestCase(LocalStreamsTestMixin, TestCase):
         partition = Partition(topic, 0)
         self.storage.create_topic(topic, 1)
 
-        message = self.storage.produce(partition, 1, datetime.now())
+        message = self.storage.produce(
+            partition, KafkaPayload(key=None, value=b"1", headers=[]), datetime.now()
+        )
 
         invalid_offset = message.offset + 4
         assert message.next_offset > invalid_offset > message.offset
