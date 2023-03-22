@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from enum import Enum
-from typing import Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import Deque, Generic, Mapping, MutableMapping, Optional, Sequence, cast
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
+from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -55,6 +56,48 @@ class MetricsBuffer:
             self.flush()
 
 
+class BufferedMessages(Generic[TStrategyPayload]):
+    """
+    Manages a buffer of messages that are pending commit. This is used to retreive raw messages
+    in case they need to be placed in the DLQ.
+    """
+
+    def __init__(self, dlq_policy: Optional[DlqPolicy[TStrategyPayload]]) -> None:
+        self.__buffered_messages: MutableMapping[
+            Partition, Deque[BrokerValue[TStrategyPayload]]
+        ] = defaultdict(deque)
+
+    def append(self, message: BrokerValue[TStrategyPayload]) -> None:
+        """
+        Append a message to DLQ buffer
+        """
+        self.__buffered_messages[message.partition].append(message)
+
+    def pop(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
+        """
+        Return the message at the given offset or None if it is not found in the buffer.
+        Messages up to the offset for the given partition are removed.
+        """
+        buffered = self.__buffered_messages[partition]
+
+        while buffered:
+            if buffered[0].offset == offset:
+                return buffered.popleft()
+            if buffered[0].offset > offset:
+                break
+            self.__buffered_messages[partition].popleft()
+
+        return None
+
+    def reset(self) -> None:
+        """
+        Reset the buffer.
+        """
+        self.__buffered_messages = defaultdict(deque)
+
+
 class StreamProcessor(Generic[TStrategyPayload]):
     """
     A stream processor manages the relationship between a ``Consumer``
@@ -69,6 +112,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TStrategyPayload],
         commit_policy: CommitPolicy,
+        dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
     ) -> None:
         self.__consumer = consumer
@@ -88,6 +132,17 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
         self.__shutdown_requested = False
+
+        # Buffers messages for DLQ. Messages are added when they are submitted for processing and
+        # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
+        # TODO: Reset on assignment/revocation
+        self.__dlq_policy = dlq_policy
+        self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
+            dlq_policy
+        )
+        # Last staged offsets
+        self.__committed_offsets: MutableMapping[Partition, int] = {}
+        self.__dlq_offsets: MutableMapping[Partition, int] = {}
 
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
@@ -120,6 +175,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            self.__committed_offsets = cast(MutableMapping[Partition, int], partitions)
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
@@ -158,6 +214,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         self.__consumer.stage_offsets(offsets)
+        # We maintain a separate copy of staged offsets for the DLQ
+        self.__committed_offsets.update(offsets)
         now = time.time()
 
         if force or self.__commit_policy_state.should_commit(
@@ -194,6 +252,44 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Processor terminated")
             raise
 
+    def _handle_invalid_message(self, exc: InvalidMessage) -> None:
+        logger.exception(exc)
+        invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+        if invalid_message is None:
+            raise Exception(
+                f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+            ) from None
+
+        if self.__dlq_policy:
+            # XXX: This blocks until the message is produced. This will be slow
+            # if there is a very large volume of invalid messages to be produced.
+            self.__dlq_policy.producer.produce(invalid_message).result()
+            self.__dlq_offsets[exc.partition] = exc.offset + 1
+
+    def _maybe_commit_dlq_offsets(self) -> None:
+        # Commits the offset of messages sent to DLQ only if it is exactly one
+        # offset ahead of the last committed offset
+        offsets_to_commit: MutableMapping[Partition, int] = {}
+
+        for partition in list(self.__dlq_offsets.keys()):
+            dlq_offset = self.__dlq_offsets[partition]
+            committed_offset = self.__committed_offsets[partition]
+
+            if dlq_offset == committed_offset + 1:
+                offsets_to_commit[partition] = dlq_offset
+                self.__dlq_offsets.pop(partition)
+            elif dlq_offset < committed_offset:
+                logger.warning(
+                    "DLQ offset for %r is behind the committed offset",
+                    partition,
+                )
+                self.__dlq_offsets.pop(partition)
+
+        if offsets_to_commit:
+            self.__commit(offsets_to_commit, force=True)
+
+        self.__committed_offsets.update(offsets_to_commit)
+
     def _run_once(self) -> None:
         message_carried_over = self.__message is not None
 
@@ -218,7 +314,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
-            self.__processing_strategy.poll()
+            try:
+                self.__processing_strategy.poll()
+            except InvalidMessage as e:
+                self._handle_invalid_message(e)
             self.__metrics_buffer.increment(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
@@ -228,7 +327,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     message = (
                         Message(self.__message) if self.__message is not None else None
                     )
+                    if not message_carried_over:
+                        self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
+                    self._maybe_commit_dlq_offsets()
+
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
@@ -254,6 +357,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
 
                 else:
                     # If we were trying to submit a message that failed to be
