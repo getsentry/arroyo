@@ -12,7 +12,7 @@ def test_produce() -> None:
     orig_topic = Topic("orig-topic")
     result_topic = Topic("result-topic")
     clock = TestingClock()
-    broker_storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
+    broker_storage = MemoryMessageStorage()
     broker: LocalBroker = LocalBroker(broker_storage, clock)
     broker.create_topic(result_topic, partitions=1)
 
@@ -48,7 +48,7 @@ def test_produce_and_commit() -> None:
     orig_topic = Topic("orig-topic")
     result_topic = Topic("result-topic")
     clock = TestingClock()
-    broker_storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
+    broker_storage = MemoryMessageStorage()
     broker: LocalBroker = LocalBroker(broker_storage, clock)
     broker.create_topic(result_topic, partitions=1)
 
