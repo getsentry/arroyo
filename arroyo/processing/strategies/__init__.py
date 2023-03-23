@@ -14,6 +14,7 @@ from arroyo.processing.strategies.run_task import (
     RunTaskWithMultiprocessing,
 )
 from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
+from arroyo.processing.strategies.unfold import Unfold
 
 __all__ = [
     "CommitOffsets",
@@ -25,6 +26,7 @@ __all__ = [
     "ProcessingStrategyFactory",
     "Produce",
     "Reduce",
+    "Unfold",
     "RunTask",
     "RunTaskInThreads",
     "BatchStep",
