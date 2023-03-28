@@ -135,7 +135,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
-        # TODO: Reset on assignment/revocation
         self.__dlq_policy = dlq_policy
         self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
             dlq_policy
