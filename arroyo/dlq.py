@@ -17,7 +17,7 @@ class InvalidMessage(Exception):
     It can be raised from the submit, poll or join methods of any processing strategy.
     """
 
-    def __init__(self, partition: Partition, offset: int, next_offset: int) -> None:
+    def __init__(self, partition: Partition, offset: int) -> None:
         self.partition = partition
         self.offset = offset
 
