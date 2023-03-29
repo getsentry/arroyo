@@ -171,7 +171,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         be used during consumer shutdown where we do not want to wait before committing.
         """
         for (partition, offset) in offsets.items():
-            self.__buffered_messages.pop(partition, offset)
+            self.__buffered_messages.pop(partition, offset - 1)
 
         self.__consumer.stage_offsets(offsets)
         now = time.time()
