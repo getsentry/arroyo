@@ -155,8 +155,8 @@ class RunTaskInThreads(
                 # FilteredPayload
                 next_message = cast(Message[TResult], message)
 
-                self.__next_step.poll()
-                self.__next_step.submit(next_message)
+            self.__next_step.poll()
+            self.__next_step.submit(next_message)
 
         self.__executor.shutdown()
         self.__next_step.join(timeout)
