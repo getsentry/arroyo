@@ -8,7 +8,7 @@ from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
-from arroyo.dlq import BufferedMessages, DlqPolicy, FakeBufferedMessages
+from arroyo.dlq import BufferedMessages, DlqPolicy
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -94,12 +94,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # removed once the commit callback is fired as they are guaranteed to be valid at that point.
         self.__dlq_policy = dlq_policy
-        if dlq_policy:
-            self.__buffered_messages: BufferedMessages[
-                TStrategyPayload
-            ] = BufferedMessages(dlq_policy)
-        else:
-            self.__buffered_messages = FakeBufferedMessages(dlq_policy)
+        self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
+            dlq_policy
+        )
 
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
