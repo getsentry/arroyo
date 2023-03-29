@@ -1,11 +1,9 @@
-from arroyo.processing.strategies.run_task import (
+from arroyo.processing.strategies.run_task import RunTask, TResult
+from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
-    RunTask,
     RunTaskWithMultiprocessing,
-    TResult,
-    ValueTooLarge,
 )
-from arroyo.processing.strategies.run_task import (
+from arroyo.processing.strategies.run_task_with_multiprocessing import (
     parallel_run_task_worker_apply as parallel_transform_worker_apply,
 )
 from arroyo.types import TStrategyPayload
@@ -37,6 +35,5 @@ __all__ = [
     "TransformStep",
     "ParallelTransformStep",
     "MessageBatch",
-    "ValueTooLarge",
     "parallel_transform_worker_apply",
 ]
