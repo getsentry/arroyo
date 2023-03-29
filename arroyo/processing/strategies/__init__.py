@@ -8,9 +8,9 @@ from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.processing.strategies.filter import FilterStep
 from arroyo.processing.strategies.produce import Produce
 from arroyo.processing.strategies.reduce import Reduce
-from arroyo.processing.strategies.run_task import (
-    RunTask,
-    RunTaskInThreads,
+from arroyo.processing.strategies.run_task import RunTask
+from arroyo.processing.strategies.run_task_in_threads import RunTaskInThreads
+from arroyo.processing.strategies.run_task_with_multiprocessing import (
     RunTaskWithMultiprocessing,
 )
 from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
