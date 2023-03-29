@@ -61,7 +61,7 @@ class RunTask(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> None:
         if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(cast(Message[TResult], message))
+            self.__next_step.submit(cast(Message[FilteredPayload], message))
         else:
             result = self.__function(cast(Message[TStrategyPayload], message))
             value = message.value.replace(result)
@@ -430,7 +430,7 @@ class RunTaskWithMultiprocessing(
     def __init__(
         self,
         function: Callable[[Message[TStrategyPayload]], TResult],
-        next_step: ProcessingStrategy[TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
         num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
