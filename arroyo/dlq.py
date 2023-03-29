@@ -18,8 +18,8 @@ class InvalidMessage(Exception):
     """
 
     def __init__(self, partition: Partition, offset: int) -> None:
-        self.__partition = partition
-        self.__offset = offset
+        self.partition = partition
+        self.offset = offset
 
 
 @dataclass(frozen=True)

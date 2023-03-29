@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from enum import Enum
-from typing import Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import Deque, Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
+from arroyo.dlq import DlqPolicy
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -55,6 +56,61 @@ class MetricsBuffer:
             self.flush()
 
 
+class BufferedMessages(Generic[TStrategyPayload]):
+    """
+    Manages a buffer of messages that are pending commit. This is used to retreive raw messages
+    in case they need to be placed in the DLQ.
+    """
+
+    def __init__(self, dlq_policy: Optional[DlqPolicy[TStrategyPayload]]) -> None:
+        self.__buffered_messages: MutableMapping[
+            Partition, Deque[BrokerValue[TStrategyPayload]]
+        ] = defaultdict(deque)
+
+    def append(self, message: BrokerValue[TStrategyPayload]) -> None:
+        """
+        Append a message to DLQ buffer
+        """
+        self.__buffered_messages[message.partition].append(message)
+
+    def pop(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
+        """
+        Return the message at the given offset or None if it is not found in the buffer.
+        Messages up to the offset for the given partition are removed.
+        """
+        buffered = self.__buffered_messages[partition]
+
+        while buffered:
+            if buffered[0].offset == offset:
+                return buffered.popleft()
+            if buffered[0].offset > offset:
+                break
+            self.__buffered_messages[partition].popleft()
+
+        return None
+
+    def reset(self) -> None:
+        """
+        Reset the buffer.
+        """
+        self.__buffered_messages = defaultdict(deque)
+
+
+class FakeBufferedMessages(Generic[TStrategyPayload]):
+    def append(self, message: BrokerValue[TStrategyPayload]) -> None:
+        pass
+
+    def pop(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
+        return None
+
+    def reset(self) -> None:
+        pass
+
+
 class StreamProcessor(Generic[TStrategyPayload]):
     """
     A stream processor manages the relationship between a ``Consumer``
@@ -69,6 +125,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TStrategyPayload],
         commit_policy: CommitPolicy,
+        dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
     ) -> None:
         self.__consumer = consumer
@@ -88,6 +145,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
         self.__shutdown_requested = False
+
+        # Buffers messages for DLQ. Messages are added when they are submitted for processing and
+        # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
+        self.__dlq_policy = dlq_policy
+        self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
+            dlq_policy
+        )
 
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
@@ -120,6 +184,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            self.__buffered_messages.reset()
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
@@ -228,7 +293,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     message = (
                         Message(self.__message) if self.__message is not None else None
                     )
+                    if not message_carried_over:
+                        self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
+
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
