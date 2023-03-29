@@ -147,7 +147,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__shutdown_requested = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
-        # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
+        # removed once the commit callback is fired as they are guaranteed to be valid at that point.
         self.__dlq_policy = dlq_policy
         if dlq_policy:
             self.__buffered_messages: BufferedMessages[
@@ -225,6 +225,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
+        for (partition, offset) in offsets.items():
+            self.__buffered_messages.pop(partition, offset)
+
         self.__consumer.stage_offsets(offsets)
         now = time.time()
 
@@ -299,7 +302,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     if not message_carried_over:
                         self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
-
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
