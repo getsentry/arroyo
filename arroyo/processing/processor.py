@@ -98,7 +98,7 @@ class BufferedMessages(Generic[TStrategyPayload]):
         self.__buffered_messages = defaultdict(deque)
 
 
-class FakeBufferedMessages(Generic[TStrategyPayload]):
+class FakeBufferedMessages(BufferedMessages[TStrategyPayload]):
     def append(self, message: BrokerValue[TStrategyPayload]) -> None:
         pass
 
@@ -149,9 +149,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
         self.__dlq_policy = dlq_policy
-        self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
-            dlq_policy
-        )
+        if dlq_policy:
+            self.__buffered_messages: BufferedMessages[
+                TStrategyPayload
+            ] = BufferedMessages(dlq_policy)
+        else:
+            self.__buffered_messages = FakeBufferedMessages(dlq_policy)
 
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
