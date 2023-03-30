@@ -1,5 +1,22 @@
 # Changelog and versioning
 
+## 2.8.0
+
+### Various fixes & improvements
+
+- feat: DLQ perf test (#205) by @lynnagara
+- ref: Split run task, update strategies docs page (#204) by @lynnagara
+- fix: RunTaskWithMultiprocessing support for filtered message (#203) by @lynnagara
+- feat: Add unfold strategy (#197) by @lynnagara
+- feat(dlq): Make dlq interface generic (#200) by @lynnagara
+- feat(dlq): Introduce DLQ docs and interfaces (#195) by @lynnagara
+- docs: Document how to use metrics (#198) by @lynnagara
+- docs: Update get started section (#196) by @lynnagara
+- meta: Update readme to remove some duplicate text (#199) by @lynnagara
+- ci: Make tests go faster (#194) by @lynnagara
+- docs: Update readme (#192) by @lynnagara
+- small grammar improvements (#191) by @barkbarkimashark
+
 ## 2.7.1
 
 ### Various fixes & improvements
