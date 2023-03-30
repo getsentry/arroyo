@@ -8,6 +8,7 @@ from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
+from arroyo.dlq import BufferedMessages, DlqPolicy
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -69,6 +70,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TStrategyPayload],
         commit_policy: CommitPolicy,
+        dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
     ) -> None:
         self.__consumer = consumer
@@ -88,6 +90,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
         self.__shutdown_requested = False
+
+        # Buffers messages for DLQ. Messages are added when they are submitted for processing and
+        # removed once the commit callback is fired as they are guaranteed to be valid at that point.
+        self.__dlq_policy = dlq_policy
+        self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
+            dlq_policy
+        )
 
         def _close_strategy() -> None:
             if self.__processing_strategy is None:
@@ -120,6 +129,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            self.__buffered_messages.reset()
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
@@ -157,6 +167,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
+        for (partition, offset) in offsets.items():
+            self.__buffered_messages.pop(partition, offset - 1)
+
         self.__consumer.stage_offsets(offsets)
         now = time.time()
 
@@ -228,6 +241,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     message = (
                         Message(self.__message) if self.__message is not None else None
                     )
+                    if not message_carried_over:
+                        self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
