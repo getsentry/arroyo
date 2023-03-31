@@ -429,3 +429,7 @@ def test_commit_policy_bench(
             processor._run_once()
 
     benchmark(inner)
+
+
+def test_dlq() -> None:
+    pass

@@ -2,27 +2,10 @@ import logging
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import (
-    Callable,
-    Deque,
-    Generic,
-    MutableSequence,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar, Union, cast
 
-from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import (
-    FILTERED_PAYLOAD,
-    FilteredPayload,
-    Message,
-    TStrategyPayload,
-    Value,
-)
+from arroyo.types import FilteredPayload, Message, TStrategyPayload
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +25,6 @@ class RunTaskInThreads(
 
     Since the processing function will be run in threads, avoid using objects which can be modified
     by different threads or protect it using locks.
-
-    The processing function can raise ``InvalidMessage`` to indicate that the message is invalid and should
-    be placed in a dead letter queue.
 
     If there are too many pending futures, we MessageRejected will be raised to notify the stream processor
     to slow down.
@@ -70,15 +50,7 @@ class RunTaskInThreads(
         ] = deque()
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
-        self.__invalid_messages: MutableSequence[InvalidMessage] = []
         self.__closed = False
-
-    def __forward_invalid_offsets(self) -> None:
-        if self.__invalid_messages:
-            committable = {m.partition: m.offset + 1 for m in self.__invalid_messages}
-            self.__next_step.poll()
-            self.__next_step.submit(Message(Value(FILTERED_PAYLOAD, committable)))
-            self.__invalid_messages = []
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
@@ -99,8 +71,6 @@ class RunTaskInThreads(
         self.__queue.append((message, future))
 
     def poll(self) -> None:
-        self.__forward_invalid_offsets()
-
         while self.__queue:
             message, future = self.__queue[0]
             next_message: Message[TResult]
@@ -110,11 +80,7 @@ class RunTaskInThreads(
                     break
 
                 # Will raise if the future errored
-                try:
-                    result = future.result()
-                except InvalidMessage as e:
-                    self.__invalid_messages.append(e)
-                    raise e
+                result = future.result()
                 payload = message.value.replace(result)
                 next_message = Message(payload)
             else:
@@ -129,8 +95,6 @@ class RunTaskInThreads(
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
 
-        self.__forward_invalid_offsets()
-
         while self.__queue:
             remaining = timeout - (time.time() - start) if timeout is not None else None
             if remaining is not None and remaining <= 0:
@@ -142,12 +106,7 @@ class RunTaskInThreads(
 
             if future is not None:
                 # Will raise if the future errored
-                try:
-                    result = future.result(remaining)
-                except InvalidMessage as e:
-                    self.__invalid_messages.append(e)
-                    raise e
-
+                result = future.result(remaining)
                 payload = message.value.replace(result)
                 next_message = Message(payload)
             else:
