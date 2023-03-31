@@ -212,13 +212,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
         logger.exception(exc)
-        invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
-        if invalid_message is None:
-            raise Exception(
-                f"Invalid message not found in buffer {exc.partition} {exc.offset}",
-            ) from None
-
         if self.__dlq_policy:
+            invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+            if invalid_message is None:
+                raise Exception(
+                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+                ) from None
+
             # XXX: This blocks until the message is produced. This will be slow
             # if there is a very large volume of invalid messages to be produced.
             self.__dlq_policy.producer.produce(invalid_message).result()
