@@ -3,7 +3,6 @@ import itertools
 import uuid
 from abc import abstractmethod
 from datetime import datetime
-from tempfile import TemporaryDirectory
 from typing import Iterator, Optional
 from unittest import TestCase
 
@@ -17,7 +16,6 @@ from arroyo.backends.local.storages.abstract import (
     TopicDoesNotExist,
     TopicExists,
 )
-from arroyo.backends.local.storages.file import FileMessageStorage, InvalidChecksum
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import Partition, Topic
 from arroyo.utils.clock import TestingClock
@@ -100,25 +98,3 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
 class LocalStreamsMemoryStorageTestCase(LocalStreamsTestMixin, TestCase):
     def get_message_storage(self) -> MessageStorage[int]:
         return MemoryMessageStorage()
-
-
-class LocalStreamsFileStorageTestCase(LocalStreamsTestMixin, TestCase):
-    def setUp(self) -> None:
-        self.directory = TemporaryDirectory()
-        super().setUp()
-
-    def get_message_storage(self) -> MessageStorage[int]:
-        return FileMessageStorage(self.directory.name)
-
-    def test_unaligned_offset(self) -> None:
-        topic = Topic(uuid.uuid1().hex)
-        partition = Partition(topic, 0)
-        self.storage.create_topic(topic, 1)
-
-        message = self.storage.produce(partition, 1, datetime.now())
-
-        invalid_offset = message.offset + 4
-        assert message.next_offset > invalid_offset > message.offset
-
-        with pytest.raises(InvalidChecksum):
-            self.storage.consume(partition, invalid_offset)
