@@ -118,6 +118,10 @@ class NoopDlqProducer(DlqProducer[Any]):
 class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     """
     KafkaDLQProducer forwards invalid messages to a Kafka topic
+
+    Two additional fields are added to the headers of the Kafka message
+    "original_partition": The partition of the original message
+    "original_offset": The offset of the original message
     """
 
     def __init__(self, producer: Producer[KafkaPayload], topic: Topic) -> None:
@@ -127,6 +131,13 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     def produce(
         self, value: BrokerValue[KafkaPayload]
     ) -> Future[BrokerValue[KafkaPayload]]:
+        value.payload.headers.append(
+            ("original_partition", f"{value.partition.index}".encode("utf-8"))
+        )
+        value.payload.headers.append(
+            ("original_offset", f"{value.offset}".encode("utf-8"))
+        )
+
         return self.__producer.produce(self.__topic, value.payload)
 
     @classmethod
