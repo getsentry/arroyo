@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict, deque
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any, Generic, Mapping, Optional
+from typing import Any, Deque, Generic, Mapping, MutableMapping, Optional
 
-from arroyo.backends.kafka import KafkaPayload, KafkaProducer
+from arroyo.backends.abstract import Producer
+from arroyo.backends.kafka import KafkaPayload
 from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
 
@@ -118,7 +120,7 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     KafkaDLQProducer forwards invalid messages to a Kafka topic
     """
 
-    def __init__(self, producer: KafkaProducer, topic: Topic) -> None:
+    def __init__(self, producer: Producer[KafkaPayload], topic: Topic) -> None:
         self.__producer = producer
         self.__topic = topic
 
@@ -143,3 +145,50 @@ class DlqPolicy(Generic[TStrategyPayload]):
 
     producer: DlqProducer[TStrategyPayload]
     limit: DlqLimit
+
+
+class BufferedMessages(Generic[TStrategyPayload]):
+    """
+    Manages a buffer of messages that are pending commit. This is used to retreive raw messages
+    in case they need to be placed in the DLQ.
+    """
+
+    def __init__(self, dlq_policy: Optional[DlqPolicy[TStrategyPayload]]) -> None:
+        self.__dlq_policy = dlq_policy
+        self.__buffered_messages: MutableMapping[
+            Partition, Deque[BrokerValue[TStrategyPayload]]
+        ] = defaultdict(deque)
+
+    def append(self, message: BrokerValue[TStrategyPayload]) -> None:
+        """
+        Append a message to DLQ buffer
+        """
+        if self.__dlq_policy is not None:
+            self.__buffered_messages[message.partition].append(message)
+
+    def pop(
+        self, partition: Partition, offset: int
+    ) -> Optional[BrokerValue[TStrategyPayload]]:
+        """
+        Return the message at the given offset or None if it is not found in the buffer.
+        Messages up to the offset for the given partition are removed.
+        """
+        if self.__dlq_policy is not None:
+            buffered = self.__buffered_messages[partition]
+
+            while buffered:
+                if buffered[0].offset == offset:
+                    return buffered.popleft()
+                if buffered[0].offset > offset:
+                    break
+                self.__buffered_messages[partition].popleft()
+
+            return None
+
+        return None
+
+    def reset(self) -> None:
+        """
+        Reset the buffer.
+        """
+        self.__buffered_messages = defaultdict(deque)

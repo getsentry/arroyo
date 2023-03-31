@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict, deque
+from collections import defaultdict
 from enum import Enum
-from typing import Deque, Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
-from arroyo.dlq import DlqPolicy, InvalidMessage
+from arroyo.dlq import BufferedMessages, DlqPolicy, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -56,48 +56,6 @@ class MetricsBuffer:
             self.flush()
 
 
-class BufferedMessages(Generic[TStrategyPayload]):
-    """
-    Manages a buffer of messages that are pending commit. This is used to retreive raw messages
-    in case they need to be placed in the DLQ.
-    """
-
-    def __init__(self, dlq_policy: Optional[DlqPolicy[TStrategyPayload]]) -> None:
-        self.__buffered_messages: MutableMapping[
-            Partition, Deque[BrokerValue[TStrategyPayload]]
-        ] = defaultdict(deque)
-
-    def append(self, message: BrokerValue[TStrategyPayload]) -> None:
-        """
-        Append a message to DLQ buffer
-        """
-        self.__buffered_messages[message.partition].append(message)
-
-    def pop(
-        self, partition: Partition, offset: int
-    ) -> Optional[BrokerValue[TStrategyPayload]]:
-        """
-        Return the message at the given offset or None if it is not found in the buffer.
-        Messages up to the offset for the given partition are removed.
-        """
-        buffered = self.__buffered_messages[partition]
-
-        while buffered:
-            if buffered[0].offset == offset:
-                return buffered.popleft()
-            if buffered[0].offset > offset:
-                break
-            self.__buffered_messages[partition].popleft()
-
-        return None
-
-    def reset(self) -> None:
-        """
-        Reset the buffer.
-        """
-        self.__buffered_messages = defaultdict(deque)
-
-
 class StreamProcessor(Generic[TStrategyPayload]):
     """
     A stream processor manages the relationship between a ``Consumer``
@@ -134,7 +92,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__shutdown_requested = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
-        # emoved once the commit callback is fired as they are guaranteed to be valid at that point.
+        # removed once the commit callback is fired as they are guaranteed to be valid at that point.
         self.__dlq_policy = dlq_policy
         self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
             dlq_policy
@@ -212,6 +170,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
+        for (partition, offset) in offsets.items():
+            self.__buffered_messages.pop(partition, offset - 1)
+
         self.__consumer.stage_offsets(offsets)
         now = time.time()
 
