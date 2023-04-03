@@ -330,7 +330,7 @@ class RunTaskWithMultiprocessing(
             # multiprocessor pool workers.
             if not self.__closed:
                 self.__metrics.increment("sigchld.detected")
-                raise ChildProcessTerminated()
+                raise ChildProcessTerminated(signum)
 
         signal.signal(signal.SIGCHLD, handle_sigchld)
 
