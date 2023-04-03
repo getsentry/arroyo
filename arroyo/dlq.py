@@ -4,11 +4,28 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any, Deque, Generic, Mapping, MutableMapping, Optional
+from typing import (
+    Any,
+    Deque,
+    Generic,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+)
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import (
+    FILTERED_PAYLOAD,
+    BrokerValue,
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    TStrategyPayload,
+    Value,
+)
 
 
 class InvalidMessage(Exception):
@@ -17,11 +34,23 @@ class InvalidMessage(Exception):
     should not be retried. It will be placed a DLQ if one is configured.
 
     It can be raised from the submit, poll or join methods of any processing strategy.
+
+    Once a filtered message is forwarded to the next step, `needs_commit` should be set to False,
+    in order to prevent multiple filtered messages from being forwarded for a single invalid message.
     """
 
     def __init__(self, partition: Partition, offset: int) -> None:
         self.partition = partition
         self.offset = offset
+        self.needs_commit = True
+
+
+class InvalidMessageOutOfOrder(Exception):
+    """
+    Fatal exception. Strategies are not permitted to raise invalid messages out of order.
+    """
+
+    pass
 
 
 @dataclass(frozen=True)
@@ -203,3 +232,51 @@ class BufferedMessages(Generic[TStrategyPayload]):
         Reset the buffer.
         """
         self.__buffered_messages = defaultdict(deque)
+
+
+class InvalidMessageState:
+    """
+    This class is designed to be used internally by processing strategies to
+    store invalid messages pending commit.
+
+    If strict_ordering is True, an exception is raised if any invalid messages
+    are not in order.
+    """
+
+    def __init__(self, strict_ordering: bool = True) -> None:
+        self.__strict_ordering = strict_ordering
+        self.__invalid_messages: MutableSequence[InvalidMessage] = []
+
+    def __len__(self) -> int:
+        return len(self.__invalid_messages)
+
+    def append(self, invalid_message: InvalidMessage) -> None:
+        """
+        Mark the invalid message as committed so other strategies in the pipeline
+        don't try to commit the same offset when the exception is reraised.
+        """
+        invalid_message.needs_commit = False
+        self.__invalid_messages.append(invalid_message)
+
+    def build(self) -> Optional[Message[FilteredPayload]]:
+        """
+        Returns a filtered message to be committed down the line. If there is
+        nothing to commit, return None.
+        """
+        committable: MutableMapping[Partition, int] = {}
+        for m in self.__invalid_messages:
+            next_offset = m.offset + 1
+            if self.__strict_ordering and m.partition in committable:
+                if next_offset < committable[m.partition]:
+                    raise InvalidMessageOutOfOrder
+
+            if m.needs_commit:
+                committable[m.partition] = next_offset
+
+        if committable:
+            return Message(Value(FILTERED_PAYLOAD, committable))
+
+        return None
+
+    def reset(self) -> None:
+        self.__invalid_messages = []

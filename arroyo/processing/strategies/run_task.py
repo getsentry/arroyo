@@ -1,14 +1,8 @@
-from typing import Callable, Generic, MutableSequence, Optional, TypeVar, Union, cast
+from typing import Callable, Generic, Optional, TypeVar, Union, cast
 
-from arroyo.dlq import InvalidMessage
-from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import (
-    FILTERED_PAYLOAD,
-    FilteredPayload,
-    Message,
-    TStrategyPayload,
-    Value,
-)
+from arroyo.dlq import InvalidMessage, InvalidMessageState
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.types import FilteredPayload, Message, TStrategyPayload
 
 TResult = TypeVar("TResult")
 
@@ -32,14 +26,18 @@ class RunTask(
         self.__function = function
         self.__next_step = next_step
         # Invalid message offsets pending commit
-        self.__invalid_messages: MutableSequence[InvalidMessage] = []
+        self.__invalid_messages = InvalidMessageState()
 
     def __forward_invalid_offsets(self) -> None:
-        if self.__invalid_messages:
-            committable = {m.partition: m.offset + 1 for m in self.__invalid_messages}
+        if len(self.__invalid_messages):
             self.__next_step.poll()
-            self.__next_step.submit(Message(Value(FILTERED_PAYLOAD, committable)))
-            self.__invalid_messages = []
+            filter_msg = self.__invalid_messages.build()
+            if filter_msg:
+                try:
+                    self.__next_step.submit(filter_msg)
+                    self.__invalid_messages.reset()
+                except MessageRejected:
+                    pass
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
