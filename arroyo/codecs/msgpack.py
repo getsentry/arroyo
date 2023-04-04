@@ -22,7 +22,7 @@ class MsgpackCodec(Codec[T]):
     def encode(self, data: T, validate: bool) -> bytes:
         if validate:
             self.validate(data)
-        return msgpack.packb(data)
+        return cast(bytes, msgpack.packb(data))
 
     def decode(self, raw_data: bytes, validate: bool) -> T:
         decoded = msgpack.unpackb(raw_data)
