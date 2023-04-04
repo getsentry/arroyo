@@ -42,7 +42,9 @@ class StrategyFactory(Protocol):
 def run_task_function(raises_invalid_message: bool, x: Message[bool]) -> bool:
     if raises_invalid_message and not x.payload:
         (partition,) = x.committable
-        raise InvalidMessage(partition, x.committable[partition])
+        invalid_message = InvalidMessage(partition, x.committable[partition])
+        invalid_message.needs_commit = False
+        raise invalid_message
     assert isinstance(x.payload, bool)
     return x.payload
 
@@ -184,6 +186,5 @@ def test_dlq(strategy_factory: StrategyFactory) -> None:
 
     assert next_step.submit.call_args_list == [
         call(messages[0]),
-        call(Message(Value(FILTERED_PAYLOAD, {Partition(Topic("topic"), 0): 2}))),
         call(messages[2]),
     ]
