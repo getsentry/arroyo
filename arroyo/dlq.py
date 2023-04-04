@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from concurrent.futures import Future
@@ -9,6 +10,8 @@ from typing import Any, Deque, Generic, Mapping, MutableMapping, Optional
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidMessage(Exception):
@@ -145,6 +148,7 @@ class DlqPolicy(Generic[TStrategyPayload]):
 
     producer: DlqProducer[TStrategyPayload]
     limit: DlqLimit
+    max_buffered_messages_per_partition: Optional[int]
 
 
 class BufferedMessages(Generic[TStrategyPayload]):
@@ -163,8 +167,18 @@ class BufferedMessages(Generic[TStrategyPayload]):
         """
         Append a message to DLQ buffer
         """
-        if self.__dlq_policy is not None:
-            self.__buffered_messages[message.partition].append(message)
+        if self.__dlq_policy is None:
+            return
+
+        if self.__dlq_policy.max_buffered_messages_per_partition is not None:
+            buffered = self.__buffered_messages[message.partition]
+            if len(buffered) >= self.__dlq_policy.max_buffered_messages_per_partition:
+                logger.warning(
+                    f"DLQ buffer exceeded, dropping message on partition {message.partition.index}",
+                )
+                buffered.popleft()
+
+        self.__buffered_messages[message.partition].append(message)
 
     def pop(
         self, partition: Partition, offset: int
