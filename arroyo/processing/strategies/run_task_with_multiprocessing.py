@@ -25,7 +25,7 @@ from typing import (
     cast,
 )
 
-import arroyo.dlq
+from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
@@ -199,7 +199,7 @@ class ParallelRunTaskResult(Generic[TResult]):
 
     next_index_to_process: int
     valid_messages_transformed: MessageBatch[Union[FilteredPayload, TResult]]
-    invalid_messages: MutableSequence[arroyo.dlq.InvalidMessage]
+    invalid_messages: MutableSequence[InvalidMessage]
 
 
 def parallel_run_task_worker_apply(
@@ -212,7 +212,7 @@ def parallel_run_task_worker_apply(
     valid_messages_transformed: MessageBatch[
         Union[FilteredPayload, TResult]
     ] = MessageBatch(output_block)
-    invalid_messages: MutableSequence[arroyo.dlq.InvalidMessage] = []
+    invalid_messages: MutableSequence[InvalidMessage] = []
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
@@ -229,7 +229,7 @@ def parallel_run_task_worker_apply(
 
         try:
             result = function(message)
-        except arroyo.dlq.InvalidMessage as e:
+        except InvalidMessage as e:
             invalid_messages.append(e)
             next_index_to_process += 1
             continue
@@ -319,7 +319,7 @@ class RunTaskWithMultiprocessing(
                 AsyncResult[ParallelRunTaskResult[TResult]],
             ]
         ] = deque()
-        self.__invalid_messages = arroyo.dlq.InvalidMessageState()
+        self.__invalid_messages = InvalidMessageState()
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
