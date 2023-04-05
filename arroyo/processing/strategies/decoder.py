@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Optional, Sequence, Tuple, TypeVar, cast
 
 from arroyo.backends.kafka import KafkaPayload
+from arroyo.codecs import Codec
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import FilteredPayload, Message
 
@@ -59,22 +59,3 @@ class KafkaMessageDecoder(ProcessingStrategy[KafkaPayload], Generic[T]):
 
     def join(self, timeout: Optional[float] = None) -> None:
         self.__next_step.join(timeout)
-
-
-class ValidationError(Exception):
-    """
-    Placeholder. May eventually be replaced by a DLQ specific exception
-    once that feature is finalized.
-    """
-
-    pass
-
-
-class Codec(ABC, Generic[T]):
-    @abstractmethod
-    def decode(self, raw_data: bytes, validate: bool) -> T:
-        """
-        Decode bytes from Kafka message.
-        If validate is true, validation is performed.
-        """
-        raise NotImplementedError
