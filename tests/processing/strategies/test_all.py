@@ -3,7 +3,7 @@ A general-purpose testsuite that asserts certain behavior is implemented by all 
 """
 
 from functools import partial
-from typing import Protocol, Sequence, Union
+from typing import Any, Literal, MutableSequence, Protocol, Sequence, Tuple, Union
 from unittest.mock import Mock, call
 
 import pytest
@@ -43,7 +43,6 @@ def run_task_function(raises_invalid_message: bool, x: Message[bool]) -> bool:
     if raises_invalid_message and not x.payload:
         (partition,) = x.committable
         invalid_message = InvalidMessage(partition, x.committable[partition])
-        invalid_message.needs_commit = False
         raise invalid_message
     assert isinstance(x.payload, bool)
     return x.payload
@@ -143,50 +142,69 @@ def test_filters(strategy_factory: StrategyFactory) -> None:
     assert next_step.submit.call_args_list == list(map(call, messages))
 
 
+PartitionIdx = int
+Offset = int
+MessagePattern = Sequence[Tuple[PartitionIdx, Offset, Literal["invalid", "valid"]]]
+
+
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_dlq(strategy_factory: StrategyFactory) -> None:
+@pytest.mark.parametrize(
+    "message_pattern",
+    [
+        [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid")],
+        [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid"), (0, 3, "invalid")],
+        [(0, 0, "valid"), (1, 0, "valid"), (0, 1, "invalid"), (1, 1, "invalid")],
+    ],
+)
+def test_dlq(
+    strategy_factory: StrategyFactory, message_pattern: MessagePattern
+) -> None:
     next_step = Mock()
     step = strategy_factory(next_step, raises_invalid_message=True)
 
     def test_function(message: Message[bool]) -> bool:
         return message.payload
 
+    topic = Topic("topic")
+
     messages = [
-        Message(Value(True, {Partition(Topic("topic"), 0): 1})),
-        Message(Value(False, {Partition(Topic("topic"), 0): 2})),
-        Message(Value(True, {Partition(Topic("topic"), 0): 3})),
+        Message(Value(type_ == "valid", {Partition(topic, partition): offset}))
+        for partition, offset, type_ in message_pattern
     ]
 
-    step.poll()
-    step.submit(messages[0])
+    # The way that submit(), poll(), join() etc are called and how their errors
+    # are handled is made to resemble how the StreamProcessor does it.
 
-    invalid_messages = []
+    def protected_call(method_name: str, *args: Any) -> bool:
+        try:
+            getattr(step, method_name)(*args)
+            return True
+        except InvalidMessage as e:
+            invalid_messages.append(e)
+            return False
 
-    step.poll()
-    try:
-        step.submit(messages[1])
-    except InvalidMessage as e:
-        invalid_messages.append(e)
+    invalid_messages: MutableSequence[InvalidMessage] = []
 
-    try:
-        step.poll()
-    except InvalidMessage as e:
-        invalid_messages.append(e)
-
-    step.submit(messages[2])
+    for message in messages:
+        protected_call("poll")
+        protected_call("submit", message)
 
     step.close()
 
-    try:
-        step.join()
-    except InvalidMessage as e:
-        invalid_messages.append(e)
+    join_count = 0
+    while not protected_call("join"):
+        protected_call("poll")
+        join_count += 1
 
-    step.poll()
+        if join_count > len(messages):
+            raise RuntimeError("needed to call join() too often")
 
-    assert len(invalid_messages) == 1
+    assert invalid_messages == [
+        InvalidMessage(Partition(topic, partition), offset, needs_commit=False)
+        for partition, offset, type_ in message_pattern
+        if type_ == "invalid"
+    ]
 
     assert next_step.submit.call_args_list == [
-        call(messages[0]),
-        call(messages[2]),
+        call(message) for message in messages if message.payload
     ]

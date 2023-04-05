@@ -25,11 +25,8 @@ from typing import (
     cast,
 )
 
+import arroyo.dlq
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidMessage,
-    InvalidMessages,
-)
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
@@ -201,8 +198,8 @@ class ParallelRunTaskResult(Generic[TResult]):
     """
 
     next_index_to_process: int
-    valid_messages_transformed: MessageBatch[TResult]
-    invalid_messages: MutableSequence[InvalidMessage]
+    valid_messages_transformed: MessageBatch[Union[FilteredPayload, TResult]]
+    invalid_messages: MutableSequence[arroyo.dlq.InvalidMessage]
 
 
 def parallel_run_task_worker_apply(
@@ -212,8 +209,10 @@ def parallel_run_task_worker_apply(
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
 
-    valid_messages_transformed: MessageBatch[TResult] = MessageBatch(output_block)
-    invalid_messages: MutableSequence[InvalidMessage] = []
+    valid_messages_transformed: MessageBatch[
+        Union[FilteredPayload, TResult]
+    ] = MessageBatch(output_block)
+    invalid_messages: MutableSequence[arroyo.dlq.InvalidMessage] = []
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
@@ -222,14 +221,16 @@ def parallel_run_task_worker_apply(
         # Theory: Doing this check in the subprocess is cheaper because we
         # shouldn't get a high volume of FilteredPayloads on average.
         if isinstance(message.value.payload, FilteredPayload):
-            valid_messages_transformed.append(cast(Message[TResult], message))
+            valid_messages_transformed.append(
+                cast(Message[Union[FilteredPayload, TResult]], message)
+            )
             next_index_to_process += 1
             continue
 
         try:
             result = function(message)
-        except InvalidMessages as e:
-            invalid_messages += e.messages
+        except arroyo.dlq.InvalidMessage as e:
+            invalid_messages.append(e)
             next_index_to_process += 1
             continue
         except Exception:
@@ -260,6 +261,10 @@ def parallel_run_task_worker_apply(
                 break
         else:
             next_index_to_process += 1
+
+    # Doing this so they are re-raised in the correct order
+    invalid_messages.reverse()
+
     return ParallelRunTaskResult(
         next_index_to_process, valid_messages_transformed, invalid_messages
     )
@@ -310,11 +315,11 @@ class RunTaskWithMultiprocessing(
 
         self.__processes: Deque[
             Tuple[
-                MessageBatch[TStrategyPayload],
+                MessageBatch[Union[FilteredPayload, TStrategyPayload]],
                 AsyncResult[ParallelRunTaskResult[TResult]],
-                MutableSequence[InvalidMessage],
             ]
         ] = deque()
+        self.__invalid_messages = arroyo.dlq.InvalidMessageState()
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
@@ -345,7 +350,6 @@ class RunTaskWithMultiprocessing(
                     parallel_run_task_worker_apply,
                     (self.__transform_function, batch, self.__output_blocks.pop()),
                 ),
-                [],
             )
         )
         self.__batches_in_progress.increment()
@@ -353,8 +357,19 @@ class RunTaskWithMultiprocessing(
         self.__metrics.timing("batch.size.bytes", batch.get_content_size())
         self.__batch_builder = None
 
+    def __forward_invalid_offsets(self) -> None:
+        if len(self.__invalid_messages):
+            self.__next_step.poll()
+            filter_msg = self.__invalid_messages.build()
+            if filter_msg:
+                try:
+                    self.__next_step.submit(filter_msg)
+                    self.__invalid_messages.reset()
+                except MessageRejected:
+                    pass
+
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result, partial_invalid_messages = self.__processes[0]
+        input_batch, async_result = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -365,14 +380,17 @@ class RunTaskWithMultiprocessing(
             raise multiprocessing.TimeoutError()
 
         result = async_result.get(timeout=timeout)
-        partial_invalid_messages += result.invalid_messages
+        # mutate the result until all invalid messages have been eventually
+        # raised
+        while result.invalid_messages:
+            e = result.invalid_messages.pop()
+            self.__invalid_messages.append(e)
+            raise e
 
         for idx, message in enumerate(result.valid_messages_transformed):
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
-            except InvalidMessages as e:
-                partial_invalid_messages += e.messages
             except MessageRejected:
                 result.next_index_to_process = idx
 
@@ -396,7 +414,6 @@ class RunTaskWithMultiprocessing(
                         result.next_index_to_process,
                     ),
                 ),
-                partial_invalid_messages,
             )
             return
 
@@ -406,10 +423,9 @@ class RunTaskWithMultiprocessing(
         self.__batches_in_progress.decrement()
 
         del self.__processes[0]
-        if partial_invalid_messages:
-            raise InvalidMessages(partial_invalid_messages)
 
     def poll(self) -> None:
+        self.__forward_invalid_offsets()
         self.__next_step.poll()
 
         while self.__processes:
@@ -492,10 +508,9 @@ class RunTaskWithMultiprocessing(
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
+        self.__forward_invalid_offsets()
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
-
-        invalid_messages: MutableSequence[InvalidMessage] = []
 
         while self.__processes:
             try:
@@ -506,8 +521,6 @@ class RunTaskWithMultiprocessing(
                 )
             except multiprocessing.TimeoutError:
                 pass
-            except InvalidMessages as e:
-                invalid_messages += e.messages
 
         self.__pool.close()
 
@@ -520,12 +533,6 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager.shutdown()
 
         self.__next_step.close()
-        try:
-            self.__next_step.join(
-                timeout=max(deadline - time.time(), 0) if deadline is not None else None
-            )
-        except InvalidMessages as e:
-            invalid_messages += e.messages
-
-        if invalid_messages:
-            raise InvalidMessages(invalid_messages)
+        self.__next_step.join(
+            timeout=max(deadline - time.time(), 0) if deadline is not None else None
+        )

@@ -39,10 +39,20 @@ class InvalidMessage(Exception):
     in order to prevent multiple filtered messages from being forwarded for a single invalid message.
     """
 
-    def __init__(self, partition: Partition, offset: int) -> None:
+    def __init__(
+        self, partition: Partition, offset: int, needs_commit: bool = True
+    ) -> None:
         self.partition = partition
         self.offset = offset
-        self.needs_commit = True
+        self.needs_commit = needs_commit
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, InvalidMessage)
+            and self.partition == other.partition
+            and self.offset == other.offset
+            and self.needs_commit == other.needs_commit
+        )
 
 
 class InvalidMessageOutOfOrder(Exception):

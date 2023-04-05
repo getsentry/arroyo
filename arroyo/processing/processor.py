@@ -115,7 +115,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     break
                 except InvalidMessage as e:
                     self._handle_invalid_message(e)
-                    self.__processing_strategy.poll()
 
             logger.info(
                 "%r exited successfully, releasing assignment.",

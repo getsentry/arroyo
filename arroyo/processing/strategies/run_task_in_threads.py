@@ -98,6 +98,7 @@ class RunTaskInThreads(
                     result = future.result()
                 except InvalidMessage as e:
                     self.__invalid_messages.append(e)
+                    self.__queue.popleft()
                     raise e
                 payload = message.value.replace(result)
                 next_message = Message(payload)
