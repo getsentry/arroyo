@@ -108,10 +108,14 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processing_strategy.close()
 
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
-            try:
-                self.__processing_strategy.join(self.__join_timeout)
-            except InvalidMessage as e:
-                self._handle_invalid_message(e)
+
+            while True:
+                try:
+                    self.__processing_strategy.join(self.__join_timeout)
+                    break
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
+                    self.__processing_strategy.poll()
 
             logger.info(
                 "%r exited successfully, releasing assignment.",

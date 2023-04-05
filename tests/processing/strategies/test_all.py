@@ -182,6 +182,8 @@ def test_dlq(strategy_factory: StrategyFactory) -> None:
     except InvalidMessage as e:
         invalid_messages.append(e)
 
+    step.poll()
+
     assert len(invalid_messages) == 1
 
     assert next_step.submit.call_args_list == [
