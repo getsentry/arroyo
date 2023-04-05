@@ -258,7 +258,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             e,
                             self.__message,
                         )
-                        self.__consumer.pause([*self.__consumer.tell().keys()])
+
+                        if self.__paused_timestamp is not None:
+                            self.__consumer.pause([*self.__consumer.tell().keys()])
 
                         self.__paused_timestamp = time.time()
                     else:
