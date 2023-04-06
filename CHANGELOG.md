@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.9.1
+
+### Various fixes & improvements
+
+- Revert "fix: Prevent repeated calls to consumer.pause() if already paused (#209)" (#210) by @lynnagara
+
 ## 2.9.0
 
 ### Various fixes & improvements
