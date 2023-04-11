@@ -541,6 +541,8 @@ class RunTaskWithMultiprocessing(
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
+        invalid_messages: MutableSequence[LegacyInvalidMessage] = []
+
         while self.__processes:
             try:
                 self.__check_for_results(
@@ -550,6 +552,8 @@ class RunTaskWithMultiprocessing(
                 )
             except multiprocessing.TimeoutError:
                 pass
+            except LegacyInvalidMessages as e:
+                invalid_messages += e.messages
 
         self.__pool.close()
 
@@ -562,6 +566,12 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager.shutdown()
 
         self.__next_step.close()
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        try:
+            self.__next_step.join(
+                timeout=max(deadline - time.time(), 0) if deadline is not None else None
+            )
+        except LegacyInvalidMessages as e:
+            invalid_messages += e.messages
+
+        if invalid_messages:
+            raise LegacyInvalidMessages(invalid_messages)
