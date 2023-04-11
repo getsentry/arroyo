@@ -196,8 +196,8 @@ class DlqPolicy(Generic[TStrategyPayload]):
     """
 
     producer: DlqProducer[TStrategyPayload]
-    limit: DlqLimit
-    max_buffered_messages_per_partition: Optional[int]
+    limit: Optional[DlqLimit] = None
+    max_buffered_messages_per_partition: Optional[int] = None
 
 
 class BufferedMessages(Generic[TStrategyPayload]):

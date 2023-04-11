@@ -8,7 +8,7 @@ from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
-from arroyo.dlq import InvalidMessage
+from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -442,7 +442,7 @@ def test_dlq() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    dlq_policy = mock.Mock()
+    dlq_policy: Any = DlqPolicy(producer=mock.Mock())
 
     processor: StreamProcessor[int] = StreamProcessor(
         consumer, topic, factory, IMMEDIATE, dlq_policy
