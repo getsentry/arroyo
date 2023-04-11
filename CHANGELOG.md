@@ -1,5 +1,20 @@
 # Changelog and versioning
 
+## 2.9.1
+
+### Various fixes & improvements
+
+- Revert "fix: Prevent repeated calls to consumer.pause() if already paused (#209)" (#210) by @lynnagara
+
+## 2.9.0
+
+### Various fixes & improvements
+
+- feat: Codecs can encode and be used outside of strategies (#208) by @lynnagara
+- fix: Prevent repeated calls to consumer.pause() if already paused (#209) by @lynnagara
+- feat: Make DLQ buffer size configurable (#207) by @lynnagara
+- ref: Remove the FileMessageStorage backend (#206) by @lynnagara
+
 ## 2.8.0
 
 ### Various fixes & improvements

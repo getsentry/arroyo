@@ -36,7 +36,7 @@ def test_buffered_messages() -> None:
     broker: LocalBroker[KafkaPayload] = LocalBroker(MemoryMessageStorage())
 
     dlq_policy = DlqPolicy(
-        KafkaDlqProducer(broker.get_producer(), dlq_topic), DlqLimit()
+        KafkaDlqProducer(broker.get_producer(), dlq_topic), DlqLimit(), None
     )
 
     buffer: BufferedMessages[KafkaPayload] = BufferedMessages(dlq_policy)
@@ -48,6 +48,31 @@ def test_buffered_messages() -> None:
 
     assert buffer.pop(partition, 1) == BrokerValue(
         KafkaPayload(None, b"1", []), partition, 1, ANY
+    )
+
+
+def test_buffered_messages_limit() -> None:
+    buffered_message_limit = 2
+    broker: LocalBroker[KafkaPayload] = LocalBroker(MemoryMessageStorage())
+
+    dlq_policy = DlqPolicy(
+        KafkaDlqProducer(broker.get_producer(), dlq_topic),
+        DlqLimit(),
+        buffered_message_limit,
+    )
+
+    buffer: BufferedMessages[KafkaPayload] = BufferedMessages(dlq_policy)
+
+    generator = generate_values()
+
+    for _ in range(10):
+        buffer.append(next(generator))
+
+    # It's gone
+    assert buffer.pop(partition, 1) is None
+
+    assert buffer.pop(partition, 9) == BrokerValue(
+        KafkaPayload(None, b"9", []), partition, 9, ANY
     )
 
 
