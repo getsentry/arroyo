@@ -41,12 +41,12 @@ def test_message_batch() -> None:
         )
     )
 
-    batch: MessageBatch[KafkaPayload] = MessageBatch(block)
+    batch: MessageBatch[Message[KafkaPayload]] = MessageBatch(block)
     with assert_changes(lambda: len(batch), 0, 1):
         batch.append(message)
 
     assert batch[0] == message
-    assert list(batch) == [message]
+    assert list(batch) == [(0, message)]
 
     with assert_does_not_change(lambda: len(batch), 1), pytest.raises(ValueTooLarge):
         batch.append(message)
@@ -78,7 +78,7 @@ def test_parallel_run_task_worker_apply() -> None:
     input_block = smm.SharedMemory(32768)
     assert input_block.size == 32768
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
 
@@ -153,7 +153,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
         for i in range(9)
     ]
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
     assert len(input_batch) == 9
@@ -167,7 +167,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
     assert len(result.invalid_messages) == 5
     assert len(result.valid_messages_transformed) == 4
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
     assert len(input_batch) == 9
