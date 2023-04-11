@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from typing import Callable, Generic, Optional, TypeVar, Union, cast
 
-from arroyo.dlq import InvalidMessage, InvalidMessageState
-from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.guard import StrategyGuard
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 
 TResult = TypeVar("TResult")
@@ -18,6 +20,22 @@ class RunTask(
     the message is invalid and should be put in a dead letter queue.
     """
 
+    def __new__(
+        cls,
+        function: Callable[[Message[TStrategyPayload]], TResult],
+        next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
+    ) -> RunTask[TStrategyPayload, TResult]:
+        def build_self(
+            next_step: ProcessingStrategy[Union[FilteredPayload, TResult]]
+        ) -> ProcessingStrategy[Union[FilteredPayload, TResult]]:
+            self = object.__new__(RunTask)
+            self.__init__(function, next_step)  # type: ignore
+            return self
+
+        return cast(
+            RunTask[TStrategyPayload, TResult], StrategyGuard(build_self, next_step)
+        )
+
     def __init__(
         self,
         function: Callable[[Message[TStrategyPayload]], TResult],
@@ -25,40 +43,18 @@ class RunTask(
     ) -> None:
         self.__function = function
         self.__next_step = next_step
-        # Invalid message offsets pending commit
-        self.__invalid_messages = InvalidMessageState()
-
-    def __forward_invalid_offsets(self) -> None:
-        if len(self.__invalid_messages):
-            self.__next_step.poll()
-            filter_msg = self.__invalid_messages.build()
-            if filter_msg:
-                try:
-                    self.__next_step.submit(filter_msg)
-                    self.__invalid_messages.reset()
-                except MessageRejected:
-                    pass
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> None:
-        if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(cast(Message[FilteredPayload], message))
-        else:
-            try:
-                result = self.__function(cast(Message[TStrategyPayload], message))
-                value = message.value.replace(result)
-                self.__next_step.submit(Message(value))
-            except InvalidMessage as e:
-                self.__invalid_messages.append(e)
-                raise e
+        result = self.__function(cast(Message[TStrategyPayload], message))
+        value = message.value.replace(result)
+        self.__next_step.submit(Message(value))
 
     def poll(self) -> None:
-        self.__forward_invalid_offsets()
         self.__next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__forward_invalid_offsets()
         self.__next_step.join(timeout)
 
     def close(self) -> None:
