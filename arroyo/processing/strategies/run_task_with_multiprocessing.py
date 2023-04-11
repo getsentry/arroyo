@@ -27,6 +27,12 @@ from typing import (
 
 from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessage as LegacyInvalidMessage,
+)
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages as LegacyInvalidMessages,
+)
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
@@ -206,6 +212,7 @@ class ParallelRunTaskResult(Generic[TResult]):
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
     ]
+    invalid_messages: MutableSequence[LegacyInvalidMessage]
 
 
 def parallel_run_task_worker_apply(
@@ -218,6 +225,7 @@ def parallel_run_task_worker_apply(
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
     ] = MessageBatch(output_block)
+    invalid_messages: MutableSequence[LegacyInvalidMessage] = []
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
@@ -238,6 +246,10 @@ def parallel_run_task_worker_apply(
             payload = message.replace(
                 function(cast(Message[TStrategyPayload], message))
             )
+        except LegacyInvalidMessages as e:
+            invalid_messages += e.messages
+            next_index_to_process += 1
+            continue
         except InvalidMessage as e:
             payload = e
         except Exception:
@@ -268,7 +280,9 @@ def parallel_run_task_worker_apply(
         else:
             next_index_to_process += 1
 
-    return ParallelRunTaskResult(next_index_to_process, valid_messages_transformed)
+    return ParallelRunTaskResult(
+        next_index_to_process, valid_messages_transformed, invalid_messages
+    )
 
 
 class RunTaskWithMultiprocessing(
@@ -325,6 +339,7 @@ class RunTaskWithMultiprocessing(
                     ]
                 ],
                 AsyncResult[ParallelRunTaskResult[TResult]],
+                MutableSequence[LegacyInvalidMessage],
             ]
         ] = deque()
         self.__invalid_messages = InvalidMessageState()
@@ -358,6 +373,7 @@ class RunTaskWithMultiprocessing(
                     parallel_run_task_worker_apply,
                     (self.__transform_function, batch, self.__output_blocks.pop()),
                 ),
+                [],
             )
         )
         self.__batches_in_progress.increment()
@@ -377,7 +393,7 @@ class RunTaskWithMultiprocessing(
                     pass
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result = self.__processes[0]
+        input_batch, async_result, partial_legacy_invalid_messages = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -388,6 +404,7 @@ class RunTaskWithMultiprocessing(
             raise multiprocessing.TimeoutError()
 
         result = async_result.get(timeout=timeout)
+        partial_legacy_invalid_messages += result.invalid_messages
 
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
@@ -398,6 +415,8 @@ class RunTaskWithMultiprocessing(
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
+            except LegacyInvalidMessages as e:
+                partial_legacy_invalid_messages += e.messages
             except MessageRejected:
                 result.next_index_to_process = idx
 
@@ -421,6 +440,7 @@ class RunTaskWithMultiprocessing(
                         result.next_index_to_process,
                     ),
                 ),
+                partial_legacy_invalid_messages,
             )
             return
 
@@ -430,6 +450,8 @@ class RunTaskWithMultiprocessing(
         self.__batches_in_progress.decrement()
 
         del self.__processes[0]
+        if partial_legacy_invalid_messages:
+            raise LegacyInvalidMessages(partial_legacy_invalid_messages)
 
     def poll(self) -> None:
         self.__forward_invalid_offsets()

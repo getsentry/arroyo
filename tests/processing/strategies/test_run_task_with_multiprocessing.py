@@ -9,8 +9,10 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidMessages,
-    InvalidRawMessage,
+    InvalidMessages as LegacyInvalidMessages,
+)
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidRawMessage as LegacyInvalidRawMessage,
 )
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
@@ -124,9 +126,9 @@ NO_KEY = "No Key"
 
 def fail_bad_messages(value: Message[KafkaPayload]) -> KafkaPayload:
     if value.payload.key is None:
-        raise InvalidMessages(
+        raise LegacyInvalidMessages(
             [
-                InvalidRawMessage(
+                LegacyInvalidRawMessage(
                     payload=str(value.payload),
                     reason=NO_KEY,
                 )
@@ -326,7 +328,7 @@ def test_parallel_run_task_bad_messages() -> None:
             transform_step.poll()
 
     # wait for all processes to finish
-    with pytest.raises(InvalidMessages) as e_info:
+    with pytest.raises(LegacyInvalidMessages) as e_info:
         transform_step.close()
         transform_step.join()
 
@@ -334,7 +336,7 @@ def test_parallel_run_task_bad_messages() -> None:
     assert len(e_info.value.messages) == 5
     # Test exception pickles and decodes correctly
     invalid_message = e_info.value.messages[0]
-    assert isinstance(invalid_message, InvalidRawMessage)
+    assert isinstance(invalid_message, LegacyInvalidRawMessage)
     assert invalid_message.reason == NO_KEY
     assert invalid_message.payload == str(messages[0].payload)
     # The 4 good ones should not have been blocked
