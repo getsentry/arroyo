@@ -49,6 +49,13 @@ class InvalidMessage(Exception):
         self.offset = offset
         self.needs_commit = needs_commit
 
+    @classmethod
+    def from_value(cls, value: BrokerValue[Any]) -> InvalidMessage:
+        if not isinstance(value, BrokerValue):
+            raise ValueError("Rejecting messages is only supported before batching.")
+
+        return cls(value.partition, value.offset)
+
     def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, InvalidMessage)
@@ -279,8 +286,9 @@ class InvalidMessageState:
         Mark the invalid message as committed so other strategies in the pipeline
         don't try to commit the same offset when the exception is reraised.
         """
-        invalid_message.needs_commit = False
-        self.__invalid_messages.append(invalid_message)
+        if invalid_message.needs_commit:
+            invalid_message.needs_commit = False
+            self.__invalid_messages.append(invalid_message)
 
     def build(self) -> Optional[Message[FilteredPayload]]:
         """
@@ -294,8 +302,7 @@ class InvalidMessageState:
                 if next_offset < committable[m.partition]:
                     raise InvalidMessageOutOfOrder
 
-            if m.needs_commit:
-                committable[m.partition] = next_offset
+            committable[m.partition] = next_offset
 
         if committable:
             return Message(Value(FILTERED_PAYLOAD, committable))

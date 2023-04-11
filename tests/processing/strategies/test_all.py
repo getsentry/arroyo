@@ -2,6 +2,7 @@
 A general-purpose testsuite that asserts certain behavior is implemented by all strategies.
 """
 
+from datetime import datetime
 from functools import partial
 from typing import Any, Literal, MutableSequence, Protocol, Sequence, Tuple, Union
 from unittest.mock import Mock, call
@@ -21,6 +22,7 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
 from arroyo.types import (
     FILTERED_PAYLOAD,
     BaseValue,
+    BrokerValue,
     FilteredPayload,
     Message,
     Partition,
@@ -30,6 +32,8 @@ from arroyo.types import (
 
 DummyStrategy = ProcessingStrategy[Union[FilteredPayload, bool]]
 DummyMessage = Message[Union[FilteredPayload, bool]]
+
+NOW = datetime.now()
 
 
 class StrategyFactory(Protocol):
@@ -41,9 +45,8 @@ class StrategyFactory(Protocol):
 
 def run_task_function(raises_invalid_message: bool, x: Message[bool]) -> bool:
     if raises_invalid_message and not x.payload:
-        (partition,) = x.committable
-        invalid_message = InvalidMessage(partition, x.committable[partition])
-        raise invalid_message
+        assert isinstance(x.value, BrokerValue)
+        raise InvalidMessage.from_value(x.value)
     assert isinstance(x.payload, bool)
     return x.payload
 
@@ -60,8 +63,8 @@ def run_task_with_multiprocessing_factory(
     return RunTaskWithMultiprocessing(
         partial(run_task_function, raises_invalid_message),
         next_step=next_step,
-        num_processes=2,
-        max_batch_size=5,
+        num_processes=4,
+        max_batch_size=10,
         max_batch_time=60,
         input_block_size=16384,
         output_block_size=16384,
@@ -149,26 +152,34 @@ MessagePattern = Sequence[Tuple[PartitionIdx, Offset, Literal["invalid", "valid"
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
 @pytest.mark.parametrize(
-    "message_pattern",
+    "message_pattern,expected_output",
     [
-        [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid")],
-        [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid"), (0, 3, "invalid")],
-        [(0, 0, "valid"), (1, 0, "valid"), (0, 1, "invalid"), (1, 1, "invalid")],
+        (
+            [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid")],
+            [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid")],
+        ),
+        (
+            [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid"), (0, 3, "invalid")],
+            [(0, 0, "valid"), (0, 1, "invalid"), (0, 2, "valid"), (0, 3, "invalid")],
+        ),
+        (
+            [(0, 0, "valid"), (1, 0, "valid"), (0, 1, "invalid"), (1, 1, "invalid")],
+            [(0, 0, "valid"), (1, 0, "valid"), (0, 1, "invalid"), (1, 1, "invalid")],
+        ),
     ],
 )
 def test_dlq(
-    strategy_factory: StrategyFactory, message_pattern: MessagePattern
+    strategy_factory: StrategyFactory,
+    message_pattern: MessagePattern,
+    expected_output: MessagePattern,
 ) -> None:
     next_step = Mock()
     step = strategy_factory(next_step, raises_invalid_message=True)
 
-    def test_function(message: Message[bool]) -> bool:
-        return message.payload
-
     topic = Topic("topic")
 
     messages = [
-        Message(Value(type_ == "valid", {Partition(topic, partition): offset}))
+        Message(BrokerValue(type_ == "valid", Partition(topic, partition), offset, NOW))
         for partition, offset, type_ in message_pattern
     ]
 
@@ -205,6 +216,15 @@ def test_dlq(
         if type_ == "invalid"
     ]
 
+    # we poll so aggressively that essentially no batching of filtered payloads
+    # should happen in most strategies.
     assert next_step.submit.call_args_list == [
-        call(message) for message in messages if message.payload
+        call(
+            Message(BrokerValue(True, Partition(topic, partition), offset, NOW))
+            if type_ == "valid"
+            else Message(
+                Value(FILTERED_PAYLOAD, {Partition(topic, partition): offset + 1})
+            )
+        )
+        for partition, offset, type_ in message_pattern
     ]
