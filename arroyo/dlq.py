@@ -65,14 +65,6 @@ class InvalidMessage(Exception):
         )
 
 
-class InvalidMessageOutOfOrder(Exception):
-    """
-    Fatal exception. Strategies are not permitted to raise invalid messages out of order.
-    """
-
-    pass
-
-
 @dataclass(frozen=True)
 class DlqLimit:
     """
@@ -269,13 +261,9 @@ class InvalidMessageState:
     """
     This class is designed to be used internally by processing strategies to
     store invalid messages pending commit.
-
-    If strict_ordering is True, an exception is raised if any invalid messages
-    are not in order.
     """
 
-    def __init__(self, strict_ordering: bool = True) -> None:
-        self.__strict_ordering = strict_ordering
+    def __init__(self) -> None:
         self.__invalid_messages: MutableSequence[InvalidMessage] = []
 
     def __len__(self) -> int:
@@ -298,9 +286,14 @@ class InvalidMessageState:
         committable: MutableMapping[Partition, int] = {}
         for m in self.__invalid_messages:
             next_offset = m.offset + 1
-            if self.__strict_ordering and m.partition in committable:
-                if next_offset < committable[m.partition]:
-                    raise InvalidMessageOutOfOrder
+            if m.partition in committable and next_offset < committable[m.partition]:
+                logger.warn(
+                    "InvalidMessage was raised out of order. "
+                    "Potentially dropping offset for committing.\n\n"
+                    "Either Arroyo has a bug or you wrote a custom strategy "
+                    "that does not handle DLQing right."
+                )
+                continue
 
             committable[m.partition] = next_offset
 
