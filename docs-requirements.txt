@@ -1,5 +1,5 @@
-sphinx==5.0.0
+sphinx>=5.3
 sphinxcontrib-mermaid==0.7.1
 sphinx-rtd-theme
-sphinx-autodoc-typehints[type_comments]>=1.8.0
+sphinx-autodoc-typehints[type-comment]>=1.19.3
 typing-extensions
