@@ -250,10 +250,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
-            try:
-                self.__processing_strategy.poll()
-            except InvalidMessage as e:
-                self._handle_invalid_message(e)
+            while True:
+                try:
+                    self.__processing_strategy.poll()
+                    break
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
+
             self.__metrics_buffer.increment(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
