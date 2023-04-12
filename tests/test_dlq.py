@@ -5,7 +5,14 @@ from unittest.mock import ANY
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.dlq import BufferedMessages, DlqLimit, DlqPolicy, KafkaDlqProducer
+from arroyo.dlq import (
+    BufferedMessages,
+    DlqLimit,
+    DlqPolicy,
+    InvalidMessage,
+    InvalidMessageState,
+    KafkaDlqProducer,
+)
 from arroyo.types import BrokerValue, Partition, Topic
 
 topic = Topic("test")
@@ -76,3 +83,12 @@ def test_no_buffered_messages() -> None:
     for _ in range(10):
         buffer.append(next(generator))
     assert buffer.pop(partition, 9) is None
+
+
+def test_invalid_message_state() -> None:
+    inv = InvalidMessageState()
+    assert len(inv) == 0
+    inv.append(InvalidMessage(Partition(Topic("test_topic"), 0), 2))
+    assert len(inv) == 1
+    inv.reset()
+    assert len(inv) == 0

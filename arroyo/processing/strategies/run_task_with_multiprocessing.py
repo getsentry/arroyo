@@ -25,10 +25,13 @@ from typing import (
     cast,
 )
 
+from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidMessage,
-    InvalidMessages,
+    InvalidMessage as LegacyInvalidMessage,
+)
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidMessages as LegacyInvalidMessages,
 )
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
@@ -36,6 +39,7 @@ from arroyo.utils.metrics import Gauge, get_metrics
 logger = logging.getLogger(__name__)
 
 TResult = TypeVar("TResult")
+TBatchValue = TypeVar("TBatchValue")
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 
@@ -47,7 +51,7 @@ class ChildProcessTerminated(RuntimeError):
 # A serialized message is composed of a pickled ``Message`` instance (bytes)
 # and a sequence of ``(offset, length)`` that referenced locations in a shared
 # memory block for out of band buffer transfer.
-SerializedMessage = Tuple[bytes, Sequence[Tuple[int, int]]]
+SerializedBatchValue = Tuple[bytes, Sequence[Tuple[int, int]]]
 
 
 class ValueTooLarge(ValueError):
@@ -56,7 +60,7 @@ class ValueTooLarge(ValueError):
     """
 
 
-class MessageBatch(Generic[TStrategyPayload]):
+class MessageBatch(Generic[TBatchValue]):
     """
     Contains a sequence of ``Message`` instances that are intended to be
     shared across processes.
@@ -64,8 +68,9 @@ class MessageBatch(Generic[TStrategyPayload]):
 
     def __init__(self, block: SharedMemory) -> None:
         self.block = block
-        self.__items: MutableSequence[SerializedMessage] = []
+        self.__items: MutableSequence[SerializedBatchValue] = []
         self.__offset = 0
+        self.__iter_offset = 0
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__}: {len(self)} items, {self.__offset} bytes>"
@@ -76,7 +81,7 @@ class MessageBatch(Generic[TStrategyPayload]):
     def get_content_size(self) -> int:
         return self.__offset
 
-    def __getitem__(self, index: int) -> Message[TStrategyPayload]:
+    def __getitem__(self, index: int) -> TBatchValue:
         """
         Get a message in this batch by its index.
 
@@ -101,7 +106,7 @@ class MessageBatch(Generic[TStrategyPayload]):
         # contents of the message would be liable to be corrupted (at best --
         # possibly causing a data leak/security issue at worst.)
         return cast(
-            Message[TStrategyPayload],
+            TBatchValue,
             pickle.loads(
                 data,
                 buffers=[
@@ -111,17 +116,20 @@ class MessageBatch(Generic[TStrategyPayload]):
             ),
         )
 
-    def __iter__(self) -> Iterator[Message[TStrategyPayload]]:
+    def __iter__(self) -> Iterator[Tuple[int, TBatchValue]]:
         """
         Iterate through the messages contained in this batch.
 
         See ``__getitem__`` for more details about the ``Message`` instances
         yielded by the iterator returned by this method.
         """
-        for i in range(len(self.__items)):
-            yield self[i]
+        for i in range(self.__iter_offset, len(self.__items)):
+            yield i, self[i]
 
-    def append(self, message: Message[TStrategyPayload]) -> None:
+    def reset_iterator(self, iter_offset: int) -> None:
+        self.__iter_offset = iter_offset
+
+    def append(self, message: TBatchValue) -> None:
         """
         Add a message to this batch.
 
@@ -153,10 +161,10 @@ class MessageBatch(Generic[TStrategyPayload]):
         self.__items.append((data, buffers))
 
 
-class BatchBuilder(Generic[TStrategyPayload]):
+class BatchBuilder(Generic[TBatchValue]):
     def __init__(
         self,
-        batch: MessageBatch[TStrategyPayload],
+        batch: MessageBatch[TBatchValue],
         max_batch_size: int,
         max_batch_time: float,
     ) -> None:
@@ -167,7 +175,7 @@ class BatchBuilder(Generic[TStrategyPayload]):
     def __len__(self) -> int:
         return len(self.__batch)
 
-    def append(self, message: Message[TStrategyPayload]) -> None:
+    def append(self, message: TBatchValue) -> None:
         self.__batch.append(message)
 
     def ready(self) -> bool:
@@ -178,7 +186,7 @@ class BatchBuilder(Generic[TStrategyPayload]):
         else:
             return False
 
-    def build(self) -> MessageBatch[TStrategyPayload]:
+    def build(self) -> MessageBatch[TBatchValue]:
         return self.__batch
 
 
@@ -201,19 +209,23 @@ class ParallelRunTaskResult(Generic[TResult]):
     """
 
     next_index_to_process: int
-    valid_messages_transformed: MessageBatch[TResult]
-    invalid_messages: MutableSequence[InvalidMessage]
+    valid_messages_transformed: MessageBatch[
+        Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
+    ]
+    invalid_messages: MutableSequence[LegacyInvalidMessage]
 
 
 def parallel_run_task_worker_apply(
     function: Callable[[Message[TStrategyPayload]], TResult],
-    input_batch: MessageBatch[TStrategyPayload],
+    input_batch: MessageBatch[Message[Union[FilteredPayload, TStrategyPayload]]],
     output_block: SharedMemory,
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
 
-    valid_messages_transformed: MessageBatch[TResult] = MessageBatch(output_block)
-    invalid_messages: MutableSequence[InvalidMessage] = []
+    valid_messages_transformed: MessageBatch[
+        Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
+    ] = MessageBatch(output_block)
+    invalid_messages: MutableSequence[LegacyInvalidMessage] = []
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
@@ -222,16 +234,24 @@ def parallel_run_task_worker_apply(
         # Theory: Doing this check in the subprocess is cheaper because we
         # shouldn't get a high volume of FilteredPayloads on average.
         if isinstance(message.value.payload, FilteredPayload):
-            valid_messages_transformed.append(cast(Message[TResult], message))
+            valid_messages_transformed.append(
+                cast(Message[Union[FilteredPayload, TResult]], message)
+            )
             next_index_to_process += 1
             continue
 
+        payload: Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
+
         try:
-            result = function(message)
-        except InvalidMessages as e:
+            payload = message.replace(
+                function(cast(Message[TStrategyPayload], message))
+            )
+        except LegacyInvalidMessages as e:
             invalid_messages += e.messages
             next_index_to_process += 1
             continue
+        except InvalidMessage as e:
+            payload = e
         except Exception:
             # The remote traceback thrown when retrieving the result from the
             # pool omits a lot of useful data (and usually includes a
@@ -247,8 +267,7 @@ def parallel_run_task_worker_apply(
             raise
 
         try:
-            payload = message.value.replace(result)
-            valid_messages_transformed.append(Message(payload))
+            valid_messages_transformed.append(payload)
         except ValueTooLarge:
             # If the output batch cannot accept the transformed message when
             # the batch is empty, we'll never be able to write it and should
@@ -260,6 +279,7 @@ def parallel_run_task_worker_apply(
                 break
         else:
             next_index_to_process += 1
+
     return ParallelRunTaskResult(
         next_index_to_process, valid_messages_transformed, invalid_messages
     )
@@ -305,16 +325,24 @@ class RunTaskWithMultiprocessing(
         ]
 
         self.__batch_builder: Optional[
-            BatchBuilder[Union[FilteredPayload, TStrategyPayload]]
+            BatchBuilder[
+                Union[InvalidMessage, Message[Union[FilteredPayload, TStrategyPayload]]]
+            ]
         ] = None
 
         self.__processes: Deque[
             Tuple[
-                MessageBatch[TStrategyPayload],
+                MessageBatch[
+                    Union[
+                        InvalidMessage,
+                        Message[Union[FilteredPayload, TStrategyPayload]],
+                    ]
+                ],
                 AsyncResult[ParallelRunTaskResult[TResult]],
-                MutableSequence[InvalidMessage],
+                MutableSequence[LegacyInvalidMessage],
             ]
         ] = deque()
+        self.__invalid_messages = InvalidMessageState()
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
@@ -330,7 +358,7 @@ class RunTaskWithMultiprocessing(
             # multiprocessor pool workers.
             if not self.__closed:
                 self.__metrics.increment("sigchld.detected")
-                raise ChildProcessTerminated()
+                raise ChildProcessTerminated(signum)
 
         signal.signal(signal.SIGCHLD, handle_sigchld)
 
@@ -353,8 +381,19 @@ class RunTaskWithMultiprocessing(
         self.__metrics.timing("batch.size.bytes", batch.get_content_size())
         self.__batch_builder = None
 
+    def __forward_invalid_offsets(self) -> None:
+        if len(self.__invalid_messages):
+            self.__next_step.poll()
+            filter_msg = self.__invalid_messages.build()
+            if filter_msg:
+                try:
+                    self.__next_step.submit(filter_msg)
+                    self.__invalid_messages.reset()
+                except MessageRejected:
+                    pass
+
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result, partial_invalid_messages = self.__processes[0]
+        input_batch, async_result, partial_legacy_invalid_messages = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -365,14 +404,19 @@ class RunTaskWithMultiprocessing(
             raise multiprocessing.TimeoutError()
 
         result = async_result.get(timeout=timeout)
-        partial_invalid_messages += result.invalid_messages
+        partial_legacy_invalid_messages += result.invalid_messages
 
-        for idx, message in enumerate(result.valid_messages_transformed):
+        for idx, message in result.valid_messages_transformed:
+            if isinstance(message, InvalidMessage):
+                result.valid_messages_transformed.reset_iterator(idx + 1)
+                self.__invalid_messages.append(message)
+                raise message
+
             try:
                 self.__next_step.poll()
                 self.__next_step.submit(message)
-            except InvalidMessages as e:
-                partial_invalid_messages += e.messages
+            except LegacyInvalidMessages as e:
+                partial_legacy_invalid_messages += e.messages
             except MessageRejected:
                 result.next_index_to_process = idx
 
@@ -396,7 +440,7 @@ class RunTaskWithMultiprocessing(
                         result.next_index_to_process,
                     ),
                 ),
-                partial_invalid_messages,
+                partial_legacy_invalid_messages,
             )
             return
 
@@ -406,10 +450,11 @@ class RunTaskWithMultiprocessing(
         self.__batches_in_progress.decrement()
 
         del self.__processes[0]
-        if partial_invalid_messages:
-            raise InvalidMessages(partial_invalid_messages)
+        if partial_legacy_invalid_messages:
+            raise LegacyInvalidMessages(partial_legacy_invalid_messages)
 
     def poll(self) -> None:
+        self.__forward_invalid_offsets()
         self.__next_step.poll()
 
         while self.__processes:
@@ -492,10 +537,11 @@ class RunTaskWithMultiprocessing(
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
+        self.__forward_invalid_offsets()
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
-        invalid_messages: MutableSequence[InvalidMessage] = []
+        invalid_messages: MutableSequence[LegacyInvalidMessage] = []
 
         while self.__processes:
             try:
@@ -506,7 +552,7 @@ class RunTaskWithMultiprocessing(
                 )
             except multiprocessing.TimeoutError:
                 pass
-            except InvalidMessages as e:
+            except LegacyInvalidMessages as e:
                 invalid_messages += e.messages
 
         self.__pool.close()
@@ -524,8 +570,8 @@ class RunTaskWithMultiprocessing(
             self.__next_step.join(
                 timeout=max(deadline - time.time(), 0) if deadline is not None else None
             )
-        except InvalidMessages as e:
+        except LegacyInvalidMessages as e:
             invalid_messages += e.messages
 
         if invalid_messages:
-            raise InvalidMessages(invalid_messages)
+            raise LegacyInvalidMessages(invalid_messages)

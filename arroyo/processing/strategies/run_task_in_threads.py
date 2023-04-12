@@ -4,6 +4,7 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar, Union, cast
 
+from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 
@@ -51,6 +52,18 @@ class RunTaskInThreads(
         self.__max_pending_futures = max_pending_futures
         self.__next_step = next_step
         self.__closed = False
+        self.__invalid_messages = InvalidMessageState()
+
+    def __forward_invalid_offsets(self) -> None:
+        if len(self.__invalid_messages):
+            self.__next_step.poll()
+            filter_msg = self.__invalid_messages.build()
+            if filter_msg:
+                try:
+                    self.__next_step.submit(filter_msg)
+                    self.__invalid_messages.reset()
+                except MessageRejected:
+                    pass
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
@@ -71,6 +84,7 @@ class RunTaskInThreads(
         self.__queue.append((message, future))
 
     def poll(self) -> None:
+        self.__forward_invalid_offsets()
         while self.__queue:
             message, future = self.__queue[0]
             next_message: Message[TResult]
@@ -80,7 +94,12 @@ class RunTaskInThreads(
                     break
 
                 # Will raise if the future errored
-                result = future.result()
+                try:
+                    result = future.result()
+                except InvalidMessage as e:
+                    self.__invalid_messages.append(e)
+                    self.__queue.popleft()
+                    raise e
                 payload = message.value.replace(result)
                 next_message = Message(payload)
             else:
@@ -94,7 +113,7 @@ class RunTaskInThreads(
 
     def join(self, timeout: Optional[float] = None) -> None:
         start = time.time()
-
+        self.__forward_invalid_offsets()
         while self.__queue:
             remaining = timeout - (time.time() - start) if timeout is not None else None
             if remaining is not None and remaining <= 0:
@@ -106,7 +125,11 @@ class RunTaskInThreads(
 
             if future is not None:
                 # Will raise if the future errored
-                result = future.result(remaining)
+                try:
+                    result = future.result(remaining)
+                except InvalidMessage as e:
+                    self.__invalid_messages.append(e)
+                    raise e
                 payload = message.value.replace(result)
                 next_message = Message(payload)
             else:

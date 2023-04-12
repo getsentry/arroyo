@@ -8,6 +8,7 @@ from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
+from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -162,6 +163,37 @@ def test_stream_processor_termination_on_error() -> None:
         processor.run()
 
     assert e.value == exception
+
+
+def test_stream_processor_invalid_message() -> None:
+    topic = Topic("test")
+
+    consumer = mock.Mock()
+    partition = Partition(topic, 0)
+    offset = 1
+    now = datetime.now()
+
+    consumer.poll.side_effect = [BrokerValue(0, partition, offset, now)]
+
+    strategy = mock.Mock()
+    strategy.poll.side_effect = [InvalidMessage(partition, 0, needs_commit=False), None]
+
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE
+    )
+
+    assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
+    assignment_callback({Partition(topic, 0): 0})
+
+    # We need to ensure that poll() is called again after it raises
+    # InvalidMessage the first time. This gives the strategy time to commit
+    # offsets for that message before the next one is submitted.
+    processor._run_once()
+    assert strategy.poll.call_count == 2
+    assert strategy.submit.call_count == 1
 
 
 def test_stream_processor_create_with_partitions() -> None:
@@ -429,3 +461,31 @@ def test_commit_policy_bench(
             processor._run_once()
 
     benchmark(inner)
+
+
+def test_dlq() -> None:
+    topic = Topic("topic")
+    partition = Partition(topic, 0)
+    consumer = mock.Mock()
+    consumer.poll.return_value = BrokerValue(0, partition, 1, datetime.now())
+    strategy = mock.Mock()
+    strategy.submit.side_effect = InvalidMessage(partition, 1)
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    dlq_policy: Any = DlqPolicy(producer=mock.Mock())
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE, dlq_policy
+    )
+
+    # Assignment
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+    assignment_callback = subscribe_kwargs["on_assign"]
+    offsets = {Partition(topic, 0): 0}
+    assignment_callback(offsets)
+
+    processor._run_once()
+
+    assert dlq_policy.producer.produce.call_count == 1

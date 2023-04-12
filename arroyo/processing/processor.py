@@ -8,7 +8,7 @@ from typing import Generic, Mapping, MutableMapping, Optional, Sequence
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
-from arroyo.dlq import BufferedMessages, DlqPolicy
+from arroyo.dlq import BufferedMessages, DlqPolicy, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -108,7 +108,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processing_strategy.close()
 
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
-            self.__processing_strategy.join(self.__join_timeout)
+
+            while True:
+                try:
+                    self.__processing_strategy.join(self.__join_timeout)
+                    break
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
 
             logger.info(
                 "%r exited successfully, releasing assignment.",
@@ -207,6 +213,19 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Processor terminated")
             raise
 
+    def _handle_invalid_message(self, exc: InvalidMessage) -> None:
+        logger.exception(exc)
+        if self.__dlq_policy:
+            invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+            if invalid_message is None:
+                raise Exception(
+                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+                ) from None
+
+            # XXX: This blocks until the message is produced. This will be slow
+            # if there is a very large volume of invalid messages to be produced.
+            self.__dlq_policy.producer.produce(invalid_message).result()
+
     def _run_once(self) -> None:
         message_carried_over = self.__message is not None
 
@@ -231,7 +250,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
-            self.__processing_strategy.poll()
+            while True:
+                try:
+                    self.__processing_strategy.poll()
+                    break
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
+
             self.__metrics_buffer.increment(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
@@ -244,6 +269,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     if not message_carried_over:
                         self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
+
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
@@ -269,6 +295,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
 
                 else:
                     # If we were trying to submit a message that failed to be
