@@ -165,7 +165,7 @@ def test_stream_processor_termination_on_error() -> None:
     assert e.value == exception
 
 
-def test_stream_processor_invalid_message() -> None:
+def test_stream_processor_invalid_message_from_poll() -> None:
     topic = Topic("test")
 
     consumer = mock.Mock()
@@ -192,8 +192,62 @@ def test_stream_processor_invalid_message() -> None:
     # InvalidMessage the first time. This gives the strategy time to commit
     # offsets for that message before the next one is submitted.
     processor._run_once()
+    assert strategy.poll.call_count == 1
+
+    processor._run_once()
     assert strategy.poll.call_count == 2
     assert strategy.submit.call_count == 1
+
+
+def test_stream_processor_invalid_message_from_submit() -> None:
+    topic = Topic("test")
+
+    consumer = mock.Mock()
+    partition = Partition(topic, 0)
+    offset = 1
+    now = datetime.now()
+
+    consumer.poll.side_effect = [
+        BrokerValue(0, partition, offset, now),
+        BrokerValue(1, partition, offset + 1, now),
+    ]
+
+    strategy = mock.Mock()
+    strategy.submit.side_effect = [
+        InvalidMessage(partition, 0, needs_commit=False),
+        None,
+        None,
+    ]
+
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE
+    )
+
+    assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
+    assignment_callback({Partition(topic, 0): 0})
+
+    processor._run_once()
+    assert strategy.poll.call_count == 1
+    assert consumer.pause.call_count == 0
+    assert strategy.submit.call_count == 1
+
+    processor._run_once()
+    assert strategy.submit.call_count == 2
+    assert strategy.submit.call_args_list == [
+        mock.call(Message(BrokerValue(0, partition, offset, now))),
+        mock.call(Message(BrokerValue(0, partition, offset, now))),
+    ]
+
+    processor._run_once()
+    assert strategy.submit.call_count == 3
+    assert strategy.submit.call_args_list == [
+        mock.call(Message(BrokerValue(0, partition, offset, now))),
+        mock.call(Message(BrokerValue(0, partition, offset, now))),
+        mock.call(Message(BrokerValue(1, partition, offset + 1, now))),
+    ]
 
 
 def test_stream_processor_create_with_partitions() -> None:

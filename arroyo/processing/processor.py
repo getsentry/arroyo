@@ -214,6 +214,15 @@ class StreamProcessor(Generic[TStrategyPayload]):
             raise
 
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
+        # Do not "carry over" message if it is the invalid one. Every other
+        # message should be re-submitted to the strategy.
+        if (
+            self.__message is not None
+            and exc.partition == self.__message.partition
+            and exc.offset == self.__message.offset
+        ):
+            self.__message = None
+
         logger.exception(exc)
         if self.__dlq_policy:
             invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
@@ -230,9 +239,17 @@ class StreamProcessor(Generic[TStrategyPayload]):
         message_carried_over = self.__message is not None
 
         if message_carried_over:
-            # If a message was carried over from the previous run, the consumer
-            # should be paused and not returning any messages on ``poll``.
-            if self.__consumer.poll(timeout=0) is not None:
+            # If a message was carried over from the previous run, there are two reasons:
+            #
+            # * MessageRejected. the consumer should be paused and not
+            #   returning any messages on ``poll``.
+            # * InvalidMessage. the message should be resubmitted.
+            #   _handle_invalid_message is responsible for clearing out
+            #   self.__message if it was the invalid one.
+            if (
+                self.__paused_timestamp is not None
+                and self.__consumer.poll(timeout=0) is not None
+            ):
                 raise InvalidStateError(
                     "received message when consumer was expected to be paused"
                 )
@@ -250,12 +267,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
-            while True:
-                try:
-                    self.__processing_strategy.poll()
-                    break
-                except InvalidMessage as e:
-                    self._handle_invalid_message(e)
+            try:
+                self.__processing_strategy.poll()
+            except InvalidMessage as e:
+                self._handle_invalid_message(e)
+                return
 
             self.__metrics_buffer.increment(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
@@ -302,8 +318,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     # If we were trying to submit a message that failed to be
                     # submitted on a previous run, we can resume accepting new
                     # messages.
-                    if message_carried_over:
-                        assert self.__paused_timestamp is not None
+                    if message_carried_over and self.__paused_timestamp is not None:
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
                         self.__metrics_buffer.increment(
