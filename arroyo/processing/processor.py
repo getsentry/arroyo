@@ -31,6 +31,7 @@ class ConsumerTiming(Enum):
     CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
     CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
+    CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
 
 
 class MetricsBuffer:
@@ -216,6 +217,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
         logger.exception(exc)
         if self.__dlq_policy:
+            start_dlq = time.time()
             invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
             if invalid_message is None:
                 raise Exception(
@@ -225,6 +227,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
             # XXX: This blocks until the message is produced. This will be slow
             # if there is a very large volume of invalid messages to be produced.
             self.__dlq_policy.producer.produce(invalid_message).result()
+
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq
+            )
 
     def _run_once(self) -> None:
         message_carried_over = self.__message is not None
