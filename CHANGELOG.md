@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.10.1
+
+### Various fixes & improvements
+
+- fix: Do not enter invalid state when strategy.submit raises InvalidMessage (#212) by @untitaker
+
 ## 2.10.0
 
 ### Various fixes & improvements
