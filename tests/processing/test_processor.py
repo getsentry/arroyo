@@ -123,9 +123,11 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
         processor._shutdown()
 
-    poll_metric, processing_metric, pause_metric = metrics.calls
+    poll_metric, callback_metric, processing_metric, pause_metric = metrics.calls
     assert isinstance(poll_metric, Timing)
     assert poll_metric.name == "arroyo.consumer.poll.time"
+    assert isinstance(callback_metric, Timing)
+    assert callback_metric.name == "arroyo.consumer.callback.time"
     assert isinstance(processing_metric, Timing)
     assert processing_metric.name == "arroyo.consumer.processing.time"
     assert isinstance(pause_metric, Timing)
