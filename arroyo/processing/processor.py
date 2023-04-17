@@ -32,6 +32,7 @@ class ConsumerTiming(Enum):
     CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
     CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
+    CONSUMER_JOIN_TIME = "arroyo.consumer.join.time"
 
 
 class MetricsBuffer:
@@ -111,10 +112,18 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
 
             while True:
+                start_join = time.time()
+
                 try:
                     self.__processing_strategy.join(self.__join_timeout)
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
                     break
                 except InvalidMessage as e:
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
                     self._handle_invalid_message(e)
 
             logger.info(
