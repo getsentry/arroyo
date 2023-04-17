@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from collections import defaultdict
 from enum import Enum
-from typing import Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    TypeVar,
+    cast,
+)
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
@@ -22,6 +33,28 @@ logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 
+F = TypeVar("F", bound=Callable[[Any], Any])
+
+
+def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
+    def decorator(f: F) -> F:
+        @functools.wraps(f)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            start_time = time.time()
+            try:
+                return f(*args, **kwargs)
+            except Exception:
+                logger.exception(f"{f.__name__} crashed")
+                raise
+            finally:
+                metrics.increment(
+                    ConsumerTiming.CONSUMER_CALLBACK_TIME, time.time() - start_time
+                )
+
+        return cast(F, wrapper)
+
+    return decorator
+
 
 class InvalidStateError(RuntimeError):
     pass
@@ -33,6 +66,9 @@ class ConsumerTiming(Enum):
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
     CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
     CONSUMER_JOIN_TIME = "arroyo.consumer.join.time"
+
+    # This metric's timings overlap with DLQ/join time.
+    CONSUMER_CALLBACK_TIME = "arroyo.consumer.callback.time"
 
 
 class MetricsBuffer:
@@ -143,6 +179,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
 
+        @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             self.__buffered_messages.reset()
@@ -154,6 +191,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     _close_strategy()
                 _create_strategy(partitions)
 
+        @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions revoked: %r", partitions)
 
