@@ -69,6 +69,7 @@ class ConsumerTiming(Enum):
 
     # This metric's timings overlap with DLQ/join time.
     CONSUMER_CALLBACK_TIME = "arroyo.consumer.callback.time"
+    CONSUMER_SHUTDOWN_TIME = "arroyo.consumer.shutdown.time"
 
 
 class MetricsBuffer:
@@ -137,6 +138,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         def _close_strategy() -> None:
+            start_close = time.time()
+
             if self.__processing_strategy is None:
                 raise InvalidStateError(
                     "received unexpected revocation without active processing strategy"
@@ -168,6 +171,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
+
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
+            )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
             self.__processing_strategy = (
