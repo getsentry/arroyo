@@ -123,7 +123,14 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
         processor._shutdown()
 
-    poll_metric, callback_metric, processing_metric, pause_metric = metrics.calls
+    (
+        poll_metric,
+        callback_metric,
+        processing_metric,
+        pause_metric,
+        join_metric,
+        shutdown_metric,
+    ) = metrics.calls
     assert isinstance(poll_metric, Timing)
     assert poll_metric.name == "arroyo.consumer.poll.time"
     assert isinstance(callback_metric, Timing)
@@ -132,6 +139,10 @@ def test_stream_processor_lifecycle() -> None:
     assert processing_metric.name == "arroyo.consumer.processing.time"
     assert isinstance(pause_metric, Timing)
     assert pause_metric.name == "arroyo.consumer.paused.time"
+    assert isinstance(join_metric, Timing)
+    assert join_metric.name == "arroyo.consumer.join.time"
+    assert isinstance(shutdown_metric, Timing)
+    assert shutdown_metric.name == "arroyo.consumer.shutdown.time"
 
 
 def test_stream_processor_termination_on_error() -> None:

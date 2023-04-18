@@ -65,9 +65,11 @@ class ConsumerTiming(Enum):
     CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
     CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
+    CONSUMER_JOIN_TIME = "arroyo.consumer.join.time"
 
     # This metric's timings overlap with DLQ/join time.
     CONSUMER_CALLBACK_TIME = "arroyo.consumer.callback.time"
+    CONSUMER_SHUTDOWN_TIME = "arroyo.consumer.shutdown.time"
 
 
 class MetricsBuffer:
@@ -136,6 +138,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         def _close_strategy() -> None:
+            start_close = time.time()
+
             if self.__processing_strategy is None:
                 raise InvalidStateError(
                     "received unexpected revocation without active processing strategy"
@@ -147,10 +151,18 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
 
             while True:
+                start_join = time.time()
+
                 try:
                     self.__processing_strategy.join(self.__join_timeout)
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
                     break
                 except InvalidMessage as e:
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
                     self._handle_invalid_message(e)
 
             logger.info(
@@ -159,6 +171,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
+
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
+            )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
             self.__processing_strategy = (
