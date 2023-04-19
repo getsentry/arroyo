@@ -31,6 +31,7 @@ class ConsumerTiming(Enum):
     CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
     CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
+    CONSUMER_MESSAGE_LATENCY = "arroyo.consumer.message.latency"
 
 
 class MetricsBuffer:
@@ -223,6 +224,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
+
+                if self.__message is not None:
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_MESSAGE_LATENCY,
+                        time.time() - self.__message.timestamp.timestamp(),
+                    )
                 self.__metrics_buffer.increment(
                     ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
                 )
