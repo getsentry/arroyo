@@ -1,5 +1,18 @@
 # Changelog and versioning
 
+## 2.10.1
+
+### Various fixes & improvements
+
+- fix: Do not enter invalid state when strategy.submit raises InvalidMessage (#212) by @untitaker
+
+## 2.10.0
+
+### Various fixes & improvements
+
+- feat(dlq): A DLQ implementation that keeps a copy of raw messages in a buffer (#202) by @lynnagara
+- fix: Fix installation of sphinx-autodoc-typehints (#211) by @untitaker
+
 ## 2.9.1
 
 ### Various fixes & improvements

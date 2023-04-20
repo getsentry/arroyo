@@ -9,8 +9,10 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidMessages,
-    InvalidRawMessage,
+    InvalidMessages as LegacyInvalidMessages,
+)
+from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
+    InvalidRawMessage as LegacyInvalidRawMessage,
 )
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
@@ -41,12 +43,12 @@ def test_message_batch() -> None:
         )
     )
 
-    batch: MessageBatch[KafkaPayload] = MessageBatch(block)
+    batch: MessageBatch[Message[KafkaPayload]] = MessageBatch(block)
     with assert_changes(lambda: len(batch), 0, 1):
         batch.append(message)
 
     assert batch[0] == message
-    assert list(batch) == [message]
+    assert list(batch) == [(0, message)]
 
     with assert_does_not_change(lambda: len(batch), 1), pytest.raises(ValueTooLarge):
         batch.append(message)
@@ -78,7 +80,7 @@ def test_parallel_run_task_worker_apply() -> None:
     input_block = smm.SharedMemory(32768)
     assert input_block.size == 32768
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
 
@@ -124,9 +126,9 @@ NO_KEY = "No Key"
 
 def fail_bad_messages(value: Message[KafkaPayload]) -> KafkaPayload:
     if value.payload.key is None:
-        raise InvalidMessages(
+        raise LegacyInvalidMessages(
             [
-                InvalidRawMessage(
+                LegacyInvalidRawMessage(
                     payload=str(value.payload),
                     reason=NO_KEY,
                 )
@@ -153,7 +155,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
         for i in range(9)
     ]
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
     assert len(input_batch) == 9
@@ -167,7 +169,7 @@ def test_parallel_transform_worker_bad_messages() -> None:
     assert len(result.invalid_messages) == 5
     assert len(result.valid_messages_transformed) == 4
 
-    input_batch = MessageBatch[Any](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block)
     for message in messages:
         input_batch.append(message)
     assert len(input_batch) == 9
@@ -326,7 +328,7 @@ def test_parallel_run_task_bad_messages() -> None:
             transform_step.poll()
 
     # wait for all processes to finish
-    with pytest.raises(InvalidMessages) as e_info:
+    with pytest.raises(LegacyInvalidMessages) as e_info:
         transform_step.close()
         transform_step.join()
 
@@ -334,7 +336,7 @@ def test_parallel_run_task_bad_messages() -> None:
     assert len(e_info.value.messages) == 5
     # Test exception pickles and decodes correctly
     invalid_message = e_info.value.messages[0]
-    assert isinstance(invalid_message, InvalidRawMessage)
+    assert isinstance(invalid_message, LegacyInvalidRawMessage)
     assert invalid_message.reason == NO_KEY
     assert invalid_message.payload == str(messages[0].payload)
     # The 4 good ones should not have been blocked

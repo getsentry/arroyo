@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from collections import defaultdict
 from enum import Enum
-from typing import Generic, Mapping, MutableMapping, Optional, Sequence
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    TypeVar,
+    cast,
+)
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
-from arroyo.dlq import BufferedMessages, DlqPolicy
+from arroyo.dlq import BufferedMessages, DlqPolicy, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -22,6 +33,28 @@ logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 
+F = TypeVar("F", bound=Callable[[Any], Any])
+
+
+def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
+    def decorator(f: F) -> F:
+        @functools.wraps(f)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            start_time = time.time()
+            try:
+                return f(*args, **kwargs)
+            except Exception:
+                logger.exception(f"{f.__name__} crashed")
+                raise
+            finally:
+                metrics.increment(
+                    ConsumerTiming.CONSUMER_CALLBACK_TIME, time.time() - start_time
+                )
+
+        return cast(F, wrapper)
+
+    return decorator
+
 
 class InvalidStateError(RuntimeError):
     pass
@@ -31,6 +64,12 @@ class ConsumerTiming(Enum):
     CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
     CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
     CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
+    CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
+    CONSUMER_JOIN_TIME = "arroyo.consumer.join.time"
+
+    # This metric's timings overlap with DLQ/join time.
+    CONSUMER_CALLBACK_TIME = "arroyo.consumer.callback.time"
+    CONSUMER_SHUTDOWN_TIME = "arroyo.consumer.shutdown.time"
     CONSUMER_MESSAGE_LATENCY = "arroyo.consumer.message.latency"
 
 
@@ -100,6 +139,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         def _close_strategy() -> None:
+            start_close = time.time()
+
             if self.__processing_strategy is None:
                 raise InvalidStateError(
                     "received unexpected revocation without active processing strategy"
@@ -109,7 +150,21 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processing_strategy.close()
 
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
-            self.__processing_strategy.join(self.__join_timeout)
+
+            while True:
+                start_join = time.time()
+
+                try:
+                    self.__processing_strategy.join(self.__join_timeout)
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
+                    break
+                except InvalidMessage as e:
+                    self.__metrics_buffer.increment(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                    )
+                    self._handle_invalid_message(e)
 
             logger.info(
                 "%r exited successfully, releasing assignment.",
@@ -117,6 +172,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
+
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
+            )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
             self.__processing_strategy = (
@@ -128,6 +187,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
 
+        @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             self.__buffered_messages.reset()
@@ -139,6 +199,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     _close_strategy()
                 _create_strategy(partitions)
 
+        @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions revoked: %r", partitions)
 
@@ -203,18 +264,51 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self.__processing_strategy.terminate()
                 self.__processing_strategy = None
 
-            logger.info("Closing %r...", self.__consumer)
-            self.__consumer.close()
-            logger.info("Processor terminated")
+            self._shutdown()
             raise
+
+    def _handle_invalid_message(self, exc: InvalidMessage) -> None:
+        # Do not "carry over" message if it is the invalid one. Every other
+        # message should be re-submitted to the strategy.
+        if (
+            self.__message is not None
+            and exc.partition == self.__message.partition
+            and exc.offset == self.__message.offset
+        ):
+            self.__message = None
+
+        logger.exception(exc)
+        if self.__dlq_policy:
+            start_dlq = time.time()
+            invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+            if invalid_message is None:
+                raise Exception(
+                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+                ) from None
+
+            # XXX: This blocks until the message is produced. This will be slow
+            # if there is a very large volume of invalid messages to be produced.
+            self.__dlq_policy.producer.produce(invalid_message).result()
+
+            self.__metrics_buffer.increment(
+                ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq
+            )
 
     def _run_once(self) -> None:
         message_carried_over = self.__message is not None
 
         if message_carried_over:
-            # If a message was carried over from the previous run, the consumer
-            # should be paused and not returning any messages on ``poll``.
-            if self.__consumer.poll(timeout=0) is not None:
+            # If a message was carried over from the previous run, there are two reasons:
+            #
+            # * MessageRejected. the consumer should be paused and not
+            #   returning any messages on ``poll``.
+            # * InvalidMessage. the message should be resubmitted.
+            #   _handle_invalid_message is responsible for clearing out
+            #   self.__message if it was the invalid one.
+            if (
+                self.__paused_timestamp is not None
+                and self.__consumer.poll(timeout=0) is not None
+            ):
                 raise InvalidStateError(
                     "received message when consumer was expected to be paused"
                 )
@@ -238,7 +332,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         if self.__processing_strategy is not None:
             start_poll = time.time()
-            self.__processing_strategy.poll()
+            try:
+                self.__processing_strategy.poll()
+            except InvalidMessage as e:
+                self._handle_invalid_message(e)
+                return
+
             self.__metrics_buffer.increment(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
@@ -251,6 +350,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     if not message_carried_over:
                         self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
+
                     self.__metrics_buffer.increment(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
@@ -276,13 +376,14 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
+                except InvalidMessage as e:
+                    self._handle_invalid_message(e)
 
                 else:
                     # If we were trying to submit a message that failed to be
                     # submitted on a previous run, we can resume accepting new
                     # messages.
-                    if message_carried_over:
-                        assert self.__paused_timestamp is not None
+                    if message_carried_over and self.__paused_timestamp is not None:
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
                         self.__metrics_buffer.increment(

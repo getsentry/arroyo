@@ -5,11 +5,28 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any, Deque, Generic, Mapping, MutableMapping, Optional
+from typing import (
+    Any,
+    Deque,
+    Generic,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+)
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka import KafkaPayload
-from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+from arroyo.types import (
+    FILTERED_PAYLOAD,
+    BrokerValue,
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    TStrategyPayload,
+    Value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +37,32 @@ class InvalidMessage(Exception):
     should not be retried. It will be placed a DLQ if one is configured.
 
     It can be raised from the submit, poll or join methods of any processing strategy.
+
+    Once a filtered message is forwarded to the next step, `needs_commit` should be set to False,
+    in order to prevent multiple filtered messages from being forwarded for a single invalid message.
     """
 
-    def __init__(self, partition: Partition, offset: int) -> None:
+    def __init__(
+        self, partition: Partition, offset: int, needs_commit: bool = True
+    ) -> None:
         self.partition = partition
         self.offset = offset
+        self.needs_commit = needs_commit
+
+    @classmethod
+    def from_value(cls, value: BrokerValue[Any]) -> InvalidMessage:
+        if not isinstance(value, BrokerValue):
+            raise ValueError("Rejecting messages is only supported before batching.")
+
+        return cls(value.partition, value.offset)
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, InvalidMessage)
+            and self.partition == other.partition
+            and self.offset == other.offset
+            and self.needs_commit == other.needs_commit
+        )
 
 
 @dataclass(frozen=True)
@@ -121,6 +159,10 @@ class NoopDlqProducer(DlqProducer[Any]):
 class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     """
     KafkaDLQProducer forwards invalid messages to a Kafka topic
+
+    Two additional fields are added to the headers of the Kafka message
+    "original_partition": The partition of the original message
+    "original_offset": The offset of the original message
     """
 
     def __init__(self, producer: Producer[KafkaPayload], topic: Topic) -> None:
@@ -130,6 +172,13 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     def produce(
         self, value: BrokerValue[KafkaPayload]
     ) -> Future[BrokerValue[KafkaPayload]]:
+        value.payload.headers.append(
+            ("original_partition", f"{value.partition.index}".encode("utf-8"))
+        )
+        value.payload.headers.append(
+            ("original_offset", f"{value.offset}".encode("utf-8"))
+        )
+
         return self.__producer.produce(self.__topic, value.payload)
 
     @classmethod
@@ -147,8 +196,8 @@ class DlqPolicy(Generic[TStrategyPayload]):
     """
 
     producer: DlqProducer[TStrategyPayload]
-    limit: DlqLimit
-    max_buffered_messages_per_partition: Optional[int]
+    limit: Optional[DlqLimit] = None
+    max_buffered_messages_per_partition: Optional[int] = None
 
 
 class BufferedMessages(Generic[TStrategyPayload]):
@@ -206,3 +255,52 @@ class BufferedMessages(Generic[TStrategyPayload]):
         Reset the buffer.
         """
         self.__buffered_messages = defaultdict(deque)
+
+
+class InvalidMessageState:
+    """
+    This class is designed to be used internally by processing strategies to
+    store invalid messages pending commit.
+    """
+
+    def __init__(self) -> None:
+        self.__invalid_messages: MutableSequence[InvalidMessage] = []
+
+    def __len__(self) -> int:
+        return len(self.__invalid_messages)
+
+    def append(self, invalid_message: InvalidMessage) -> None:
+        """
+        Mark the invalid message as committed so other strategies in the pipeline
+        don't try to commit the same offset when the exception is reraised.
+        """
+        if invalid_message.needs_commit:
+            invalid_message.needs_commit = False
+            self.__invalid_messages.append(invalid_message)
+
+    def build(self) -> Optional[Message[FilteredPayload]]:
+        """
+        Returns a filtered message to be committed down the line. If there is
+        nothing to commit, return None.
+        """
+        committable: MutableMapping[Partition, int] = {}
+        for m in self.__invalid_messages:
+            next_offset = m.offset + 1
+            if m.partition in committable and next_offset < committable[m.partition]:
+                logger.warn(
+                    "InvalidMessage was raised out of order. "
+                    "Potentially dropping offset for committing.\n\n"
+                    "Either Arroyo has a bug or you wrote a custom strategy "
+                    "that does not handle DLQing right."
+                )
+                continue
+
+            committable[m.partition] = next_offset
+
+        if committable:
+            return Message(Value(FILTERED_PAYLOAD, committable))
+
+        return None
+
+    def reset(self) -> None:
+        self.__invalid_messages = []

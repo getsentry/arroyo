@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Mapping, Protocol, TypeVar
+from typing import Any, Generic, Mapping, Protocol, TypeVar
 
 TReplaced = TypeVar("TReplaced")
 
@@ -31,6 +31,9 @@ TStrategyPayload = TypeVar("TStrategyPayload", contravariant=True)
 
 class FilteredPayload:
     __slots__ = ()
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, FilteredPayload)
 
 
 FILTERED_PAYLOAD = FilteredPayload()
