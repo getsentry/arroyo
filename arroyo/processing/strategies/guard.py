@@ -104,15 +104,18 @@ class StrategyGuard(BasicStrategy[TStrategyPayload]):
             raise e
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__forward_invalid_offsets()
-
         try:
             self.__inner_strategy.join(timeout)
-        except InvalidMessage as e:
-            self.__invalid_messages.append(e)
-            raise e
+        except InvalidMessage:
+            # We cannot forward offsets here since the inner strategy is already
+            # marked as closed. Log the exception and move on. The message will get
+            # reprocessed properly when the consumer is restarted.
+            logger.warning("Invalid message in join", exc_info=True)
 
     def close(self) -> None:
+        # Forward invalid offsets first. Once the inner strategy is closed, we can no
+        # longer submit invalid messages to it.
+        self.__forward_invalid_offsets()
         self.__inner_strategy.close()
 
     def terminate(self) -> None:
