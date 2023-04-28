@@ -4,7 +4,16 @@ A general-purpose testsuite that asserts certain behavior is implemented by all 
 
 from datetime import datetime
 from functools import partial
-from typing import Any, Literal, MutableSequence, Protocol, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Literal,
+    MutableSequence,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Union,
+)
 from unittest.mock import Mock, call
 
 import pytest
@@ -150,6 +159,35 @@ Offset = int
 MessagePattern = Sequence[Tuple[PartitionIdx, Offset, Literal["invalid", "valid"]]]
 
 
+class MockProcessingStep(ProcessingStrategy[Any]):
+    """
+    Rejects all messages. Asserts poll not called after close.
+    """
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def poll(self) -> None:
+        assert self.closed is not True, "Cannot call poll after close"
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        pass
+
+    def terminate(self) -> None:
+        pass
+
+    def close(self) -> None:
+        self.closed = True
+
+    def submit(self, message: Message[Any]) -> None:
+        """
+        Reject only all invalid messages
+        """
+        if message.payload == False:
+            assert isinstance(message.value, BrokerValue)
+            raise InvalidMessage(message.value.partition, message.value.offset)
+
+
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
 @pytest.mark.parametrize(
     "message_pattern,expected_output",
@@ -173,7 +211,7 @@ def test_dlq(
     message_pattern: MessagePattern,
     expected_output: MessagePattern,
 ) -> None:
-    next_step = Mock()
+    next_step = Mock(wraps=MockProcessingStep())
     step = strategy_factory(next_step, raises_invalid_message=True)
 
     topic = Topic("topic")
