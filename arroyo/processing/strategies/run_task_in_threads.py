@@ -140,12 +140,12 @@ class RunTaskInThreads(
             self.__next_step.poll()
             self.__next_step.submit(next_message)
 
+        self.__next_step.close()
         self.__executor.shutdown()
         self.__next_step.join(timeout)
 
     def close(self) -> None:
         self.__closed = True
-        self.__next_step.close()
 
     def terminate(self) -> None:
         self.__closed = True
