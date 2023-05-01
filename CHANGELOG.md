@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.10.2
+
+### Various fixes & improvements
+
+- fix: Fix RunTaskInThreads to handle InvalidMessage during close, add tests (#218) by @lynnagara
+- fix(dlq): Fix crash during join when InvalidMessage in flight (#217) by @lynnagara
+- feat: Measure time to join strategy [SNS-2154] (#214) by @untitaker
+- feat: Add error instrumentation and timing to arroyo callbacks (#215) by @untitaker
+- feat: Add consumer dlq time (#213) by @untitaker
+
 ## 2.10.1
 
 ### Various fixes & improvements
