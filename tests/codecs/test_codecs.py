@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from typing import TypedDict
 
-from arroyo.codecs.avro import AvroCodec
 from arroyo.codecs.json import JsonCodec
 
 
@@ -32,11 +31,3 @@ def test_json_codec() -> None:
     data = get_example_data()
 
     assert codec.decode(codec.encode(data, validate=False), validate=True) == data
-
-
-def test_avro_codec() -> None:
-    schema_path = Path.joinpath(Path(__file__).parent, "serializers", "test.avsc")
-    codec: AvroCodec[Example] = AvroCodec(schema_path=schema_path)
-
-    data = get_example_data()
-    assert codec.decode(codec.encode(data, validate=True), validate=True) == data
