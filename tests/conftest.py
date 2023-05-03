@@ -2,6 +2,8 @@ from typing import Iterator
 
 import pytest
 
+pytest.register_assert_rewrite("tests.assertions")
+
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import TStrategyPayload
