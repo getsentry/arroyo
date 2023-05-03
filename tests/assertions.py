@@ -1,44 +1,31 @@
-import operator
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, TypeVar, cast
-
-T = TypeVar("T")
+from typing import Any, Callable, Iterator
 
 
 @contextmanager
 def assert_changes(
     callable: Callable[[], Any],
-    before: T,
-    after: T,
-    operator: Callable[[T, T], bool] = operator.eq,
+    before: Any,
+    after: Any,
 ) -> Iterator[None]:
-    actual = cast(T, callable())
-    assert operator(
-        actual, before
-    ), f"precondition ({operator}) on {callable} failed: expected: {before!r}, actual: {actual!r}"
+    actual = callable()
+    assert actual == before
 
     yield
 
     actual = callable()
-    assert operator(
-        actual, after
-    ), f"postcondition ({operator}) on {callable} failed: expected: {after!r}, actual: {actual!r}"
+    assert actual == after
 
 
 @contextmanager
 def assert_does_not_change(
     callable: Callable[[], Any],
-    value: T,
-    operator: Callable[[T, T], bool] = operator.eq,
+    value: Any,
 ) -> Iterator[None]:
-    actual = cast(T, callable())
-    assert operator(
-        actual, value
-    ), f"precondition ({operator}) on {callable} failed: expected: {value!r}, actual: {actual!r}"
+    actual = callable()
+    assert actual == value
 
     yield
 
     actual = callable()
-    assert operator(
-        actual, value
-    ), f"postcondition ({operator}) on {callable} failed: expected: {value!r}, actual: {actual!r}"
+    assert actual == value
