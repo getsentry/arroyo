@@ -174,3 +174,6 @@ class Reduce(
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
         )
+
+
+__all__ = ["Reduce"]
