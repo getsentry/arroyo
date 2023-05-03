@@ -6,8 +6,8 @@ Contents:
 .. toctree::
    :maxdepth: 1
 
-   getstarted
    what_for
+   getstarted
    architecture
    strategies
    offsets
