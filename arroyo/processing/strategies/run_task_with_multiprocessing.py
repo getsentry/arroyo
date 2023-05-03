@@ -38,6 +38,8 @@ from arroyo.utils.metrics import Gauge, get_metrics
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["RunTaskWithMultiprocessing"]
+
 TResult = TypeVar("TResult")
 TBatchValue = TypeVar("TBatchValue")
 
@@ -289,6 +291,41 @@ class RunTaskWithMultiprocessing(
     ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
     Generic[TStrategyPayload, TResult],
 ):
+    """
+    Run a function in parallel across messages using subprocesses.
+
+    ``RunTaskWithMultiprocessing`` uses the ``multiprocessing`` stdlib module to
+    transform messages in parallel.
+
+    :param function: The function to use for transforming.
+    :param next_step: The processing strategy to forward transformed messages to.
+    :param num_processes: The number of processes to spawn.
+    :param max_batch_size: Wait at most for this many messages before "closing" a batch.
+    :param max_batch_time: Wait at most for this many seconds before closing a batch.
+
+    :param input_block_size: For each subprocess, a shared memory buffer of
+        ``input_block_size`` is allocated. This value should be at least
+        `message_size * max_batch_size` large, where `message_size` is the expected
+        average message size.
+
+        If the value is too small, the batch is implicitly broken up. In that
+        case, the ``batch.input.overflow`` metric is emitted.
+
+    :param output_block_size: Size of the shared memory buffer used to store
+        results. Like with input data, the batch is implicitly broken up on
+        overflow, and ``batch.output.overflow`` metric is incremented.
+
+        While not entirely avoidable, it is best to avoid hitting overflow too
+        often on either buffer. The performance implications of running into
+        overflow on the output buffer can be particularly significant.
+
+    :param initializer: A function to run at the beginning of each subprocess.
+
+        Subprocesses are spawned without any of the state of the parent
+        process, they are entirely new Python interpreters. You might want to
+        re-initialize your Django application here.
+    """
+
     def __init__(
         self,
         function: Callable[[Message[TStrategyPayload]], TResult],
@@ -421,6 +458,7 @@ class RunTaskWithMultiprocessing(
                 result.next_index_to_process = idx
 
         if result.next_index_to_process != len(input_batch):
+            self.__metrics.increment("batch.output.overflow")
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
                 result.next_index_to_process / len(input_batch) * 100,
@@ -505,6 +543,7 @@ class RunTaskWithMultiprocessing(
             self.__batch_builder.append(message)
         except ValueTooLarge as e:
             logger.debug("Caught %r, closing batch and retrying...", e)
+            self.__metrics.increment("batch.input.overflow")
             self.__submit_batch()
 
             # This may raise ``MessageRejected`` (if all of the shared memory
