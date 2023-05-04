@@ -218,7 +218,11 @@ def test_parallel_transform_step() -> None:
         [
             GaugeCall("batches_in_progress", 0.0, tags=None),
             GaugeCall("transform.processes", 2.0, tags=None),
-            IncrementCall(name="batch.input.overflow", value=1, tags=None),
+            IncrementCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow",
+                value=1,
+                tags=None,
+            ),
             GaugeCall("batches_in_progress", 1.0, tags=None),
             TimingCall("batch.size.msg", 3, None),
             TimingCall("batch.size.bytes", 16000, None),
@@ -253,7 +257,11 @@ def test_parallel_transform_step() -> None:
         lambda: metrics.calls,
         [],
         [
-            IncrementCall(name="batch.output.overflow", value=1, tags=None),
+            IncrementCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
+                value=1,
+                tags=None,
+            ),
             GaugeCall("batches_in_progress", 1.0, tags=None),
             GaugeCall("batches_in_progress", 0.0, tags=None),
         ],
