@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Sequence,
     TypeVar,
+    Union,
     cast,
 )
 
@@ -47,7 +48,7 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 logger.exception(f"{f.__name__} crashed")
                 raise
             finally:
-                metrics.increment(
+                metrics.incr_timing(
                     ConsumerTiming.CONSUMER_CALLBACK_TIME, time.time() - start_time
                 )
 
@@ -72,22 +73,38 @@ class ConsumerTiming(Enum):
     CONSUMER_SHUTDOWN_TIME = "arroyo.consumer.shutdown.time"
 
 
+class ConsumerCounter(Enum):
+    CONSUMER_RUN_COUNT = "arroyo.consumer.run.count"
+
+
 class MetricsBuffer:
     def __init__(self) -> None:
         self.__metrics = get_metrics()
+        self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
+        self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
         self.__reset()
 
-    def increment(self, metric: ConsumerTiming, duration: float) -> None:
-        self.__data[metric] += duration
+    def incr_timing(self, metric: ConsumerTiming, duration: float) -> None:
+        self.__timers[metric] += duration
+        self.__throttled_record()
+
+    def incr_counter(self, metric: ConsumerCounter, delta: int) -> None:
+        self.__counters[metric] += delta
         self.__throttled_record()
 
     def flush(self) -> None:
-        for (metric, value) in self.__data.items():
+        metric: Union[ConsumerTiming, ConsumerCounter]
+        value: Union[float, int]
+
+        for metric, value in self.__timers.items():
             self.__metrics.timing(metric.value, value)
+        for metric, value in self.__counters.items():
+            self.__metrics.increment(metric.value, value)
         self.__reset()
 
     def __reset(self) -> None:
-        self.__data: MutableMapping[ConsumerTiming, float] = defaultdict(float)
+        self.__timers.clear()
+        self.__counters.clear()
         self.__last_record_time = time.time()
 
     def __throttled_record(self) -> None:
@@ -155,12 +172,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
                 try:
                     self.__processing_strategy.join(self.__join_timeout)
-                    self.__metrics_buffer.increment(
+                    self.__metrics_buffer.incr_timing(
                         ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
                     )
                     break
                 except InvalidMessage as e:
-                    self.__metrics_buffer.increment(
+                    self.__metrics_buffer.incr_timing(
                         ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
                     )
                     self._handle_invalid_message(e)
@@ -172,7 +189,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
 
-            self.__metrics_buffer.increment(
+            self.__metrics_buffer.incr_timing(
                 ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
             )
 
@@ -291,11 +308,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
             # if there is a very large volume of invalid messages to be produced.
             self.__dlq_policy.producer.produce(invalid_message).result()
 
-            self.__metrics_buffer.increment(
+            self.__metrics_buffer.incr_timing(
                 ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq
             )
 
     def _run_once(self) -> None:
+        self.__metrics_buffer.incr_counter(ConsumerCounter.CONSUMER_RUN_COUNT, 1)
+
         message_carried_over = self.__message is not None
 
         if message_carried_over:
@@ -319,7 +338,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
-                self.__metrics_buffer.increment(
+                self.__metrics_buffer.incr_timing(
                     ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
                 )
             except RecoverableError:
@@ -333,7 +352,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self._handle_invalid_message(e)
                 return
 
-            self.__metrics_buffer.increment(
+            self.__metrics_buffer.incr_timing(
                 ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
             if self.__message is not None:
@@ -346,7 +365,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
 
-                    self.__metrics_buffer.increment(
+                    self.__metrics_buffer.incr_timing(
                         ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
                     )
@@ -366,7 +385,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     else:
                         current_time = time.time()
                         if self.__paused_timestamp:
-                            self.__metrics_buffer.increment(
+                            self.__metrics_buffer.incr_timing(
                                 ConsumerTiming.CONSUMER_PAUSED_TIME,
                                 current_time - self.__paused_timestamp,
                             )
@@ -381,7 +400,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     if message_carried_over and self.__paused_timestamp is not None:
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
-                        self.__metrics_buffer.increment(
+                        self.__metrics_buffer.incr_timing(
                             ConsumerTiming.CONSUMER_PAUSED_TIME,
                             time.time() - self.__paused_timestamp,
                         )
