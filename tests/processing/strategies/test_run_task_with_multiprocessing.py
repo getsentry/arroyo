@@ -23,6 +23,7 @@ from arroyo.processing.strategies.run_task_with_multiprocessing import (
 from arroyo.types import Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
+from tests.metrics import Increment as IncrementCall
 from tests.metrics import TestingMetricsBackend
 from tests.metrics import Timing as TimingCall
 
@@ -217,6 +218,11 @@ def test_parallel_transform_step() -> None:
         [
             GaugeCall("batches_in_progress", 0.0, tags=None),
             GaugeCall("transform.processes", 2.0, tags=None),
+            IncrementCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow",
+                value=1,
+                tags=None,
+            ),
             GaugeCall("batches_in_progress", 1.0, tags=None),
             TimingCall("batch.size.msg", 3, None),
             TimingCall("batch.size.bytes", 16000, None),
@@ -250,7 +256,15 @@ def test_parallel_transform_step() -> None:
     ), assert_changes(
         lambda: metrics.calls,
         [],
-        [GaugeCall("batches_in_progress", value, tags=None) for value in [1.0, 0.0]],
+        [
+            IncrementCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
+                value=1,
+                tags=None,
+            ),
+            GaugeCall("batches_in_progress", 1.0, tags=None),
+            GaugeCall("batches_in_progress", 0.0, tags=None),
+        ],
     ):
         transform_step.join()
 
