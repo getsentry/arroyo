@@ -458,7 +458,9 @@ class RunTaskWithMultiprocessing(
                 result.next_index_to_process = idx
 
         if result.next_index_to_process != len(input_batch):
-            self.__metrics.increment("arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow")
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
+            )
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
                 result.next_index_to_process / len(input_batch) * 100,
@@ -543,7 +545,9 @@ class RunTaskWithMultiprocessing(
             self.__batch_builder.append(message)
         except ValueTooLarge as e:
             logger.debug("Caught %r, closing batch and retrying...", e)
-            self.__metrics.increment("batch.input.overflow")
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow"
+            )
             self.__submit_batch()
 
             # This may raise ``MessageRejected`` (if all of the shared memory
