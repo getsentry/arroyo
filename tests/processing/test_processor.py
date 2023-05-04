@@ -18,7 +18,7 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
 from arroyo.utils.clock import TestingClock
 from tests.assertions import assert_changes, assert_does_not_change
-from tests.metrics import TestingMetricsBackend, Timing
+from tests.metrics import Increment, TestingMetricsBackend, Timing
 
 
 def test_stream_processor_lifecycle() -> None:
@@ -123,26 +123,15 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
         processor._shutdown()
 
-    (
-        poll_metric,
-        callback_metric,
-        processing_metric,
-        pause_metric,
-        join_metric,
-        shutdown_metric,
-    ) = metrics.calls
-    assert isinstance(poll_metric, Timing)
-    assert poll_metric.name == "arroyo.consumer.poll.time"
-    assert isinstance(callback_metric, Timing)
-    assert callback_metric.name == "arroyo.consumer.callback.time"
-    assert isinstance(processing_metric, Timing)
-    assert processing_metric.name == "arroyo.consumer.processing.time"
-    assert isinstance(pause_metric, Timing)
-    assert pause_metric.name == "arroyo.consumer.paused.time"
-    assert isinstance(join_metric, Timing)
-    assert join_metric.name == "arroyo.consumer.join.time"
-    assert isinstance(shutdown_metric, Timing)
-    assert shutdown_metric.name == "arroyo.consumer.shutdown.time"
+    assert list((type(call), call.name) for call in metrics.calls) == [
+        (Timing, "arroyo.consumer.poll.time"),
+        (Timing, "arroyo.consumer.callback.time"),
+        (Timing, "arroyo.consumer.processing.time"),
+        (Timing, "arroyo.consumer.paused.time"),
+        (Timing, "arroyo.consumer.join.time"),
+        (Timing, "arroyo.consumer.shutdown.time"),
+        (Increment, "arroyo.consumer.run.count"),
+    ]
 
 
 def test_stream_processor_termination_on_error() -> None:
