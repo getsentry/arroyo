@@ -458,7 +458,7 @@ class RunTaskWithMultiprocessing(
                 result.next_index_to_process = idx
 
         if result.next_index_to_process != len(input_batch):
-            self.__metrics.increment("batch.output.overflow")
+            self.__metrics.increment("arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow")
             logger.warning(
                 "Received incomplete batch (%0.2f%% complete), resubmitting...",
                 result.next_index_to_process / len(input_batch) * 100,
