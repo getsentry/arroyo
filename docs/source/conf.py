@@ -7,7 +7,7 @@ import sys
 # -- Project information -----------------------------------------------------
 
 project = "Arroyo"
-copyright = "2022, Sentry Team and Contributors"
+copyright = "2023, Sentry Team and Contributors"
 author = "Sentry Team and Contributors"
 
 sys.path.insert(0, os.path.abspath("../.."))
