@@ -29,7 +29,4 @@ setup(
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    extras_require={
-        "json": ["python-rapidjson>=1.8", "fastjsonschema>=2.16.2"],
-    },
 )
