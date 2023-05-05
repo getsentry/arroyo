@@ -4,12 +4,12 @@ Contents:
 ---------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    what_for
    getstarted
    architecture
-   strategies
+   strategies/index
    offsets
    dlqs
    metrics
