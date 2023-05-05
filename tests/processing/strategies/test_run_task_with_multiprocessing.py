@@ -8,12 +8,6 @@ import pytest
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import MessageRejected
-from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidMessages as LegacyInvalidMessages,
-)
-from arroyo.processing.strategies.dead_letter_queue.invalid_messages import (
-    InvalidRawMessage as LegacyInvalidRawMessage,
-)
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
     RunTaskWithMultiprocessing,
@@ -123,67 +117,6 @@ def test_parallel_run_task_worker_apply() -> None:
 
 
 NO_KEY = "No Key"
-
-
-def fail_bad_messages(value: Message[KafkaPayload]) -> KafkaPayload:
-    if value.payload.key is None:
-        raise LegacyInvalidMessages(
-            [
-                LegacyInvalidRawMessage(
-                    payload=str(value.payload),
-                    reason=NO_KEY,
-                )
-            ]
-        )
-
-    return value.payload
-
-
-def test_parallel_transform_worker_bad_messages() -> None:
-    smm = SharedMemoryManager()
-    smm.start()
-    input_block = smm.SharedMemory(128)
-    output_block = smm.SharedMemory(128)
-
-    # every other message has a key
-    messages = [
-        Message(
-            Value(
-                KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-                {Partition(Topic("test"), 0): i + 1},
-            )
-        )
-        for i in range(9)
-    ]
-
-    input_batch = MessageBatch[Message[Any]](input_block)
-    for message in messages:
-        input_batch.append(message)
-    assert len(input_batch) == 9
-    # process entire batch
-    result = parallel_run_task_worker_apply(
-        fail_bad_messages, input_batch, output_block
-    )
-    # all 9 messages processed
-    assert result.next_index_to_process == 9
-    # 5 were bad, 4 were good
-    assert len(result.invalid_messages) == 5
-    assert len(result.valid_messages_transformed) == 4
-
-    input_batch = MessageBatch[Message[Any]](input_block)
-    for message in messages:
-        input_batch.append(message)
-    assert len(input_batch) == 9
-    # process batch from halfway through
-    result = parallel_run_task_worker_apply(
-        fail_bad_messages, input_batch, output_block, start_index=5
-    )
-    # all 9 messages processed
-    assert result.next_index_to_process == 9
-    # Out of remaining 4, 2 were bad, 2 were good
-    assert len(result.invalid_messages) == 2
-    assert len(result.valid_messages_transformed) == 2
-    smm.shutdown()
 
 
 def get_subprocess_count() -> int:
@@ -299,62 +232,6 @@ def test_parallel_run_task_terminate_workers() -> None:
         starting_processes,
     ), assert_changes(lambda: int(next_step.terminate.call_count), 0, 1):
         transform_step.terminate()
-
-
-def test_parallel_run_task_bad_messages() -> None:
-    next_step = Mock()
-
-    starting_processes = get_subprocess_count()
-    worker_processes = 5
-    manager_processes = 1
-
-    # every other message has a key
-    messages = [
-        Message(
-            Value(
-                KafkaPayload(None if i % 2 == 0 else b"key", b"\x00", []),
-                {Partition(Topic("test"), 0): 1},
-            )
-        )
-        for i in range(9)
-    ]
-
-    # everything should be processed in parallel, 5 workers should spawn
-    with assert_changes(
-        get_subprocess_count,
-        starting_processes,
-        starting_processes + worker_processes + manager_processes,
-    ):
-        # create transform step with multiple processes
-        transform_step = RunTaskWithMultiprocessing(
-            function=fail_bad_messages,
-            next_step=next_step,
-            num_processes=worker_processes,
-            max_batch_size=9,
-            max_batch_time=60,
-            input_block_size=4096,
-            output_block_size=4096,
-        )
-
-        # submit 9 messages: 4 good ones 5 bad ones
-        for message in messages:
-            transform_step.submit(message)
-            transform_step.poll()
-
-    # wait for all processes to finish
-    with pytest.raises(LegacyInvalidMessages) as e_info:
-        transform_step.close()
-        transform_step.join()
-
-    # An exception should have been thrown with the 5 bad messages
-    assert len(e_info.value.messages) == 5
-    # Test exception pickles and decodes correctly
-    invalid_message = e_info.value.messages[0]
-    assert isinstance(invalid_message, LegacyInvalidRawMessage)
-    assert invalid_message.reason == NO_KEY
-    assert invalid_message.payload == str(messages[0].payload)
-    # The 4 good ones should not have been blocked
-    assert next_step.submit.call_count == 4
 
 
 def add_one(value: Message[int]) -> int:
