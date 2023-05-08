@@ -1,5 +1,17 @@
 # Changelog and versioning
 
+## 2.10.3
+
+### Various fixes & improvements
+
+- docs: Organise processing strategies and add to TOC (#226) by @lynnagara
+- ref: Remove legacy DLQ implementation (#225) by @lynnagara
+- docs: Remove WIP note in DLQ docs (#224) by @lynnagara
+- docs: 2023 (#223) by @lynnagara
+- feat: Count how many times consumer spins (#222) by @untitaker
+- fix: Add metrics around RunTaskWithMultiprocessing + docs [SNS-2204] (#220) by @untitaker
+- ref: Clean up documentation (#221) by @untitaker
+
 ## 2.10.2
 
 ### Various fixes & improvements
