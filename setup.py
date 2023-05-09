@@ -29,9 +29,4 @@ setup(
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    extras_require={
-        "avro": ["avro>=1.11.1"],
-        "json": ["python-rapidjson>=1.8", "fastjsonschema>=2.16.2"],
-        "msgpack": ["msgpack>=1.0.4", "fastjsonschema>=2.16.2"],
-    },
 )
