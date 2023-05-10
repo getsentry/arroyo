@@ -12,4 +12,5 @@ Contents:
    strategies/index
    offsets
    dlqs
+   backpressure
    metrics
