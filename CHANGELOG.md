@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.10.4
+
+### Various fixes & improvements
+
+- chore(processor): Add more logging (#229) by @nikhars
+- doc: Document how backpressure currently works (#227) by @untitaker
+- ref: Remove extraneous codecs from arroyo (#219) by @untitaker
+
 ## 2.10.3
 
 ### Various fixes & improvements
