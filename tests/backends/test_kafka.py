@@ -7,7 +7,7 @@ from contextlib import closing
 from datetime import datetime
 from pickle import PickleBuffer
 from typing import Any, Iterator, Mapping, MutableSequence, Optional
-from unittest import TestCase, mock
+from unittest import mock
 
 import pytest
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -69,7 +69,7 @@ def get_topic(
         assert future.result() is None
 
 
-class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
+class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
     configuration = build_kafka_configuration(
         {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
