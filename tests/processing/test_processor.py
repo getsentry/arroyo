@@ -110,9 +110,9 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(strategy.close.call_count), 1, 2):
         revocation_callback([Partition(topic, 0)])
 
-    # Revocation should fail without an active assignment.
-    with pytest.raises(InvalidStateError):
-        revocation_callback([Partition(topic, 0)])
+    # Revocation should noop without an active assignment.
+    revocation_callback([Partition(topic, 0)])
+    revocation_callback([Partition(topic, 0)])
 
     # The processor should not accept non-heartbeat messages without an
     # assignment or active processor.
