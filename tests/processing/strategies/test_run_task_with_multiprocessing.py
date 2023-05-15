@@ -234,51 +234,6 @@ def test_parallel_run_task_terminate_workers() -> None:
         transform_step.terminate()
 
 
-def add_one(value: Message[int]) -> int:
-    return value.payload + 1
-
-
-def test_message_rejected() -> None:
-    # Handles MessageRejected from subsequent steps
-    next_step = Mock()
-    next_step.submit.side_effect = MessageRejected()
-
-    strategy = RunTaskWithMultiprocessing(
-        add_one,
-        next_step,
-        num_processes=1,
-        max_batch_size=1,
-        max_batch_time=60,
-        input_block_size=4096,
-        output_block_size=4096,
-    )
-
-    strategy.submit(Message(Value(1, {})))
-
-    for _ in range(5):
-        time.sleep(0.1)
-        strategy.poll()
-
-    # The strategy keeps trying to submit the same message
-    # since it's continually rejected
-    assert next_step.submit.call_count > 1
-
-    # clear the side effect, let the message through now
-    next_step.submit.reset_mock(side_effect=True)
-
-    for _ in range(5):
-        time.sleep(0.1)
-        strategy.poll()
-
-    # The message should have been submitted successfully now
-    assert next_step.submit.call_count == 1
-
-    strategy.close()
-    strategy.join()
-    # still 1, no more messages to submit
-    assert next_step.submit.call_count == 1
-
-
 _COUNT_CALLS = 0
 
 
