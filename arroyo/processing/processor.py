@@ -28,6 +28,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
+from arroyo.utils.logging import handle_internal_error
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,8 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
             start_time = time.time()
             try:
                 return f(*args, **kwargs)
-            except Exception:
+            except Exception as e:
+                handle_internal_error(e)
                 logger.exception(f"{f.__name__} crashed")
                 raise
             finally:
@@ -158,9 +160,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
             start_close = time.time()
 
             if self.__processing_strategy is None:
-                raise InvalidStateError(
-                    "received unexpected revocation without active processing strategy"
-                )
+                # Partitions are revoked when the consumer is shutting down, at
+                # which point we already have closed the consumer.
+                return
 
             logger.info("Closing %r...", self.__processing_strategy)
             self.__processing_strategy.close()

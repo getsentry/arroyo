@@ -7,7 +7,7 @@ from contextlib import closing
 from datetime import datetime
 from pickle import PickleBuffer
 from typing import Any, Iterator, Mapping, MutableSequence, Optional
-from unittest import TestCase
+from unittest import mock
 
 import pytest
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -16,8 +16,9 @@ from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
 from arroyo.backends.kafka.configuration import build_kafka_configuration
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
-from arroyo.commit import Commit
+from arroyo.commit import IMMEDIATE, Commit
 from arroyo.errors import ConsumerError, EndOfPartition
+from arroyo.processing.processor import StreamProcessor
 from arroyo.types import BrokerValue, Partition, Topic
 from tests.backends.mixins import StreamsTestMixin
 
@@ -68,7 +69,7 @@ def get_topic(
         assert future.result() is None
 
 
-class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
+class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
     configuration = build_kafka_configuration(
         {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
@@ -175,6 +176,22 @@ class KafkaStreamsTestCase(StreamsTestMixin[KafkaPayload], TestCase):
 
                 with pytest.raises(ConsumerError):
                     consumer.poll(10.0)  # XXX: getting the subcription is slow
+
+    def test_consumer_stream_processor_shutdown(self) -> None:
+        strategy = mock.Mock()
+        strategy.poll.side_effect = RuntimeError("goodbye")
+        factory = mock.Mock()
+        factory.create_with_partitions.return_value = strategy
+
+        with self.get_topic() as topic:
+            with closing(self.get_producer()) as producer:
+                producer.produce(topic, next(self.get_payloads())).result(5.0)
+
+            with closing(self.get_consumer()) as consumer:
+                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+
+                with pytest.raises(RuntimeError):
+                    processor.run()
 
 
 def test_commit_codec() -> None:
