@@ -187,7 +187,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             with closing(self.get_producer()) as producer:
                 producer.produce(topic, next(self.get_payloads())).result(5.0)
 
-            with closing(self.get_consumer(auto_offset_reset="latest")) as consumer:
+            with closing(self.get_consumer()) as consumer:
                 processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
                 with pytest.raises(RuntimeError):
