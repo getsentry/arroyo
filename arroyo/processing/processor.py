@@ -219,7 +219,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
-            logger.info("Partitions revoked: %r", partitions)
+            logger.info("Partitions to revoke: %r", partitions)
 
             if partitions:
                 _close_strategy()
@@ -234,9 +234,19 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             for partition, offset in current_partitions.items()
                             if partition not in partitions
                         }
+                        logger.info(
+                            "Recreating strategy since there are still active partitions: %r",
+                            active_partitions,
+                        )
                         _create_strategy(active_partitions)
                 except RuntimeError:
                     pass
+
+            # Partition revocation can happen anytime during the consumer lifecycle and happen
+            # multiple times. What we want to know is that the consumer is not stuck somewhere.
+            # The presence of this message as the last message of a consumer
+            # indicates that the consumer was not stuck.
+            logger.info("Partition revocation complete.")
 
         self.__consumer.subscribe(
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked

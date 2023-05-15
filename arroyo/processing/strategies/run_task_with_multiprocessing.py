@@ -438,6 +438,7 @@ class RunTaskWithMultiprocessing(
 
             except MessageRejected:
                 result.next_index_to_process = idx
+                break
 
         if result.next_index_to_process != len(input_batch):
             self.__metrics.increment(
