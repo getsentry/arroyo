@@ -433,16 +433,16 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         Typically called from a signal handler.
         """
-        logger.debug("Shutdown signalled")
+        logger.info("Shutdown signalled")
 
         self.__shutdown_requested = True
 
     def _shutdown(self) -> None:
         # close the consumer
-        logger.debug("Stopping consumer")
+        logger.info("Stopping consumer")
         self.__metrics_buffer.flush()
         self.__consumer.close()
-        logger.debug("Stopped")
+        logger.info("Stopped")
 
         # if there was an active processing strategy, it should be shut down
         # and unset when the partitions are revoked during consumer close
