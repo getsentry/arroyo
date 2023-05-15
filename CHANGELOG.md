@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.10.5
+
+### Various fixes & improvements
+
+- fix(run_task_with_multiprocessing): Do not attempt to skip over invalid messages (#231) by @untitaker
+
 ## 2.10.4
 
 ### Various fixes & improvements
