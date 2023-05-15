@@ -2,7 +2,7 @@ import multiprocessing
 import time
 from multiprocessing.managers import SharedMemoryManager
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -277,3 +277,81 @@ def test_message_rejected() -> None:
     strategy.join()
     # still 1, no more messages to submit
     assert next_step.submit.call_count == 1
+
+
+_COUNT_CALLS = 0
+
+
+def count_calls(value: Message[int]) -> int:
+    global _COUNT_CALLS
+    _COUNT_CALLS += 1
+    return value.payload + _COUNT_CALLS
+
+
+def test_message_rejected_multiple() -> None:
+    """
+    Regression test.
+
+    When submitting multiple messages into the strategy, the first message
+    should be retried until next_step stops raising MessageRejected.
+    Only after the first message has been successfully submitted, should the
+    second message be sent.
+
+    We had a bug where RunTaskWithMultiprocessing would attempt submitting the
+    second message without successfully delivering the first message.
+    """
+    # Handles MessageRejected from subsequent steps
+    next_step = Mock()
+    next_step.submit.side_effect = MessageRejected()
+
+    strategy = RunTaskWithMultiprocessing(
+        count_calls,
+        next_step,
+        num_processes=1,
+        max_batch_size=1,
+        max_batch_time=60,
+        input_block_size=4096,
+        output_block_size=4096,
+    )
+
+    strategy.submit(Message(Value(1, {})))
+    strategy.submit(Message(Value(-100, {})))
+
+    start_time = time.time()
+
+    while next_step.submit.call_count < 5:
+        time.sleep(0.1)
+        strategy.poll()
+
+        if time.time() - start_time > 5:
+            raise AssertionError("took too long to poll")
+
+    # The strategy keeps trying to submit the same message
+    # since it's continually rejected
+    assert next_step.submit.call_args_list == [
+        call(Message(Value(2, {}))),
+        call(Message(Value(4, {}))),
+        call(Message(Value(6, {}))),
+        call(Message(Value(8, {}))),
+        call(Message(Value(10, {}))),
+    ]
+
+    # clear the side effect, let the message through now
+    next_step.submit.reset_mock(side_effect=True)
+
+    for _ in range(5):
+        time.sleep(0.1)
+        strategy.poll()
+
+    # The messages should have been submitted successfully now
+    assert next_step.submit.call_args_list == [
+        call(Message(Value(12, {}))),
+        call(Message(Value(-88, {}))),
+    ]
+
+    strategy.close()
+    strategy.join()
+    assert next_step.submit.call_args_list == [
+        call(Message(Value(12, {}))),
+        call(Message(Value(-88, {}))),
+    ]
