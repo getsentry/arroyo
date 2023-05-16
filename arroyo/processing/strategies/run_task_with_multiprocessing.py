@@ -426,6 +426,8 @@ class RunTaskWithMultiprocessing(
 
         result = async_result.get(timeout=timeout)
 
+        next_step_has_applied_backpressure = False
+
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
                 result.valid_messages_transformed.reset_iterator(idx + 1)
@@ -438,16 +440,25 @@ class RunTaskWithMultiprocessing(
 
             except MessageRejected:
                 result.next_index_to_process = idx
+                next_step_has_applied_backpressure = True
                 break
 
         if result.next_index_to_process != len(input_batch):
-            self.__metrics.increment(
-                "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
-            )
+            if next_step_has_applied_backpressure:
+                self.__metrics.increment(
+                    "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
+                )
+            else:
+                self.__metrics.increment(
+                    "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
+                )
+
             logger.warning(
-                "Received incomplete batch (%0.2f%% complete), resubmitting...",
+                "Received incomplete batch (%0.2f%% complete), resubmitting (reason: %s)",
                 result.next_index_to_process / len(input_batch) * 100,
+                "backpressure" if next_step_has_applied_backpressure else "overflow",
             )
+
             # TODO: This reserializes all the ``SerializedMessage`` data prior
             # to the processed index even though the values at those indices
             # will never be unpacked. It probably makes sense to remove that
