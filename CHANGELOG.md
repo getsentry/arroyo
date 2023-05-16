@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.11.0
+
+### Various fixes & improvements
+
+- perf(dlq): Improve performance when there are many invalid messages (#233) by @lynnagara
+
 ## 2.10.6
 
 ### Various fixes & improvements
