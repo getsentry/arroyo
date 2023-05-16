@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.11.1
+
+### Various fixes & improvements
+
+- fix: Distinguish between backpressure and output overflow (#234) by @untitaker
+
 ## 2.11.0
 
 ### Various fixes & improvements
