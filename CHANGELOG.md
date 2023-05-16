@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.10.6
+
+### Various fixes & improvements
+
+- chore(processor): More logs for shutdown sequences (#230) by @nikhars
+- fix: Remove flaky test (#232) by @untitaker
+- fix: Do not log error when consumer is already crashing (#228) by @untitaker
+
 ## 2.10.5
 
 ### Various fixes & improvements
