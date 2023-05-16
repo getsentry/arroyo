@@ -13,6 +13,7 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Optional,
+    Tuple,
 )
 
 from arroyo.backends.abstract import Producer
@@ -255,6 +256,59 @@ class BufferedMessages(Generic[TStrategyPayload]):
         Reset the buffer.
         """
         self.__buffered_messages = defaultdict(deque)
+
+
+class DlqPolicyWrapper(Generic[TStrategyPayload]):
+    """
+    Wraps the DLQ policy and manages the buffer of messages that are pending commit.
+    """
+
+    def __init__(self, policy: DlqPolicy[TStrategyPayload]) -> None:
+        self.MAX_PENDING_FUTURES = 1000  # This is a per partition max
+        self.__dlq_policy = policy
+        self.__futures: MutableMapping[
+            Partition,
+            Deque[
+                Tuple[
+                    BrokerValue[TStrategyPayload],
+                    Future[BrokerValue[TStrategyPayload]],
+                ]
+            ],
+        ] = defaultdict(deque)
+
+    def produce(self, message: BrokerValue[TStrategyPayload]) -> None:
+        """
+        Removes all completed futures, then appends the given future to the list.
+        Blocks if the list is full.
+        """
+        for values in self.__futures.values():
+            while len(values) > 0:
+                msg, future = values[0]
+                if future.done():
+                    values.popleft()
+                else:
+                    break
+            while len(values) >= self.MAX_PENDING_FUTURES:
+                values[0][1].result()
+                values.popleft()
+
+        future = self.__dlq_policy.producer.produce(message)
+        self.__futures[message.partition].append((message, future))
+
+    def flush(self, committable: Mapping[Partition, int]) -> None:
+        """
+        Blocks until all messages up to the committable have been produced so
+        they are safe to commit.
+        """
+        for (partition, offset) in committable.items():
+            while len(self.__futures[partition]) > 0:
+                values = self.__futures[partition]
+                msg, future = values[0]
+                if offset >= msg.next_offset:
+                    future.result()
+                    values.popleft()
+                else:
+                    break
 
 
 class InvalidMessageState:

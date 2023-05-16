@@ -20,7 +20,7 @@ from typing import (
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
-from arroyo.dlq import BufferedMessages, DlqPolicy, InvalidMessage
+from arroyo.dlq import BufferedMessages, DlqPolicy, DlqPolicyWrapper, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -151,9 +151,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # removed once the commit callback is fired as they are guaranteed to be valid at that point.
-        self.__dlq_policy = dlq_policy
         self.__buffered_messages: BufferedMessages[TStrategyPayload] = BufferedMessages(
             dlq_policy
+        )
+
+        self.__dlq_policy: Optional[DlqPolicyWrapper[TStrategyPayload]] = (
+            DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
 
         def _close_strategy() -> None:
@@ -267,6 +270,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
             now,
             offsets,
         ):
+            if self.__dlq_policy:
+                self.__dlq_policy.flush(offsets)
+
             self.__consumer.commit_offsets()
             logger.debug(
                 "Waited %0.4f seconds for offsets to be committed to %r.",
@@ -316,9 +322,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     f"Invalid message not found in buffer {exc.partition} {exc.offset}",
                 ) from None
 
-            # XXX: This blocks until the message is produced. This will be slow
-            # if there is a very large volume of invalid messages to be produced.
-            self.__dlq_policy.producer.produce(invalid_message).result()
+            # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
+            self.__dlq_policy.produce(invalid_message)
 
             self.__metrics_buffer.incr_timing(
                 ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq

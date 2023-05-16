@@ -9,6 +9,7 @@ from arroyo.dlq import (
     BufferedMessages,
     DlqLimit,
     DlqPolicy,
+    DlqPolicyWrapper,
     InvalidMessage,
     InvalidMessageState,
     KafkaDlqProducer,
@@ -92,3 +93,19 @@ def test_invalid_message_state() -> None:
     assert len(inv) == 1
     inv.reset()
     assert len(inv) == 0
+
+
+def test_dlq_policy_wrapper() -> None:
+    broker: LocalBroker[KafkaPayload] = LocalBroker(MemoryMessageStorage())
+    broker.create_topic(dlq_topic, 1)
+    dlq_policy = DlqPolicy(
+        KafkaDlqProducer(broker.get_producer(), dlq_topic), DlqLimit(), None
+    )
+    wrapper = DlqPolicyWrapper(dlq_policy)
+    wrapper.MAX_PENDING_FUTURES = 1
+    for i in range(10):
+        message = BrokerValue(
+            KafkaPayload(None, b"", []), Partition(topic, 0), i, datetime.now()
+        )
+        wrapper.produce(message)
+    wrapper.flush({partition: 11})
