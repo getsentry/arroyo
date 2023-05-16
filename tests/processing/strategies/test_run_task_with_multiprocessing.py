@@ -310,3 +310,37 @@ def test_message_rejected_multiple() -> None:
         call(Message(Value(12, {}))),
         call(Message(Value(-88, {}))),
     ]
+
+    assert TestingMetricsBackend.calls == [
+        GaugeCall(name="batches_in_progress", value=0.0, tags=None),
+        GaugeCall(name="transform.processes", value=1, tags=None),
+        GaugeCall(name="batches_in_progress", value=1.0, tags=None),
+        TimingCall(name="batch.size.msg", value=2, tags=None),
+        TimingCall(name="batch.size.bytes", value=0, tags=None),
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
+            value=1,
+            tags=None,
+        ),
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
+            value=1,
+            tags=None,
+        ),
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
+            value=1,
+            tags=None,
+        ),
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
+            value=1,
+            tags=None,
+        ),
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
+            value=1,
+            tags=None,
+        ),
+        GaugeCall(name="batches_in_progress", value=0.0, tags=None),
+    ]
