@@ -124,12 +124,12 @@ def test_stream_processor_lifecycle() -> None:
         processor._shutdown()
 
     assert list((type(call), call.name) for call in metrics.calls) == [
-        (Timing, "arroyo.consumer.poll.time"),
-        (Timing, "arroyo.consumer.callback.time"),
-        (Timing, "arroyo.consumer.processing.time"),
-        (Timing, "arroyo.consumer.paused.time"),
-        (Timing, "arroyo.consumer.join.time"),
-        (Timing, "arroyo.consumer.shutdown.time"),
+        (Timing, "arroyo.consumer.poll.time.buffered_sum"),
+        (Timing, "arroyo.consumer.callback.time.buffered_sum"),
+        (Timing, "arroyo.consumer.processing.time.buffered_sum"),
+        (Timing, "arroyo.consumer.paused.time.buffered_sum"),
+        (Timing, "arroyo.consumer.join.time.buffered_sum"),
+        (Timing, "arroyo.consumer.shutdown.time.buffered_sum"),
         (Increment, "arroyo.consumer.run.count"),
     ]
 

@@ -29,6 +29,7 @@ from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
+from arroyo.utils.metrics_buffer import MetricsBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,10 @@ class ValueTooLarge(ValueError):
     """
     Raised when a value is too large to be written to a shared memory block.
     """
+
+
+# Item size in bytes (inline pickle + space taken in shm buffer)
+ItemStats = Tuple[int, int]
 
 
 class MessageBatch(Generic[TBatchValue]):
@@ -125,7 +130,7 @@ class MessageBatch(Generic[TBatchValue]):
     def reset_iterator(self, iter_offset: int) -> None:
         self.__iter_offset = iter_offset
 
-    def append(self, message: TBatchValue) -> None:
+    def append(self, message: TBatchValue) -> ItemStats:
         """
         Add a message to this batch.
 
@@ -139,7 +144,11 @@ class MessageBatch(Generic[TBatchValue]):
         """
         buffers: MutableSequence[Tuple[int, int]] = []
 
+        buffer_data_len = 0
+
         def buffer_callback(buffer: PickleBuffer) -> None:
+            nonlocal buffer_data_len
+
             value = buffer.raw()
             offset = self.__offset
             length = len(value)
@@ -149,12 +158,14 @@ class MessageBatch(Generic[TBatchValue]):
                     f"bytes needed but {self.block.size - offset} bytes free"
                 )
             self.block.buf[offset : offset + length] = value
-            self.__offset += length
+            buffer_data_len += length
             buffers.append((offset, length))
 
         data = pickle.dumps(message, protocol=5, buffer_callback=buffer_callback)
 
+        self.__offset += buffer_data_len
         self.__items.append((data, buffers))
+        return len(data), buffer_data_len
 
 
 class BatchBuilder(Generic[TBatchValue]):
@@ -171,8 +182,8 @@ class BatchBuilder(Generic[TBatchValue]):
     def __len__(self) -> int:
         return len(self.__batch)
 
-    def append(self, message: TBatchValue) -> None:
-        self.__batch.append(message)
+    def append(self, message: TBatchValue) -> ItemStats:
+        return self.__batch.append(message)
 
     def ready(self) -> bool:
         if len(self.__batch) >= self.__max_batch_size:
@@ -367,6 +378,12 @@ class RunTaskWithMultiprocessing(
         self.__invalid_messages = InvalidMessageState()
 
         self.__metrics = get_metrics()
+        self.__metrics_buffer = MetricsBuffer(
+            self.__metrics,
+            record_timers_avg=True,
+            record_timers_max=True,
+            record_timers_min=True,
+        )
         self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
         self.__pool_waiting_time: Optional[float] = None
         self.__metrics.gauge("transform.processes", num_processes)
@@ -533,7 +550,7 @@ class RunTaskWithMultiprocessing(
             assert self.__batch_builder is not None
 
         try:
-            self.__batch_builder.append(message)
+            pickle_bytes, buffer_bytes = self.__batch_builder.append(message)
         except ValueTooLarge as e:
             logger.debug("Caught %r, closing batch and retrying...", e)
             self.__metrics.increment(
@@ -550,6 +567,15 @@ class RunTaskWithMultiprocessing(
             # size is too small (smaller than the Kafka payload limit without
             # compression.)
             self.__batch_builder.append(message)
+        else:
+            self.__metrics_buffer.timing(
+                "arroyo.strategies.run_task_with_multiprocessing.item.pickle_bytes",
+                pickle_bytes,
+            )
+            self.__metrics_buffer.timing(
+                "arroyo.strategies.run_task_with_multiprocessing.item.buffer_bytes",
+                buffer_bytes,
+            )
 
     def close(self) -> None:
         self.__closed = True
