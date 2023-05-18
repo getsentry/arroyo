@@ -473,9 +473,10 @@ class RunTaskWithMultiprocessing(
 
         result = async_result.get(timeout=timeout)
 
+        next_step_has_applied_backpressure = False
+
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
-                # For the next invocation of __check_for_results, skip over this message
                 result.valid_messages_transformed.reset_iterator(idx + 1)
                 self.__invalid_messages.append(message)
                 raise message
@@ -485,29 +486,24 @@ class RunTaskWithMultiprocessing(
                 self.__next_step.submit(message)
 
             except MessageRejected:
-                # For the next invocation of __check_for_results, start at this message
-                result.valid_messages_transformed.reset_iterator(idx)
+                result.next_index_to_process = idx
+                next_step_has_applied_backpressure = True
+                break
 
+        if result.next_index_to_process != len(input_batch):
+            if next_step_has_applied_backpressure:
                 self.__metrics.increment(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
-
-                # This is a warning because backpressure on the multiprocessing
-                # strategy _might_ cause degraded CPU saturation.
-                logger.warning(
-                    "Received backpressure from next_step, splitting output batch (%0.2f%% complete)",
-                    idx / len(input_batch) * 100,
+            else:
+                self.__metrics.increment(
+                    "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
                 )
-                raise multiprocessing.TimeoutError("Waiting on upstream strategy")
-
-        if result.next_index_to_process != len(input_batch):
-            self.__metrics.increment(
-                "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
-            )
 
             logger.warning(
-                "Received incomplete batch (%0.2f%% complete)",
+                "Received incomplete batch (%0.2f%% complete), resubmitting (reason: %s)",
                 result.next_index_to_process / len(input_batch) * 100,
+                "backpressure" if next_step_has_applied_backpressure else "overflow",
             )
 
             # TODO: This reserializes all the ``SerializedMessage`` data prior
