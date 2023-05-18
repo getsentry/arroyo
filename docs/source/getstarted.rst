@@ -19,14 +19,14 @@ a Kafka docker container. (It requires Docker to be installed).
 
 .. code-block:: Bash
 
-    docker run   --rm \
+    docker run --rm \
         -v zookeeper_volume:/var/lib/zookeeper \
         --env ZOOKEEPER_CLIENT_PORT=2181 \
         --name=zookeeper \
         -p 2181:2181 \
         confluentinc/cp-zookeeper:6.2.0
 
-    docker run   --rm \
+    docker run --rm \
         -v kafka_volume:/var/lib/kafka \
         --env KAFKA_ZOOKEEPER_CONNECT=localhost:2181 \
         --env KAFKA_LISTENERS=INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092 \

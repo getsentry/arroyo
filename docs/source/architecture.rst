@@ -91,7 +91,7 @@ use cases.
 
 Common examples are:
 
-* ``run task, run task in threads, run task with multiprocessing ```. The run task
+* ``run task, run task in threads, run task with multiprocessing``. The run task
   set of strategies are designed to be the most flexible and simple to use. They take
   a function provided by the user and execute it on every message, passing the output
   to the next step. The library includes synchronous and asynchronous versions depending

@@ -53,9 +53,7 @@ The most simple kafka consumer looks something like this:
 
    while True:
        message = consumer.poll()
-       send_to_destination(
-           process_message(message)
-     )
+       send_to_destination(process_message(message))
 
 This simple consumer would not satisfy the goals mentioned at the top of
 this page. The following subsections will explain why
@@ -83,7 +81,7 @@ reached its destination in the following way:
    # add this value to the config:
    "enable.auto.commit": "false"
    # -------
-   message = consumer.poll(0)
+   message = consumer.poll(timeout=0)
    send_to_destination(process_message(message))
    consumer.commit(message.offset())
 
@@ -102,7 +100,7 @@ batches
    # this code is purely descriptive.
    # We have to commit to each partition separately
    # but that code is not helpful for this example
-   message = consumer.poll(0)
+   message = consumer.poll(timeout=0)
    batch.append(process_message(message))
    if len(batch) == batch_size:
        consumer.commit(offsets=[m.offset() for m in batch])
@@ -125,7 +123,7 @@ operation. Here is how a simple Kafka Producer looks in code:
    }
    producer = Producer(conf)
    def send_to_destination(message):
-       # ❗This does not do what it says
+       # ❗ This does not do what it says
        # it writes to a buffer
        producer.produce("destination_topic", message)
        # this will actually block until the messages are produced
