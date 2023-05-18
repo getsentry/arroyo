@@ -64,13 +64,13 @@ class Message(Generic[TMessagePayload]):
         # ``__slots__`` for performance reasons. The class variable names
         # would conflict with the instance slot names, causing an error.
 
-        if type(self.value) in (float, int):
+        if type(self.payload) in (float, int):
             # For the case where value is a float or int, the repr is small and
             # therefore safe. This is very useful in tests.
             #
             # To prevent any nasty surprises with custom integer subtypes that
             # may have modified reprs we do not use isinstance.
-            return f"{type(self).__name__}({self.value}, {self.committable!r})"
+            return f"{type(self).__name__}({self.payload}, {self.committable!r})"
 
         # For any other type we cannot be sure the repr is performant.
         return f"{type(self).__name__}({self.committable!r})"

@@ -431,6 +431,36 @@ class RunTaskWithMultiprocessing(
                     pass
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
+        deadline = time.time() + timeout if timeout is not None else None
+
+        while self.__processes:
+            try:
+                self.__check_for_results_impl(
+                    timeout=max(deadline - time.time(), 0)
+                    if deadline is not None
+                    else None
+                )
+            except multiprocessing.TimeoutError:
+                if self.__pool_waiting_time is None:
+                    self.__pool_waiting_time = time.time()
+                else:
+                    current_time = time.time()
+                    if current_time - self.__pool_waiting_time > LOG_THRESHOLD_TIME:
+                        logger.warning(
+                            "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
+                            LOG_THRESHOLD_TIME,
+                            len(self.__processes),
+                            self.__pool,
+                        )
+                        self.__pool_waiting_time = current_time
+                break
+            else:
+                self.__pool_waiting_time = None
+
+                if deadline is not None and time.time() > deadline:
+                    break
+
+    def __check_for_results_impl(self, timeout: Optional[float] = None) -> None:
         input_batch, async_result = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
@@ -443,10 +473,9 @@ class RunTaskWithMultiprocessing(
 
         result = async_result.get(timeout=timeout)
 
-        next_step_has_applied_backpressure = False
-
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
+                # For the next invocation of __check_for_results, skip over this message
                 result.valid_messages_transformed.reset_iterator(idx + 1)
                 self.__invalid_messages.append(message)
                 raise message
@@ -456,24 +485,29 @@ class RunTaskWithMultiprocessing(
                 self.__next_step.submit(message)
 
             except MessageRejected:
-                result.next_index_to_process = idx
-                next_step_has_applied_backpressure = True
-                break
+                # For the next invocation of __check_for_results, start at this message
+                result.valid_messages_transformed.reset_iterator(idx)
 
-        if result.next_index_to_process != len(input_batch):
-            if next_step_has_applied_backpressure:
                 self.__metrics.increment(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
-            else:
-                self.__metrics.increment(
-                    "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
+
+                # This is a warning because backpressure on the multiprocessing
+                # strategy _might_ cause degraded CPU saturation.
+                logger.warning(
+                    "Received backpressure from next_step, splitting output batch (%0.2f%% complete)",
+                    idx / len(input_batch) * 100,
                 )
+                raise multiprocessing.TimeoutError("Waiting on upstream strategy")
+
+        if result.next_index_to_process != len(input_batch):
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
+            )
 
             logger.warning(
-                "Received incomplete batch (%0.2f%% complete), resubmitting (reason: %s)",
+                "Received incomplete batch (%0.2f%% complete)",
                 result.next_index_to_process / len(input_batch) * 100,
-                "backpressure" if next_step_has_applied_backpressure else "overflow",
             )
 
             # TODO: This reserializes all the ``SerializedMessage`` data prior
@@ -505,25 +539,7 @@ class RunTaskWithMultiprocessing(
         self.__forward_invalid_offsets()
         self.__next_step.poll()
 
-        while self.__processes:
-            try:
-                self.__check_for_results(timeout=0)
-            except multiprocessing.TimeoutError:
-                if self.__pool_waiting_time is None:
-                    self.__pool_waiting_time = time.time()
-                else:
-                    current_time = time.time()
-                    if current_time - self.__pool_waiting_time > LOG_THRESHOLD_TIME:
-                        logger.warning(
-                            "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
-                            LOG_THRESHOLD_TIME,
-                            len(self.__processes),
-                            self.__pool,
-                        )
-                        self.__pool_waiting_time = current_time
-                break
-            else:
-                self.__pool_waiting_time = None
+        self.__check_for_results(timeout=0)
 
         if self.__batch_builder is not None and self.__batch_builder.ready():
             self.__submit_batch()
@@ -601,23 +617,14 @@ class RunTaskWithMultiprocessing(
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
-        while self.__processes:
-            try:
-                self.__check_for_results(
-                    timeout=max(deadline - time.time(), 0)
-                    if deadline is not None
-                    else None
-                )
-            except multiprocessing.TimeoutError:
-                pass
+        self.__check_for_results(
+            timeout=timeout,
+        )
 
         self.__pool.close()
 
         logger.debug("Waiting for %s...", self.__pool)
-        # ``Pool.join`` doesn't accept a timeout (?!) but this really shouldn't
-        # block for any significant amount of time unless something really went
-        # wrong (i.e. we lost track of a task)
-        self.__pool.join()
+        self.__pool.terminate()
 
         self.__shared_memory_manager.shutdown()
 
