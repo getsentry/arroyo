@@ -457,9 +457,6 @@ class RunTaskWithMultiprocessing(
             else:
                 self.__pool_waiting_time = None
 
-                if deadline is not None and time.time() > deadline:
-                    break
-
     def __check_for_results_impl(self, timeout: Optional[float] = None) -> None:
         input_batch, async_result = self.__processes[0]
 
