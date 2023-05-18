@@ -236,6 +236,14 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
             self.__commit_policy_state.did_commit(now, offsets)
 
+    def run_once(self) -> None:
+        """Run the consumer loop once"""
+        try:
+            self._run_once()
+        except Exception:
+            self._terminate()
+            raise
+
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
 
@@ -246,16 +254,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             self._shutdown()
         except Exception:
-            logger.exception("Caught exception, shutting down...")
-
-            if self.__processing_strategy is not None:
-                logger.debug("Terminating %r...", self.__processing_strategy)
-                self.__processing_strategy.terminate()
-                self.__processing_strategy = None
-
-            logger.info("Closing %r...", self.__consumer)
-            self.__consumer.close()
-            logger.info("Processor terminated")
+            self._terminate()
             raise
 
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
@@ -409,3 +408,16 @@ class StreamProcessor(Generic[TStrategyPayload]):
         assert (
             self.__processing_strategy is None
         ), "processing strategy was not closed on shutdown"
+
+    def _terminate(self) -> None:
+        # Terminate strategy and close consumer
+        logger.exception("Caught exception, shutting down...")
+
+        if self.__processing_strategy is not None:
+            logger.debug("Terminating %r...", self.__processing_strategy)
+            self.__processing_strategy.terminate()
+            self.__processing_strategy = None
+
+        logger.info("Closing %r...", self.__consumer)
+        self.__consumer.close()
+        logger.info("Processor terminated")
