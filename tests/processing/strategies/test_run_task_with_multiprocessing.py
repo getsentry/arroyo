@@ -353,6 +353,7 @@ def run_sleep(value: Message[float]) -> float:
 
 def test_regression_join_timeout() -> None:
     next_step = Mock()
+    next_step.submit.side_effect = MessageRejected()
 
     strategy = RunTaskWithMultiprocessing(
         run_sleep,
