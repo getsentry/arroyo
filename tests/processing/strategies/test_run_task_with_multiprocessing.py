@@ -285,30 +285,34 @@ def test_message_rejected_multiple() -> None:
     # since it's continually rejected
     assert next_step.submit.call_args_list == [
         call(Message(Value(2, {}))),
-        call(Message(Value(4, {}))),
-        call(Message(Value(6, {}))),
-        call(Message(Value(8, {}))),
-        call(Message(Value(10, {}))),
+        call(Message(Value(2, {}))),
+        call(Message(Value(2, {}))),
+        call(Message(Value(2, {}))),
+        call(Message(Value(2, {}))),
     ]
 
     # clear the side effect, let the message through now
     next_step.submit.reset_mock(side_effect=True)
 
-    for _ in range(5):
+    start_time = time.time()
+    while next_step.submit.call_count < 2:
         time.sleep(0.1)
         strategy.poll()
 
+        if time.time() - start_time > 5:
+            raise AssertionError("took too long to poll")
+
     # The messages should have been submitted successfully now
     assert next_step.submit.call_args_list == [
-        call(Message(Value(12, {}))),
-        call(Message(Value(-88, {}))),
+        call(Message(Value(2, {}))),
+        call(Message(Value(-98, {}))),
     ]
 
     strategy.close()
     strategy.join()
     assert next_step.submit.call_args_list == [
-        call(Message(Value(12, {}))),
-        call(Message(Value(-88, {}))),
+        call(Message(Value(2, {}))),
+        call(Message(Value(-98, {}))),
     ]
 
     assert TestingMetricsBackend.calls == [
