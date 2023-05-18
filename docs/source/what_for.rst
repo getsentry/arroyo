@@ -230,7 +230,7 @@ librdkafka’s Callback Hell
 
 librdkafka uses callbacks as a core mechanic for control flow. A few
 such examples have been mentioned in this document already. What is not
-clear however, is that **callbacks are only called when `poll` is
+clear however, is that **callbacks are only called when ``poll`` is
 called**
 
 This means that:
