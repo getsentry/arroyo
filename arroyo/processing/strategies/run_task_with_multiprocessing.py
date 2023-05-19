@@ -494,13 +494,6 @@ class RunTaskWithMultiprocessing(
                 self.__metrics.increment(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
-
-                # This is a warning because backpressure on the multiprocessing
-                # strategy _might_ cause degraded CPU saturation.
-                logger.warning(
-                    "Received backpressure from next_step, splitting output batch (%0.2f%% complete)",
-                    idx / len(input_batch) * 100,
-                )
                 raise NextStepTimeoutError()
 
         if result.next_index_to_process != len(input_batch):
