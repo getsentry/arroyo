@@ -3,8 +3,20 @@ from __future__ import annotations
 import functools
 import logging
 import time
+from collections import defaultdict
 from enum import Enum
-from typing import Any, Callable, Generic, Mapping, Optional, Sequence, TypeVar, cast
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
@@ -18,9 +30,10 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
 from arroyo.utils.metrics import get_metrics
-from arroyo.utils.metrics_buffer import MetricsBuffer
 
 logger = logging.getLogger(__name__)
+
+METRICS_FREQUENCY_SEC = 1.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -37,9 +50,8 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 logger.exception(f"{f.__name__} crashed")
                 raise
             finally:
-                metrics.timing(
-                    ConsumerTiming.CONSUMER_CALLBACK_TIME.value,
-                    time.time() - start_time,
+                metrics.incr_timing(
+                    ConsumerTiming.CONSUMER_CALLBACK_TIME, time.time() - start_time
                 )
 
         return cast(F, wrapper)
@@ -67,6 +79,41 @@ class ConsumerCounter(Enum):
     CONSUMER_RUN_COUNT = "arroyo.consumer.run.count"
 
 
+class MetricsBuffer:
+    def __init__(self) -> None:
+        self.__metrics = get_metrics()
+        self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
+        self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
+        self.__reset()
+
+    def incr_timing(self, metric: ConsumerTiming, duration: float) -> None:
+        self.__timers[metric] += duration
+        self.__throttled_record()
+
+    def incr_counter(self, metric: ConsumerCounter, delta: int) -> None:
+        self.__counters[metric] += delta
+        self.__throttled_record()
+
+    def flush(self) -> None:
+        metric: Union[ConsumerTiming, ConsumerCounter]
+        value: Union[float, int]
+
+        for metric, value in self.__timers.items():
+            self.__metrics.timing(metric.value, value)
+        for metric, value in self.__counters.items():
+            self.__metrics.increment(metric.value, value)
+        self.__reset()
+
+    def __reset(self) -> None:
+        self.__timers.clear()
+        self.__counters.clear()
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
+            self.flush()
+
+
 class StreamProcessor(Generic[TStrategyPayload]):
     """
     A stream processor manages the relationship between a ``Consumer``
@@ -86,7 +133,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
-        self.__metrics_buffer = MetricsBuffer(get_metrics(), record_timers_sum=True)
+        self.__metrics_buffer = MetricsBuffer()
 
         self.__processing_strategy: Optional[
             ProcessingStrategy[TStrategyPayload]
@@ -130,15 +177,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
                 try:
                     self.__processing_strategy.join(self.__join_timeout)
-                    self.__metrics_buffer.timing(
-                        ConsumerTiming.CONSUMER_JOIN_TIME.value,
-                        time.time() - start_join,
+                    self.__metrics_buffer.incr_timing(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
                     )
                     break
                 except InvalidMessage as e:
-                    self.__metrics_buffer.timing(
-                        ConsumerTiming.CONSUMER_JOIN_TIME.value,
-                        time.time() - start_join,
+                    self.__metrics_buffer.incr_timing(
+                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
                     )
                     self._handle_invalid_message(e)
 
@@ -149,8 +194,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
 
-            self.__metrics_buffer.timing(
-                ConsumerTiming.CONSUMER_SHUTDOWN_TIME.value, time.time() - start_close
+            self.__metrics_buffer.incr_timing(
+                ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
             )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
@@ -280,12 +325,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
             # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
             self.__dlq_policy.produce(invalid_message)
 
-            self.__metrics_buffer.timing(
-                ConsumerTiming.CONSUMER_DLQ_TIME.value, time.time() - start_dlq
+            self.__metrics_buffer.incr_timing(
+                ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq
             )
 
     def _run_once(self) -> None:
-        self.__metrics_buffer.increment(ConsumerCounter.CONSUMER_RUN_COUNT.value, 1)
+        self.__metrics_buffer.incr_counter(ConsumerCounter.CONSUMER_RUN_COUNT, 1)
 
         message_carried_over = self.__message is not None
 
@@ -310,8 +355,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
-                self.__metrics_buffer.timing(
-                    ConsumerTiming.CONSUMER_POLL_TIME.value, time.time() - start_poll
+                self.__metrics_buffer.incr_timing(
+                    ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
                 )
             except RecoverableError:
                 return
@@ -324,8 +369,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self._handle_invalid_message(e)
                 return
 
-            self.__metrics_buffer.timing(
-                ConsumerTiming.CONSUMER_PROCESSING_TIME.value, time.time() - start_poll
+            self.__metrics_buffer.incr_timing(
+                ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
             )
             if self.__message is not None:
                 try:
@@ -337,8 +382,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
 
-                    self.__metrics_buffer.timing(
-                        ConsumerTiming.CONSUMER_PROCESSING_TIME.value,
+                    self.__metrics_buffer.incr_timing(
+                        ConsumerTiming.CONSUMER_PROCESSING_TIME,
                         time.time() - start_submit,
                     )
                 except MessageRejected as e:
@@ -357,8 +402,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     else:
                         current_time = time.time()
                         if self.__paused_timestamp:
-                            self.__metrics_buffer.timing(
-                                ConsumerTiming.CONSUMER_PAUSED_TIME.value,
+                            self.__metrics_buffer.incr_timing(
+                                ConsumerTiming.CONSUMER_PAUSED_TIME,
                                 current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
@@ -372,8 +417,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     if message_carried_over and self.__paused_timestamp is not None:
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
-                        self.__metrics_buffer.timing(
-                            ConsumerTiming.CONSUMER_PAUSED_TIME.value,
+                        self.__metrics_buffer.incr_timing(
+                            ConsumerTiming.CONSUMER_PAUSED_TIME,
                             time.time() - self.__paused_timestamp,
                         )
 
