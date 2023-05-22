@@ -431,6 +431,33 @@ class RunTaskWithMultiprocessing(
                     pass
 
     def __check_for_results(self, timeout: Optional[float] = None) -> None:
+        deadline = time.time() + timeout if timeout is not None else None
+
+        while self.__processes:
+            try:
+                self.__check_for_results_impl(
+                    timeout=max(deadline - time.time(), 0)
+                    if deadline is not None
+                    else None
+                )
+            except multiprocessing.TimeoutError:
+                if self.__pool_waiting_time is None:
+                    self.__pool_waiting_time = time.time()
+                else:
+                    current_time = time.time()
+                    if current_time - self.__pool_waiting_time > LOG_THRESHOLD_TIME:
+                        logger.warning(
+                            "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
+                            LOG_THRESHOLD_TIME,
+                            len(self.__processes),
+                            self.__pool,
+                        )
+                        self.__pool_waiting_time = current_time
+                break
+            else:
+                self.__pool_waiting_time = None
+
+    def __check_for_results_impl(self, timeout: Optional[float] = None) -> None:
         input_batch, async_result = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
@@ -505,25 +532,7 @@ class RunTaskWithMultiprocessing(
         self.__forward_invalid_offsets()
         self.__next_step.poll()
 
-        while self.__processes:
-            try:
-                self.__check_for_results(timeout=0)
-            except multiprocessing.TimeoutError:
-                if self.__pool_waiting_time is None:
-                    self.__pool_waiting_time = time.time()
-                else:
-                    current_time = time.time()
-                    if current_time - self.__pool_waiting_time > LOG_THRESHOLD_TIME:
-                        logger.warning(
-                            "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
-                            LOG_THRESHOLD_TIME,
-                            len(self.__processes),
-                            self.__pool,
-                        )
-                        self.__pool_waiting_time = current_time
-                break
-            else:
-                self.__pool_waiting_time = None
+        self.__check_for_results(timeout=0)
 
         if self.__batch_builder is not None and self.__batch_builder.ready():
             self.__submit_batch()
@@ -601,23 +610,12 @@ class RunTaskWithMultiprocessing(
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
-        while self.__processes:
-            try:
-                self.__check_for_results(
-                    timeout=max(deadline - time.time(), 0)
-                    if deadline is not None
-                    else None
-                )
-            except multiprocessing.TimeoutError:
-                pass
-
-        self.__pool.close()
+        self.__check_for_results(
+            timeout=timeout,
+        )
 
         logger.debug("Waiting for %s...", self.__pool)
-        # ``Pool.join`` doesn't accept a timeout (?!) but this really shouldn't
-        # block for any significant amount of time unless something really went
-        # wrong (i.e. we lost track of a task)
-        self.__pool.join()
+        self.__pool.terminate()
 
         self.__shared_memory_manager.shutdown()
 

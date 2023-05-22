@@ -344,3 +344,66 @@ def test_message_rejected_multiple() -> None:
         ),
         GaugeCall(name="batches_in_progress", value=0.0, tags=None),
     ]
+
+
+def run_sleep(value: Message[float]) -> float:
+    time.sleep(value.payload)
+    return value.payload
+
+
+def test_regression_join_timeout_one_message() -> None:
+    next_step = Mock()
+    next_step.submit.side_effect = MessageRejected()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_sleep,
+        next_step,
+        num_processes=1,
+        max_batch_size=1,
+        max_batch_time=60,
+        input_block_size=4096,
+        output_block_size=4096,
+    )
+
+    strategy.poll()
+    strategy.submit(Message(Value(10, {})))
+
+    start = time.time()
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    time_taken = time.time() - start
+
+    assert time_taken < 4
+
+    assert next_step.submit.call_count == 0
+
+
+def test_regression_join_timeout_many_messages() -> None:
+    next_step = Mock()
+    next_step.submit.side_effect = MessageRejected()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_sleep,
+        next_step,
+        num_processes=1,
+        max_batch_size=1,
+        max_batch_time=60,
+        input_block_size=4096,
+        output_block_size=4096,
+    )
+
+    for _ in range(10):
+        strategy.submit(Message(Value(0.1, {})))
+
+    start = time.time()
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    time_taken = time.time() - start
+
+    assert time_taken < 4
+
+    assert next_step.submit.call_count > 0
