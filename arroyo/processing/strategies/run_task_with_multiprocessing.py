@@ -445,6 +445,8 @@ class RunTaskWithMultiprocessing(
                     else None
                 )
             except NextStepTimeoutError:
+                if deadline is None or deadline > time.time():
+                    continue
                 break
             except multiprocessing.TimeoutError:
                 if self.__pool_waiting_time is None:

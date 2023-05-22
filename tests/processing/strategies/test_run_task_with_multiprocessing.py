@@ -408,6 +408,6 @@ def test_regression_join_timeout_many_messages() -> None:
 
     time_taken = time.time() - start
 
-    assert time_taken < 4
+    assert 2 < time_taken < 4
 
     assert next_step.submit.call_count > 0
