@@ -617,8 +617,6 @@ class RunTaskWithMultiprocessing(
             timeout=timeout,
         )
 
-        self.__pool.close()
-
         logger.debug("Waiting for %s...", self.__pool)
         self.__pool.terminate()
 
