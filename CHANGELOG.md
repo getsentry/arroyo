@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.11.2
+
+### Various fixes & improvements
+
+- Revert "feat: add more item size stats to multiprocessing (and metrics refactor) (#235)" (#240) by @untitaker
+- fix(multiprocessing): More performant backpressure [INC-378] (#238) by @untitaker
+- fix(multiprocessing): Honor join() timeout even if processing pool is overloaded [INC-378] (#237) by @untitaker
+- docs: Minor readability details (#236) by @kamilogorek
+- feat: add more item size stats to multiprocessing (and metrics refactor) (#235) by @untitaker
+
 ## 2.11.1
 
 ### Various fixes & improvements
