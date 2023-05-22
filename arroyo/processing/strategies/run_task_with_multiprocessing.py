@@ -45,6 +45,10 @@ class ChildProcessTerminated(RuntimeError):
     pass
 
 
+class NextStepTimeoutError(RuntimeError):
+    pass
+
+
 # A serialized message is composed of a pickled ``Message`` instance (bytes)
 # and a sequence of ``(offset, length)`` that referenced locations in a shared
 # memory block for out of band buffer transfer.
@@ -440,6 +444,10 @@ class RunTaskWithMultiprocessing(
                     if deadline is not None
                     else None
                 )
+            except NextStepTimeoutError:
+                if deadline is None or deadline > time.time():
+                    continue
+                break
             except multiprocessing.TimeoutError:
                 if self.__pool_waiting_time is None:
                     self.__pool_waiting_time = time.time()
@@ -470,10 +478,9 @@ class RunTaskWithMultiprocessing(
 
         result = async_result.get(timeout=timeout)
 
-        next_step_has_applied_backpressure = False
-
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
+                # For the next invocation of __check_for_results, skip over this message
                 result.valid_messages_transformed.reset_iterator(idx + 1)
                 self.__invalid_messages.append(message)
                 raise message
@@ -483,24 +490,22 @@ class RunTaskWithMultiprocessing(
                 self.__next_step.submit(message)
 
             except MessageRejected:
-                result.next_index_to_process = idx
-                next_step_has_applied_backpressure = True
-                break
+                # For the next invocation of __check_for_results, start at this message
+                result.valid_messages_transformed.reset_iterator(idx)
 
-        if result.next_index_to_process != len(input_batch):
-            if next_step_has_applied_backpressure:
                 self.__metrics.increment(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
-            else:
-                self.__metrics.increment(
-                    "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
-                )
+                raise NextStepTimeoutError()
+
+        if result.next_index_to_process != len(input_batch):
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow"
+            )
 
             logger.warning(
-                "Received incomplete batch (%0.2f%% complete), resubmitting (reason: %s)",
+                "Received incomplete batch (%0.2f%% complete), resubmitting",
                 result.next_index_to_process / len(input_batch) * 100,
-                "backpressure" if next_step_has_applied_backpressure else "overflow",
             )
 
             # TODO: This reserializes all the ``SerializedMessage`` data prior
