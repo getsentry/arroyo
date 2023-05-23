@@ -328,7 +328,7 @@ class RunTaskWithMultiprocessing(
     If ``batch.size.msg`` is flat (as in, it's a perfectly straight line at a
     constant), you are hitting ``max_batch_size``. If ``batch.size.bytes`` is
     flat, you are hitting input buffer overflow (see next section). If neither
-    are flat, you are hitting batch timeout.
+    are flat, you are hitting ``max_batch_time``.
 
     Input and output buffers
     ~~~~~~~~~~~~~~~~~~~~~~~~
