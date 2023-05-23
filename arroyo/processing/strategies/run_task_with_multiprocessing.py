@@ -430,10 +430,10 @@ class RunTaskWithMultiprocessing(
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(
-            self.__metrics, "{_METRICS_PREFIX}.batches_in_progress"
+            self.__metrics, f"{_METRICS_PREFIX}.batches_in_progress"
         )
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge("{_METRICS_PREFIX}.processes", num_processes)
+        self.__metrics.gauge(f"{_METRICS_PREFIX}.processes", num_processes)
 
         self.__closed = False
 
@@ -462,9 +462,9 @@ class RunTaskWithMultiprocessing(
             )
         )
         self.__batches_in_progress.increment()
-        self.__metrics.timing("{_METRICS_PREFIX}.batch.size.msg", len(batch))
+        self.__metrics.timing(f"{_METRICS_PREFIX}.batch.size.msg", len(batch))
         self.__metrics.timing(
-            "{_METRICS_PREFIX}.batch.size.bytes",
+            f"{_METRICS_PREFIX}.batch.size.bytes",
             batch.get_content_size(),
         )
         self.__batch_builder = None
