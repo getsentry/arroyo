@@ -315,10 +315,25 @@ class RunTaskWithMultiprocessing(
         process, they are entirely new Python interpreters. You might want to
         re-initialize your Django application here.
 
-    Notes about performance
-    ~~~~~~~~~~~~~~~~~~~~~~~
+    Batching
+    ~~~~~~~~
 
-    You want to keep an eye on three metrics:
+    Arroyo sends messages in batches to subprocesses. The cost of a batch is
+    amortized with larger batches. ``max_batch_size`` and ``max_batch_time``
+    should be tweaked for optimal performance. You can observe the effect in the following metrics:
+
+    * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.msg``: The number of messages per batch.
+    * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes``: The number of bytes used per batch.
+
+    If ``batch.size.msg`` is flat (as in, it's a perfectly straight line at a
+    constant), you are hitting ``max_batch_size``. If ``batch.size.bytes`` is
+    flat, you are hitting input buffer overflow (see next section). If neither
+    are flat, you are hitting batch timeout.
+
+    Input and output buffers
+    ~~~~~~~~~~~~~~~~~~~~~~~~
+
+    You want to keep an eye on these metrics:
 
     1. ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
     2. ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
@@ -427,8 +442,13 @@ class RunTaskWithMultiprocessing(
             )
         )
         self.__batches_in_progress.increment()
-        self.__metrics.timing("batch.size.msg", len(batch))
-        self.__metrics.timing("batch.size.bytes", batch.get_content_size())
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
+        )
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+            batch.get_content_size(),
+        )
         self.__batch_builder = None
 
     def __forward_invalid_offsets(self) -> None:
