@@ -299,21 +299,46 @@ class RunTaskWithMultiprocessing(
         average message size.
 
         If the value is too small, the batch is implicitly broken up. In that
-        case, the ``batch.input.overflow`` metric is emitted.
+        case, the
+        ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
+        metric is emitted.
 
     :param output_block_size: Size of the shared memory buffer used to store
         results. Like with input data, the batch is implicitly broken up on
-        overflow, and ``batch.output.overflow`` metric is incremented.
-
-        While not entirely avoidable, it is best to avoid hitting overflow too
-        often on either buffer. The performance implications of running into
-        overflow on the output buffer can be particularly significant.
+        overflow, and
+        ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
+        metric is incremented.
 
     :param initializer: A function to run at the beginning of each subprocess.
 
         Subprocesses are spawned without any of the state of the parent
         process, they are entirely new Python interpreters. You might want to
         re-initialize your Django application here.
+
+    Notes about performance
+    ~~~~~~~~~~~~~~~~~~~~~~~
+
+    You want to keep an eye on three metrics:
+
+    1. ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
+    2. ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
+    3. ``arroyo.strategies.run_task_with_multiprocessing.batch.backpressure``
+
+    If ``batch.input.overflow`` is emitted at all, arroyo ran out of memory for
+    batching and started breaking up your batches into smaller ones. You want
+    to increase ``input_block_size`` in response. Note that when you do this,
+    you may have to re-tweak ``max_batch_size`` and ``max_batch_time``, as you
+    were never hitting those configured limits before.
+
+    If ``batch.output.overflow`` is emitted at all, arroyo ran out of memory
+    when *fetching* the data from subprocesses, and so the response from
+    subprocesses to the main processes is chunked. Output overflow is very
+    expensive, and you want to avoid it. Increase ``output_block_size`` in response.
+
+    If ``batch.backpressure`` is continuously emitted, you are not bottlenecked
+    on multiprocessing at all, but instead the next strategy can't keep up and
+    is applying backpressure. You can likely reduce ``num_processes`` and won't
+    notice a performance regression.
     """
 
     def __init__(
