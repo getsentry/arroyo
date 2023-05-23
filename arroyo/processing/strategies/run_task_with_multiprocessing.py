@@ -30,6 +30,8 @@ from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStr
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
+_METRICS_PREFIX = "arroyo.strategies.run_task_with_multiprocessing"
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["RunTaskWithMultiprocessing"]
@@ -315,6 +317,22 @@ class RunTaskWithMultiprocessing(
         process, they are entirely new Python interpreters. You might want to
         re-initialize your Django application here.
 
+    Number of processes
+    ~~~~~~~~~~~~~~~~~~~
+
+    The metric
+    ``arroyo.strategies.run_task_with_multiprocessing.batches_in_progress``
+    shows you how many processes arroyo is able to effectively use at any given
+    point.
+
+    The metric ``arroyo.strategies.run_task_with_multiprocessing.processes``
+    shows how many processes arroyo was configured with.
+
+    If those two metrics don't line up, your consumer is not bottlenecked on
+    number of processes. That's a good thing, you want to have some reserve
+    capacity. But it means that increasing ``num_processes`` will not make your
+    consumer faster.
+
     Batching
     ~~~~~~~~
 
@@ -411,9 +429,11 @@ class RunTaskWithMultiprocessing(
         self.__invalid_messages = InvalidMessageState()
 
         self.__metrics = get_metrics()
-        self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
+        self.__batches_in_progress = Gauge(
+            self.__metrics, "{_METRICS_PREFIX}.batches_in_progress"
+        )
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge("transform.processes", num_processes)
+        self.__metrics.gauge("{_METRICS_PREFIX}.processes", num_processes)
 
         self.__closed = False
 
@@ -442,11 +462,9 @@ class RunTaskWithMultiprocessing(
             )
         )
         self.__batches_in_progress.increment()
+        self.__metrics.timing("{_METRICS_PREFIX}.batch.size.msg", len(batch))
         self.__metrics.timing(
-            "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
-        )
-        self.__metrics.timing(
-            "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+            "{_METRICS_PREFIX}.batch.size.bytes",
             batch.get_content_size(),
         )
         self.__batch_builder = None

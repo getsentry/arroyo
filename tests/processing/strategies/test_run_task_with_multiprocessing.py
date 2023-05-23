@@ -157,11 +157,27 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall("batches_in_progress", 1.0, tags=None),
-            TimingCall("batch.size.msg", 3, None),
-            TimingCall("batch.size.bytes", 16000, None),
+            TimingCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
+                3,
+                None,
+            ),
+            TimingCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+                16000,
+                None,
+            ),
             GaugeCall("batches_in_progress", 2.0, tags=None),
-            TimingCall("batch.size.msg", 1, None),
-            TimingCall("batch.size.bytes", 2000, None),
+            TimingCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
+                1,
+                None,
+            ),
+            TimingCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+                2000,
+                None,
+            ),
         ],
     ):
         transform_step = RunTaskWithMultiprocessing(
