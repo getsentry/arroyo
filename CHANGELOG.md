@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.11.4
+
+### Various fixes & improvements
+
+- fix: Fix run task in threads (again) (#244) by @lynnagara
+
 ## 2.11.3
 
 ### Various fixes & improvements
