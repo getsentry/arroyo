@@ -128,8 +128,7 @@ class RunTaskInThreads(
                 try:
                     result = future.result(remaining)
                 except TimeoutError:
-                    pass
-
+                    continue
                 except InvalidMessage as e:
                     self.__invalid_messages.append(e)
                     raise e
