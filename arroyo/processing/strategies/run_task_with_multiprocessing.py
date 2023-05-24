@@ -361,17 +361,44 @@ class RunTaskWithMultiprocessing(
     batching and started breaking up your batches into smaller ones. You want
     to increase ``input_block_size`` in response. Note that when you do this,
     you may have to re-tweak ``max_batch_size`` and ``max_batch_time``, as you
-    were never hitting those configured limits before.
+    were never hitting those configured limits before. Input overflow is not
+    really all that expensive in Arroyo, but since it affects how batching
+    works it can still make performance tuning of your consumer more confusing.
+    Best to avoid it anyway.
 
     If ``batch.output.overflow`` is emitted at all, arroyo ran out of memory
     when *fetching* the data from subprocesses, and so the response from
     subprocesses to the main processes is chunked. Output overflow is very
-    expensive, and you want to avoid it. Increase ``output_block_size`` in response.
+    expensive, and you want to avoid it. Increase ``output_block_size`` in
+    response.
 
     If ``batch.backpressure`` is continuously emitted, you are not bottlenecked
     on multiprocessing at all, but instead the next strategy can't keep up and
     is applying backpressure. You can likely reduce ``num_processes`` and won't
     notice a performance regression.
+
+    How to tune your consumer
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Note that it doesn't make sense to fix output overflow without fixing input
+    overflow first. If you increase output block size to get rid of output
+    overflows, then increase input block size, your effective batch size may
+    increase to a point where you encounter output overflow again. If you
+    encounter a lot of issues at once, best to fix them in this order:
+
+    1. First, tune ``input_block_size`` to fix input overflow. This will
+       increase average/effective batch size.
+    2. Then, tune ``max_batch_size`` and ``max_batch_time`` so that you get the
+       highest throughput. Test this by running your consumer on a backlog of
+       messages and look at consumer offset rate, or time it takes to get consumer
+       lag back to normal.
+    3. Then, tune ``output_block_size`` to fix output overflow. If in your
+       previous tests there was a lot of output overflow, this will remove a lot
+       of CPU load from your consumer and potentially also increase throughput.
+    4. Now take a look at the ``batch.backpressure`` metric. If it is emitted,
+       you need to optimize the next strategy (``next_step``) because that's what
+       you're bottlenecked on. If it is not emitted, you may need to increase
+       ``num_processes`` or increase batch size.
     """
 
     def __init__(
