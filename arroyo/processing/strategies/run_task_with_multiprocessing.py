@@ -336,12 +336,17 @@ class RunTaskWithMultiprocessing(
     Batching
     ~~~~~~~~
 
-    Arroyo sends messages in batches to subprocesses. The cost of a batch is
-    amortized with larger batches. ``max_batch_size`` and ``max_batch_time``
+    Arroyo sends messages in batches to subprocesses. ``max_batch_size`` and ``max_batch_time``
     should be tweaked for optimal performance. You can observe the effect in the following metrics:
 
     * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.msg``: The number of messages per batch.
     * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes``: The number of bytes used per batch.
+
+    The cost of batches (locking, synchronization) generally amortizes with
+    increased batch sizes. Too small batches, and this strategy will spend a
+    lot of time synchronizing between processes. Too large batches, however,
+    can cause your consumer to not use all processes effectively, as a lot of
+    time may be spent waiting for batches to fill up.
 
     If ``batch.size.msg`` is flat (as in, it's a perfectly straight line at a
     constant), you are hitting ``max_batch_size``. If ``batch.size.bytes`` is
