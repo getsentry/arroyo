@@ -18,6 +18,7 @@ def add_severity_attribute(
 def setup_logging() -> None:
     structlog.configure(
         wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
