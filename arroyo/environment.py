@@ -17,8 +17,7 @@ def add_severity_attribute(
 
 def setup_logging() -> None:
     structlog.configure(
-        cache_logger_on_first_use=True,
-        wrapper_class=structlog.BoundLogger,
+        wrapper_class=structlog.stdlib.BoundLogger,
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
