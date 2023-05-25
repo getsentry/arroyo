@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import structlog
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from concurrent.futures import Future
@@ -18,6 +18,7 @@ from typing import (
 
 from arroyo.backends.abstract import Producer
 from arroyo.backends.kafka import KafkaPayload
+from arroyo.environment import setup_logging
 from arroyo.types import (
     FILTERED_PAYLOAD,
     BrokerValue,
@@ -29,7 +30,8 @@ from arroyo.types import (
     Value,
 )
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class InvalidMessage(Exception):
@@ -341,7 +343,7 @@ class InvalidMessageState:
         for m in self.__invalid_messages:
             next_offset = m.offset + 1
             if m.partition in committable and next_offset < committable[m.partition]:
-                logger.warn(
+                logger.warning(
                     "InvalidMessage was raised out of order. "
                     "Potentially dropping offset for committing.\n\n"
                     "Either Arroyo has a bug or you wrote a custom strategy "

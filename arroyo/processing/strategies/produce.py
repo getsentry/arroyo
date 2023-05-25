@@ -1,10 +1,11 @@
-import logging
+import structlog
 import time
 from collections import deque
 from concurrent.futures import Future
 from typing import Deque, Optional, Tuple, Union
 
 from arroyo.backends.abstract import Producer
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.types import (
@@ -17,7 +18,8 @@ from arroyo.types import (
     Value,
 )
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):

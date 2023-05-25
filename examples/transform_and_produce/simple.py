@@ -1,9 +1,10 @@
 import hashlib
 import json
-import logging
+import structlog
 from typing import Mapping
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies import CommitOffsets, Produce, TransformStep
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
@@ -11,7 +12,8 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import Commit, Message, Partition, Topic
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 def hash_password(value: Message[KafkaPayload]) -> KafkaPayload:

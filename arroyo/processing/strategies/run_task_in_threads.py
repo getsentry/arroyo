@@ -1,14 +1,16 @@
-import logging
+import structlog
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar, Union, cast
 
 from arroyo.dlq import InvalidMessage, InvalidMessageState
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 TResult = TypeVar("TResult")
 

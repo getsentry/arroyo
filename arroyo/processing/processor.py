@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import functools
-import logging
+import structlog
 import time
 from collections import defaultdict
 from enum import Enum
@@ -21,6 +21,7 @@ from typing import (
 from arroyo.backends.abstract import Consumer
 from arroyo.commit import CommitPolicy
 from arroyo.dlq import BufferedMessages, DlqPolicy, DlqPolicyWrapper, InvalidMessage
+from arroyo.environment import setup_logging
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -31,7 +32,8 @@ from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayloa
 from arroyo.utils.logging import handle_internal_error
 from arroyo.utils.metrics import get_metrics
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 

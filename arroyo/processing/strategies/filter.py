@@ -1,8 +1,9 @@
-import logging
+import structlog
 import time
 from typing import Callable, MutableMapping, Optional, Union, cast
 
 from arroyo.commit import CommitPolicy, CommitPolicyState
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.types import (
     FILTERED_PAYLOAD,
@@ -13,7 +14,8 @@ from arroyo.types import (
     Value,
 )
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):

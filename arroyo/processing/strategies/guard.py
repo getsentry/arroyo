@@ -1,7 +1,8 @@
-import logging
+import structlog
 from typing import Callable, MutableMapping, Optional, Union, cast
 
 from arroyo.dlq import InvalidMessage, InvalidMessageState
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, Partition, TStrategyPayload
 
@@ -11,7 +12,8 @@ BuildProcessingStrategy = Callable[
     [BasicStrategy[TStrategyPayload]], BasicStrategy[TStrategyPayload]
 ]
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class _StrategyGuardAfter(BasicStrategy[TStrategyPayload]):
@@ -22,7 +24,7 @@ class _StrategyGuardAfter(BasicStrategy[TStrategyPayload]):
     def submit(self, message: BasicMessage[TStrategyPayload]) -> None:
         for partition, offset in message.committable.items():
             if self.__committable.setdefault(partition, offset) > offset:
-                logger.warn(
+                logger.warning(
                     "Submitted a message with committable {%s: %s}, "
                     "but we already submitted a message with a higher offset before.\n\n"
                     "Either Arroyo has a bug, or you are writing a custom "

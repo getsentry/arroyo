@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import logging
+import structlog
 from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
 from typing import Callable, Generic, Mapping, Optional, Sequence, Union
+from arroyo.environment import setup_logging
 
 from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class Consumer(Generic[TStrategyPayload], ABC):

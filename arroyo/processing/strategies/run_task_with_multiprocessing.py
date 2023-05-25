@@ -1,4 +1,4 @@
-import logging
+import structlog
 import multiprocessing
 import pickle
 import signal
@@ -26,11 +26,13 @@ from typing import (
 )
 
 from arroyo.dlq import InvalidMessage, InvalidMessageState
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 __all__ = ["RunTaskWithMultiprocessing"]
 

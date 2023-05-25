@@ -1,8 +1,9 @@
 import json
-import logging
+import structlog
 from typing import Any, Mapping, MutableSequence, Sequence
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
+from arroyo.environment import setup_logging
 from arroyo.processing.strategies import (
     BatchStep,
     CommitOffsets,
@@ -17,7 +18,8 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.processing.strategies.batching import ValuesBatch
 from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 def resolve_index(msgs: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:

@@ -1,8 +1,9 @@
-import logging
+import structlog
 import time
 from cProfile import Profile
 from pathlib import Path
 from typing import Mapping, Optional
+from arroyo.environment import setup_logging
 
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
@@ -10,7 +11,8 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import Commit, Message, Partition, TStrategyPayload
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 class ProcessingStrategyProfilerWrapper(ProcessingStrategy[TStrategyPayload]):

@@ -1,10 +1,12 @@
 import copy
-import logging
+import structlog
 from typing import Any, Dict, Mapping, Optional, Sequence
+from arroyo.environment import setup_logging
 
 from arroyo.utils.logging import pylog_to_syslog_level
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 KafkaBrokerConfig = Dict[str, Any]
 

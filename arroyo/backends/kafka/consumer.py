@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import structlog
 from concurrent.futures import Future
 from datetime import datetime
 from enum import Enum
@@ -37,6 +37,7 @@ from confluent_kafka import Producer as ConfluentProducer
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
 from arroyo.backends.abstract import Consumer, Producer
+from arroyo.environment import setup_logging
 from arroyo.errors import (
     ConsumerError,
     EndOfPartition,
@@ -47,7 +48,8 @@ from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger().bind(module=__name__)
 
 
 KafkaConsumerState = Enum(
