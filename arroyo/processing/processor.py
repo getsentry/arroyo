@@ -4,11 +4,11 @@ import functools
 import logging
 import time
 from collections import defaultdict
-from enum import Enum
 from typing import (
     Any,
     Callable,
     Generic,
+    Literal,
     Mapping,
     MutableMapping,
     Optional,
@@ -51,7 +51,7 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 raise
             finally:
                 metrics.incr_timing(
-                    ConsumerTiming.CONSUMER_CALLBACK_TIME, time.time() - start_time
+                    "arroyo.consumer.callback.time", time.time() - start_time
                 )
 
         return cast(F, wrapper)
@@ -63,20 +63,18 @@ class InvalidStateError(RuntimeError):
     pass
 
 
-class ConsumerTiming(Enum):
-    CONSUMER_POLL_TIME = "arroyo.consumer.poll.time"
-    CONSUMER_PROCESSING_TIME = "arroyo.consumer.processing.time"
-    CONSUMER_PAUSED_TIME = "arroyo.consumer.paused.time"
-    CONSUMER_DLQ_TIME = "arroyo.consumer.dlq.time"
-    CONSUMER_JOIN_TIME = "arroyo.consumer.join.time"
-
+ConsumerTiming = Literal[
+    "arroyo.consumer.poll.time",
+    "arroyo.consumer.processing.time",
+    "arroyo.consumer.paused.time",
+    "arroyo.consumer.dlq.time",
+    "arroyo.consumer.join.time",
     # This metric's timings overlap with DLQ/join time.
-    CONSUMER_CALLBACK_TIME = "arroyo.consumer.callback.time"
-    CONSUMER_SHUTDOWN_TIME = "arroyo.consumer.shutdown.time"
+    "arroyo.consumer.callback.time",
+    "arroyo.consumer.shutdown.time",
+]
 
-
-class ConsumerCounter(Enum):
-    CONSUMER_RUN_COUNT = "arroyo.consumer.run.count"
+ConsumerCounter = Literal["arroyo.consumer.run.count"]
 
 
 class MetricsBuffer:
@@ -99,9 +97,9 @@ class MetricsBuffer:
         value: Union[float, int]
 
         for metric, value in self.__timers.items():
-            self.__metrics.timing(metric.value, value)
+            self.__metrics.timing(metric, value)
         for metric, value in self.__counters.items():
-            self.__metrics.increment(metric.value, value)
+            self.__metrics.increment(metric, value)
         self.__reset()
 
     def __reset(self) -> None:
@@ -178,12 +176,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 try:
                     self.__processing_strategy.join(self.__join_timeout)
                     self.__metrics_buffer.incr_timing(
-                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                        "arroyo.consumer.join.time", time.time() - start_join
                     )
                     break
                 except InvalidMessage as e:
                     self.__metrics_buffer.incr_timing(
-                        ConsumerTiming.CONSUMER_JOIN_TIME, time.time() - start_join
+                        "arroyo.consumer.join.time", time.time() - start_join
                     )
                     self._handle_invalid_message(e)
 
@@ -195,7 +193,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__message = None  # avoid leaking buffered messages across assignments
 
             self.__metrics_buffer.incr_timing(
-                ConsumerTiming.CONSUMER_SHUTDOWN_TIME, time.time() - start_close
+                "arroyo.consumer.shutdown.time", time.time() - start_close
             )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
@@ -326,11 +324,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__dlq_policy.produce(invalid_message)
 
             self.__metrics_buffer.incr_timing(
-                ConsumerTiming.CONSUMER_DLQ_TIME, time.time() - start_dlq
+                "arroyo.consumer.dlq.time", time.time() - start_dlq
             )
 
     def _run_once(self) -> None:
-        self.__metrics_buffer.incr_counter(ConsumerCounter.CONSUMER_RUN_COUNT, 1)
+        self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
 
         message_carried_over = self.__message is not None
 
@@ -356,7 +354,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
                 self.__metrics_buffer.incr_timing(
-                    ConsumerTiming.CONSUMER_POLL_TIME, time.time() - start_poll
+                    "arroyo.consumer.poll.time", time.time() - start_poll
                 )
             except RecoverableError:
                 return
@@ -370,7 +368,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 return
 
             self.__metrics_buffer.incr_timing(
-                ConsumerTiming.CONSUMER_PROCESSING_TIME, time.time() - start_poll
+                "arroyo.consumer.processing.time", time.time() - start_poll
             )
             if self.__message is not None:
                 try:
@@ -383,7 +381,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     self.__processing_strategy.submit(message)
 
                     self.__metrics_buffer.incr_timing(
-                        ConsumerTiming.CONSUMER_PROCESSING_TIME,
+                        "arroyo.consumer.processing.time",
                         time.time() - start_submit,
                     )
                 except MessageRejected as e:
@@ -403,7 +401,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         current_time = time.time()
                         if self.__paused_timestamp:
                             self.__metrics_buffer.incr_timing(
-                                ConsumerTiming.CONSUMER_PAUSED_TIME,
+                                "arroyo.consumer.paused.time",
                                 current_time - self.__paused_timestamp,
                             )
                             self.__paused_timestamp = current_time
@@ -418,7 +416,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__consumer.resume([*self.__consumer.tell().keys()])
 
                         self.__metrics_buffer.incr_timing(
-                            ConsumerTiming.CONSUMER_PAUSED_TIME,
+                            "arroyo.consumer.paused.time",
                             time.time() - self.__paused_timestamp,
                         )
 
