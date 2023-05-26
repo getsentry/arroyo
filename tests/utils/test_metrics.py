@@ -1,6 +1,6 @@
 import pytest
 
-from arroyo.utils.metrics import Gauge, configure_metrics, get_metrics
+from arroyo.utils.metrics import Gauge, MetricName, configure_metrics, get_metrics
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend
 
@@ -8,7 +8,7 @@ from tests.metrics import TestingMetricsBackend
 def test_gauge_simple() -> None:
     backend = TestingMetricsBackend
 
-    name = "name"
+    name: MetricName = "name"  # type: ignore
     tags = {"tag": "value"}
     gauge = Gauge(backend, name, tags)
 

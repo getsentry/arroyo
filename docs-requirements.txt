@@ -1,5 +1,4 @@
 sphinx>=5.3
 sphinxcontrib-mermaid==0.8.1
 shibuya
-sphinx-autodoc-typehints[type-comment]>=1.19.3
 typing-extensions
