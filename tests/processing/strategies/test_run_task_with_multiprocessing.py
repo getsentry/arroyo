@@ -9,7 +9,6 @@ import pytest
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
-    _METRICS_PREFIX,
     MessageBatch,
     RunTaskWithMultiprocessing,
     ValueTooLarge,
@@ -150,32 +149,48 @@ def test_parallel_transform_step() -> None:
         lambda: metrics.calls,
         [],
         [
-            GaugeCall(f"{_METRICS_PREFIX}.batches_in_progress", 0.0, tags=None),
-            GaugeCall(f"{_METRICS_PREFIX}.processes", 2.0, tags=None),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                0.0,
+                tags=None,
+            ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
+                2.0,
+                tags=None,
+            ),
             IncrementCall(
-                name=f"{_METRICS_PREFIX}.batch.input.overflow",
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow",
                 value=1,
                 tags=None,
             ),
-            GaugeCall(f"{_METRICS_PREFIX}.batches_in_progress", 1.0, tags=None),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                1.0,
+                tags=None,
+            ),
             TimingCall(
-                f"{_METRICS_PREFIX}.batch.size.msg",
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
                 3,
                 None,
             ),
             TimingCall(
-                f"{_METRICS_PREFIX}.batch.size.bytes",
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
                 16000,
                 None,
             ),
-            GaugeCall(f"{_METRICS_PREFIX}.batches_in_progress", 2.0, tags=None),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                2.0,
+                tags=None,
+            ),
             TimingCall(
-                f"{_METRICS_PREFIX}.batch.size.msg",
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
                 1,
                 None,
             ),
             TimingCall(
-                f"{_METRICS_PREFIX}.batch.size.bytes",
+                "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
                 2000,
                 None,
             ),
@@ -208,12 +223,20 @@ def test_parallel_transform_step() -> None:
         [],
         [
             IncrementCall(
-                name=f"{_METRICS_PREFIX}.batch.output.overflow",
+                name="arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
                 value=1,
                 tags=None,
             ),
-            GaugeCall(f"{_METRICS_PREFIX}.batches_in_progress", 1.0, tags=None),
-            GaugeCall(f"{_METRICS_PREFIX}.batches_in_progress", 0.0, tags=None),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                1.0,
+                tags=None,
+            ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                0.0,
+                tags=None,
+            ),
         ],
     ):
         transform_step.join()
@@ -333,37 +356,61 @@ def test_message_rejected_multiple() -> None:
     ]
 
     assert TestingMetricsBackend.calls == [
-        GaugeCall(name=f"{_METRICS_PREFIX}.batches_in_progress", value=0.0, tags=None),
-        GaugeCall(name=f"{_METRICS_PREFIX}.processes", value=1, tags=None),
-        GaugeCall(name=f"{_METRICS_PREFIX}.batches_in_progress", value=1.0, tags=None),
-        TimingCall(name=f"{_METRICS_PREFIX}.batch.size.msg", value=2, tags=None),
-        TimingCall(name=f"{_METRICS_PREFIX}.batch.size.bytes", value=0, tags=None),
+        GaugeCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+            value=0.0,
+            tags=None,
+        ),
+        GaugeCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.processes",
+            value=1,
+            tags=None,
+        ),
+        GaugeCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+            value=1.0,
+            tags=None,
+        ),
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
+            value=2,
+            tags=None,
+        ),
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+            value=0,
+            tags=None,
+        ),
         IncrementCall(
-            name=f"{_METRICS_PREFIX}.batch.backpressure",
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
             value=1,
             tags=None,
         ),
         IncrementCall(
-            name=f"{_METRICS_PREFIX}.batch.backpressure",
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
             value=1,
             tags=None,
         ),
         IncrementCall(
-            name=f"{_METRICS_PREFIX}.batch.backpressure",
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
             value=1,
             tags=None,
         ),
         IncrementCall(
-            name=f"{_METRICS_PREFIX}.batch.backpressure",
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
             value=1,
             tags=None,
         ),
         IncrementCall(
-            name=f"{_METRICS_PREFIX}.batch.backpressure",
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
             value=1,
             tags=None,
         ),
-        GaugeCall(name=f"{_METRICS_PREFIX}.batches_in_progress", value=0.0, tags=None),
+        GaugeCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+            value=0.0,
+            tags=None,
+        ),
     ]
 
 

@@ -2,9 +2,9 @@ from typing import Literal
 
 MetricName = Literal[
     # Number of messages in a multiprocessing batch
-    "batch.size.msg",
+    "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
     # Number of bytes in a multiprocessing batch
-    "batch.size.bytes",
+    "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
     # Number of times the consumer is spinning
     "arroyo.consumer.run.count",
     # How long it took the Reduce step to fill up a batch
@@ -23,12 +23,12 @@ MetricName = Literal[
     # fix.
     "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
     # How many batches are being processed in parallel by multiprocessing.
-    "batches_in_progress",
+    "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
     # Counter. A subprocess by multiprocessing unexpectedly died.
     "sigchld.detected",
     # Gauge. Shows how many processes the multiprocessing strategy is
     # configured with.
-    "transform.processes",
+    "arroyo.strategies.run_task_with_multiprocessing.processes",
     # Time (unitless) spent polling librdkafka for new messages.
     "arroyo.consumer.poll.time",
     # Time (unitless) spent in strategies (blocking in strategy.submit or

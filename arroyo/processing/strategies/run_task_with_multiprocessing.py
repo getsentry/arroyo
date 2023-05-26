@@ -30,8 +30,6 @@ from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStr
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
 from arroyo.utils.metrics import Gauge, get_metrics
 
-_METRICS_PREFIX = "arroyo.strategies.run_task_with_multiprocessing"
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["RunTaskWithMultiprocessing"]
@@ -462,10 +460,13 @@ class RunTaskWithMultiprocessing(
 
         self.__metrics = get_metrics()
         self.__batches_in_progress = Gauge(
-            self.__metrics, f"{_METRICS_PREFIX}.batches_in_progress"
+            self.__metrics,
+            "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
         )
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge(f"{_METRICS_PREFIX}.processes", num_processes)
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.processes", num_processes
+        )
 
         self.__closed = False
 
@@ -494,9 +495,11 @@ class RunTaskWithMultiprocessing(
             )
         )
         self.__batches_in_progress.increment()
-        self.__metrics.timing(f"{_METRICS_PREFIX}.batch.size.msg", len(batch))
         self.__metrics.timing(
-            f"{_METRICS_PREFIX}.batch.size.bytes",
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
+        )
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
             batch.get_content_size(),
         )
         self.__batch_builder = None
