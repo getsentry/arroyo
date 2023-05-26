@@ -16,7 +16,12 @@ Nevertheless, all arroyo strategies are written against the following interface:
    :undoc-members:
    :show-inheritance:
 
+Messages
+------------
 
+.. automodule:: arroyo.types
+   :members:
+   :undoc-members:
 
 .. toctree::
     :hidden:

@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar, Union, cast
 
 from arroyo.dlq import InvalidMessage, InvalidMessageState
@@ -127,6 +127,8 @@ class RunTaskInThreads(
                 # Will raise if the future errored
                 try:
                     result = future.result(remaining)
+                except TimeoutError:
+                    continue
                 except InvalidMessage as e:
                     self.__invalid_messages.append(e)
                     raise e

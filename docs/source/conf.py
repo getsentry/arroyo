@@ -19,7 +19,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinxcontrib.mermaid",
     "sphinx.ext.autodoc",
-    "sphinx_autodoc_typehints",
 ]
 
 always_document_param_types = True
@@ -41,6 +40,14 @@ html_theme = "shibuya"
 
 html_static_path = ["_static"]
 
+html_css_files = [
+    "custom.css",
+]
+
 # html_logo = "_static/arroyo.png"
 
 autodoc_inherit_docstrings = False
+
+autodoc_type_aliases = {
+    "MetricName": "MetricName",
+}

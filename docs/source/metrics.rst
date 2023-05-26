@@ -14,48 +14,39 @@ This can be done like so:
 
 .. code:: python
 
-    class Metrics:
+   from arroyo.utils.metrics import Metrics, MetricName
+
+    class MyMetrics(Metrics):
         def increment(
-            self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
+            self, name: MetricName, value: Union[int, float] = 1, tags: Optional[Tags] = None
         ) -> None:
             # Increment a counter by the given value.
             record_incr(name, value, tags)
 
         def gauge(
-            self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+            self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
         ) -> None:
             # Sets a gauge metric to the given value.
             record_gauge(name, value, tags)
 
         def timing(
-            self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+            self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
         ) -> None:
             # Emit a timing metric with the given value.
             record_timing(name, value, tags)
 
-    metrics_backend = Metrics()
+    metrics_backend = MyMetrics()
 
     configure_metrics(metrics_backend)
 
-Some of the metrics emitted by Arroyo include:
 
-.. list-table:: Metrics
-   :widths: 25 25 50
-   :header-rows: 1
+Available Metrics
+====================
 
-   * - Metric name
-     - Type
-     - Description
-   * - arroyo.consumer.poll.time
-     - Timing
-     - Time spent polling for messages. A higher number means the consumer has headroom as it is waiting for messages to arrive.
-   * - arroyo.consumer.processing.time
-     - Timing
-     - Time spent processing messages. A higher number means the consumer spends more time processing messages.
-   * - arroyo.consumer.paused.time
-     - Timing
-     - Time spent in backpressure. Usually means there could be some processing bottleneck.
+.. literalinclude:: ../../arroyo/utils/metric_defs.py
 
+API
+=======
 
 .. automodule:: arroyo.utils.metrics
    :members:

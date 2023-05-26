@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from abc import abstractmethod
 from typing import Any, Mapping, Optional, Protocol, Union, runtime_checkable
+
+from arroyo.utils.metric_defs import MetricName
 
 Tags = Mapping[str, str]
 
@@ -12,7 +16,10 @@ class Metrics(Protocol):
 
     @abstractmethod
     def increment(
-        self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
+        self,
+        name: MetricName,
+        value: Union[int, float] = 1,
+        tags: Optional[Tags] = None,
     ) -> None:
         """
         Increments a counter metric by a given value.
@@ -21,7 +28,7 @@ class Metrics(Protocol):
 
     @abstractmethod
     def gauge(
-        self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         """
         Sets a gauge metric to the given value.
@@ -30,7 +37,7 @@ class Metrics(Protocol):
 
     @abstractmethod
     def timing(
-        self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         """
         Records a timing metric.
@@ -44,17 +51,20 @@ class DummyMetricsBackend(Metrics):
     """
 
     def increment(
-        self, name: str, value: Union[int, float] = 1, tags: Optional[Tags] = None
+        self,
+        name: MetricName,
+        value: Union[int, float] = 1,
+        tags: Optional[Tags] = None,
     ) -> None:
         pass
 
     def gauge(
-        self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         pass
 
     def timing(
-        self, name: str, value: Union[int, float], tags: Optional[Tags] = None
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         pass
 
@@ -63,7 +73,7 @@ class Gauge:
     def __init__(
         self,
         metrics: Metrics,
-        name: str,
+        name: MetricName,
         tags: Optional[Tags] = None,
     ) -> None:
         self.__metrics = metrics
@@ -119,3 +129,6 @@ def get_metrics() -> Metrics:
     if _metrics_backend is None:
         return _dummy_metrics_backend
     return _metrics_backend
+
+
+__all__ = ["configure_metrics", "Metrics", "MetricName"]
