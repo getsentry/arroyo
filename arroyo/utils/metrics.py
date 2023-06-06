@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from abc import abstractmethod
 from typing import Any, Mapping, Optional, Protocol, Union, runtime_checkable
 
 from arroyo.utils.metric_defs import MetricName
 
 Tags = Mapping[str, str]
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -113,11 +116,12 @@ _dummy_metrics_backend = DummyMetricsBackend()
 
 def configure_metrics(metrics: Metrics) -> None:
     """
-    Metrics can only be configured once
+    Metrics should generally only be configured once.
     """
     global _metrics_backend
 
-    assert _metrics_backend is None, "Metrics is already set"
+    if _metrics_backend is not None:
+        logger.warning("Metrics backend is already configured")
 
     # Perform a runtime check of metrics instance upon initialization of
     # this class to avoid errors down the line when it is used.
