@@ -113,7 +113,8 @@ _dummy_metrics_backend = DummyMetricsBackend()
 
 def configure_metrics(metrics: Metrics, force: bool = False) -> None:
     """
-    Metrics should generally only be configured once.
+    Metrics can generally only be configured once, unless force is passed
+    on subsequent initializations.
     """
     global _metrics_backend
 
