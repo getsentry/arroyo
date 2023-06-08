@@ -111,13 +111,15 @@ _metrics_backend: Optional[Metrics] = None
 _dummy_metrics_backend = DummyMetricsBackend()
 
 
-def configure_metrics(metrics: Metrics) -> None:
+def configure_metrics(metrics: Metrics, force: bool = False) -> None:
     """
-    Metrics can only be configured once
+    Metrics can generally only be configured once, unless force is passed
+    on subsequent initializations.
     """
     global _metrics_backend
 
-    assert _metrics_backend is None, "Metrics is already set"
+    if not force:
+        assert _metrics_backend is None, "Metrics is already set"
 
     # Perform a runtime check of metrics instance upon initialization of
     # this class to avoid errors down the line when it is used.

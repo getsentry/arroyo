@@ -2,7 +2,7 @@ import pytest
 
 from arroyo.utils.metrics import Gauge, MetricName, configure_metrics, get_metrics
 from tests.metrics import Gauge as GaugeCall
-from tests.metrics import TestingMetricsBackend
+from tests.metrics import TestingMetricsBackend, _TestingMetricsBackend
 
 
 def test_gauge_simple() -> None:
@@ -26,4 +26,8 @@ def test_configure_metrics() -> None:
     assert get_metrics() == TestingMetricsBackend
 
     with pytest.raises(AssertionError):
-        configure_metrics(TestingMetricsBackend)
+        configure_metrics(_TestingMetricsBackend())
+
+    # Can be reset to something else with force
+    configure_metrics(_TestingMetricsBackend(), force=True)
+    assert get_metrics() != TestingMetricsBackend
