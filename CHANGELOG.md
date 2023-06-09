@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.11.5
+
+### Various fixes & improvements
+
+- add entries to list (#250) by @ayirr7
+- ref(multiprocessing): Rename some metrics and add documentation (#241) by @untitaker
+- feat(metrics): Allow reconfiguring the metrics backend (#249) by @lynnagara
+- ref: Global metrics registry (#245) by @untitaker
+
 ## 2.11.4
 
 ### Various fixes & improvements
