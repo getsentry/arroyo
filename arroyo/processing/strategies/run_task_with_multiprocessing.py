@@ -299,21 +299,109 @@ class RunTaskWithMultiprocessing(
         average message size.
 
         If the value is too small, the batch is implicitly broken up. In that
-        case, the ``batch.input.overflow`` metric is emitted.
+        case, the
+        ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
+        metric is emitted.
 
     :param output_block_size: Size of the shared memory buffer used to store
         results. Like with input data, the batch is implicitly broken up on
-        overflow, and ``batch.output.overflow`` metric is incremented.
-
-        While not entirely avoidable, it is best to avoid hitting overflow too
-        often on either buffer. The performance implications of running into
-        overflow on the output buffer can be particularly significant.
+        overflow, and
+        ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
+        metric is incremented.
 
     :param initializer: A function to run at the beginning of each subprocess.
 
         Subprocesses are spawned without any of the state of the parent
         process, they are entirely new Python interpreters. You might want to
         re-initialize your Django application here.
+
+    Number of processes
+    ~~~~~~~~~~~~~~~~~~~
+
+    The metric
+    ``arroyo.strategies.run_task_with_multiprocessing.batches_in_progress``
+    shows you how many processes arroyo is able to effectively use at any given
+    point.
+
+    The metric ``arroyo.strategies.run_task_with_multiprocessing.processes``
+    shows how many processes arroyo was configured with.
+
+    If those two metrics don't line up, your consumer is not bottlenecked on
+    number of processes. That's a good thing, you want to have some reserve
+    capacity. But it means that increasing ``num_processes`` will not make your
+    consumer faster.
+
+    Batching
+    ~~~~~~~~
+
+    Arroyo sends messages in batches to subprocesses. ``max_batch_size`` and ``max_batch_time``
+    should be tweaked for optimal performance. You can observe the effect in the following metrics:
+
+    * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.msg``: The number of messages per batch.
+    * ``arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes``: The number of bytes used per batch.
+
+    The cost of batches (locking, synchronization) generally amortizes with
+    increased batch sizes. Too small batches, and this strategy will spend a
+    lot of time synchronizing between processes. Too large batches, however,
+    can cause your consumer to not use all processes effectively, as a lot of
+    time may be spent waiting for batches to fill up.
+
+    If ``batch.size.msg`` is flat (as in, it's a perfectly straight line at a
+    constant), you are hitting ``max_batch_size``. If ``batch.size.bytes`` is
+    flat, you are hitting input buffer overflow (see next section). If neither
+    are flat, you are hitting ``max_batch_time``.
+
+    Input and output buffers
+    ~~~~~~~~~~~~~~~~~~~~~~~~
+
+    You want to keep an eye on these metrics:
+
+    1. ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
+    2. ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
+    3. ``arroyo.strategies.run_task_with_multiprocessing.batch.backpressure``
+
+    If ``batch.input.overflow`` is emitted at all, arroyo ran out of memory for
+    batching and started breaking up your batches into smaller ones. You want
+    to increase ``input_block_size`` in response. Note that when you do this,
+    you may have to re-tweak ``max_batch_size`` and ``max_batch_time``, as you
+    were never hitting those configured limits before. Input overflow is not
+    really all that expensive in Arroyo, but since it affects how batching
+    works it can still make performance tuning of your consumer more confusing.
+    Best to avoid it anyway.
+
+    If ``batch.output.overflow`` is emitted at all, arroyo ran out of memory
+    when *fetching* the data from subprocesses, and so the response from
+    subprocesses to the main processes is chunked. Output overflow is very
+    expensive, and you want to avoid it. Increase ``output_block_size`` in
+    response.
+
+    If ``batch.backpressure`` is continuously emitted, you are not bottlenecked
+    on multiprocessing at all, but instead the next strategy can't keep up and
+    is applying backpressure. You can likely reduce ``num_processes`` and won't
+    notice a performance regression.
+
+    How to tune your consumer
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Note that it doesn't make sense to fix output overflow without fixing input
+    overflow first. If you increase output block size to get rid of output
+    overflows, then increase input block size, your effective batch size may
+    increase to a point where you encounter output overflow again. If you
+    encounter a lot of issues at once, best to fix them in this order:
+
+    1. First, tune ``input_block_size`` to fix input overflow. This will
+       increase average/effective batch size.
+    2. Then, tune ``max_batch_size`` and ``max_batch_time`` so that you get the
+       highest throughput. Test this by running your consumer on a backlog of
+       messages and look at consumer offset rate, or time it takes to get consumer
+       lag back to normal.
+    3. Then, tune ``output_block_size`` to fix output overflow. If in your
+       previous tests there was a lot of output overflow, this will remove a lot
+       of CPU load from your consumer and potentially also increase throughput.
+    4. Now take a look at the ``batch.backpressure`` metric. If it is emitted,
+       you need to optimize the next strategy (``next_step``) because that's what
+       you're bottlenecked on. If it is not emitted, you may need to increase
+       ``num_processes`` or increase batch size.
     """
 
     def __init__(
@@ -371,9 +459,14 @@ class RunTaskWithMultiprocessing(
         self.__invalid_messages = InvalidMessageState()
 
         self.__metrics = get_metrics()
-        self.__batches_in_progress = Gauge(self.__metrics, "batches_in_progress")
+        self.__batches_in_progress = Gauge(
+            self.__metrics,
+            "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+        )
         self.__pool_waiting_time: Optional[float] = None
-        self.__metrics.gauge("transform.processes", num_processes)
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.processes", num_processes
+        )
 
         self.__closed = False
 
@@ -402,8 +495,13 @@ class RunTaskWithMultiprocessing(
             )
         )
         self.__batches_in_progress.increment()
-        self.__metrics.timing("batch.size.msg", len(batch))
-        self.__metrics.timing("batch.size.bytes", batch.get_content_size())
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
+        )
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+            batch.get_content_size(),
+        )
         self.__batch_builder = None
 
     def __forward_invalid_offsets(self) -> None:
