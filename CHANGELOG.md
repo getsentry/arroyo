@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.11.6
+
+### Various fixes & improvements
+
+- feat: Basic support for librdkafka stats (#252) by @untitaker
+
 ## 2.11.5
 
 ### Various fixes & improvements
