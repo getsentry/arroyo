@@ -1,12 +1,16 @@
 import copy
 import logging
+import json
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from arroyo.utils.logging import pylog_to_syslog_level
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
 KafkaBrokerConfig = Dict[str, Any]
+
+STATS_COLLECTION_FREQ_MS = 1000
 
 
 DEFAULT_QUEUED_MAX_MESSAGE_KBYTES = 50000
@@ -68,6 +72,11 @@ def build_kafka_configuration(
     return broker_config
 
 
+def stats_callback(stats_json: str) -> None:
+    stats = json.loads(stats_json)
+    get_metrics().gauge("arroyo.consumer.librdkafka.total_queue_size", stats.get("replyq", 0))
+
+
 def build_kafka_consumer_configuration(
     default_config: Mapping[str, Any],
     group_id: str,
@@ -104,6 +113,8 @@ def build_kafka_consumer_configuration(
             "queued.max.messages.kbytes": queued_max_messages_kbytes,
             "queued.min.messages": queued_min_messages,
             "enable.partition.eof": False,
+            "statistics.interval.ms": STATS_COLLECTION_FREQ_MS,
+            "stats_cb": stats_callback,
         }
     )
     return broker_config
