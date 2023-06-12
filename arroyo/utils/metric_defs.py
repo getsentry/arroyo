@@ -48,4 +48,6 @@ MetricName = Literal[
     # Time (unitless) spent in shutting down the consumer. This metric's
     # timings overlap other timings, and might spike at the same time.
     "arroyo.consumer.shutdown.time",
+    # Queue size of background queue that librdkafka uses to prefetch messages.
+    "arroyo.consumer.librdkafka.total_queue_size",
 ]
