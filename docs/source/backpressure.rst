@@ -38,12 +38,6 @@ It is not recommended to apply backpressure by just ``sleep()``-ing in
 pauses the consumer, it will block the main thread for too long and and prevent
 things like consumer rebalancing from occuring.
 
-There is a known issue where the main thread spins at 100% CPU while the
-consumer is paused by raising :py:class:`~abstract.MessageRejected`, because
-:py:class:`~abstract.ProcessingStrategy.submit` is retried too quickly. This
-hasn't been a significant problem in practice so far because most strategies
-only need to apply backpressure for small periods of time and are waiting for
-either a subprocess or some external I/O to finish. However, it does mean that
-during this time, the `GIL
-<https://wiki.python.org/moin/GlobalInterpreterLock>`_ gets very noisy and
-background thread performance may suffer from that.
+A 0.01 second sleep is applied each time :py:class:`~abstract.MessageRejected` is
+raised to prevent the main thread spinning at 100% CPU. However background thread
+performance may be impacted during this time.
