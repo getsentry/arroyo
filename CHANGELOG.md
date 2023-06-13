@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.11.7
+
+### Various fixes & improvements
+
+- feat: Avoid spinning on MessageRejected (#253) by @lynnagara
+
 ## 2.11.6
 
 ### Various fixes & improvements
