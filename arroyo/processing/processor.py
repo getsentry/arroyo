@@ -399,6 +399,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__paused_timestamp = time.time()
                     else:
                         current_time = time.time()
+                        time.sleep(0.01)
                         if self.__paused_timestamp:
                             self.__metrics_buffer.incr_timing(
                                 "arroyo.consumer.paused.time",
