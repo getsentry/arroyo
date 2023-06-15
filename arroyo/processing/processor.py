@@ -225,24 +225,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
             if partitions:
                 _close_strategy()
 
-                # Recreate the strategy if the consumer still has other partitions
-                # assigned and is not closed or errored
-                try:
-                    current_partitions = self.__consumer.tell()
-                    if len(current_partitions.keys() - set(partitions)):
-                        active_partitions = {
-                            partition: offset
-                            for partition, offset in current_partitions.items()
-                            if partition not in partitions
-                        }
-                        logger.info(
-                            "Recreating strategy since there are still active partitions: %r",
-                            active_partitions,
-                        )
-                        _create_strategy(active_partitions)
-                except RuntimeError:
-                    pass
-
             # Partition revocation can happen anytime during the consumer lifecycle and happen
             # multiple times. What we want to know is that the consumer is not stuck somewhere.
             # The presence of this message as the last message of a consumer

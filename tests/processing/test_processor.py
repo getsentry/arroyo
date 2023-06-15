@@ -294,7 +294,7 @@ def test_stream_processor_create_with_partitions() -> None:
     revocation_callback([Partition(topic, 0)])
 
     create_args, _ = factory.create_with_partitions.call_args
-    assert factory.create_with_partitions.call_count == 3
+    assert factory.create_with_partitions.call_count == 2
     assert create_args[1] == offsets_p1
 
     # Second partition revoked - no partitions left
@@ -303,7 +303,7 @@ def test_stream_processor_create_with_partitions() -> None:
 
     # No partitions left means we don't re-create the strategy
     # so `create_with_partitions` call count shouldn't increase
-    assert factory.create_with_partitions.call_count == 3
+    assert factory.create_with_partitions.call_count == 2
 
 
 class CommitOffsets(ProcessingStrategy[int]):
