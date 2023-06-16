@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.12.0
+
+### Various fixes & improvements
+
+- feat: A better default retry policy (#256) by @lynnagara
+
 ## 2.11.7
 
 ### Various fixes & improvements
