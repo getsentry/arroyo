@@ -15,7 +15,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.processing.strategies.batching import ValuesBatch
-from arroyo.types import BaseValue, Commit, Message, Partition, Topic, Value
+from arroyo.types import BaseValue, Commit, Message, Topic, Value
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +66,9 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         self.__producer = producer
         self.__topic = topic
 
-    def create_with_partitions(
+    def create(
         self,
         commit: Commit,
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
 
         unbatch: UnbatchStep[KafkaPayload] = UnbatchStep(

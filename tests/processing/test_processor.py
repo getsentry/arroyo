@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Sequence, cast
+from typing import Any, Optional, Sequence, cast
 from unittest import mock
 
 import pytest
@@ -336,10 +336,9 @@ class CommitOffsets(ProcessingStrategy[int]):
 
 
 class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
-    def create_with_partitions(
+    def create(
         self,
         commit: Commit,
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[int]:
         return CommitOffsets(commit)
 

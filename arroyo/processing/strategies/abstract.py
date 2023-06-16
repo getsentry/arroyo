@@ -115,7 +115,6 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
     def create(self, commit: Commit) -> ProcessingStrategy[TStrategyPayload]:
         raise NotImplementedError
 
-    @abstractmethod
     def create_with_partitions(
         self,
         commit: Commit,
