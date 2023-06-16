@@ -31,7 +31,7 @@ from confluent_kafka import (
     TIMESTAMP_NOT_AVAILABLE,
 )
 from confluent_kafka import Consumer as ConfluentConsumer
-from confluent_kafka import KafkaError
+from confluent_kafka import KafkaError, KafkaException
 from confluent_kafka import Message as ConfluentMessage
 from confluent_kafka import Producer as ConfluentProducer
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
@@ -45,7 +45,7 @@ from arroyo.errors import (
 )
 from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
-from arroyo.utils.retries import NoRetryPolicy, RetryPolicy
+from arroyo.utils.retries import BasicRetryPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -147,11 +147,18 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def __init__(
         self,
         configuration: Mapping[str, Any],
-        *,
-        commit_retry_policy: Optional[RetryPolicy] = None,
     ) -> None:
-        if commit_retry_policy is None:
-            commit_retry_policy = NoRetryPolicy()
+        commit_retry_policy = BasicRetryPolicy(
+            3,
+            1,
+            lambda e: isinstance(e, KafkaException)
+            and e.args[0].code()
+            in (
+                KafkaError.REQUEST_TIMED_OUT,
+                KafkaError.NOT_COORDINATOR,
+                KafkaError._WAIT_COORD,
+            ),
+        )
 
         configuration = dict(configuration)
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
