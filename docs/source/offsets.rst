@@ -24,10 +24,9 @@ The easiest way is to use the `CommitOffsets` strategy as the last step in a cha
 .. code-block:: Python
 
     class MyConsumerFactoryFactory(ProcessingStrategyFactory[KafkaPayload]):
-        def create_with_partitions(
+        def create(
             self,
             commit: Commit,
-            partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
             def my_processing_function(message: Message[KafkaPayload]) -> None:
                 # do something (synchronous) with the message

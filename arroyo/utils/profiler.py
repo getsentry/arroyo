@@ -2,13 +2,13 @@ import logging
 import time
 from cProfile import Profile
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Optional
 
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.types import Commit, Message, Partition, TStrategyPayload
+from arroyo.types import Commit, Message, TStrategyPayload
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +62,14 @@ class ProcessingStrategyProfilerWrapperFactory(
         self.__output_directory = Path(output_directory)
         assert self.__output_directory.exists() and self.__output_directory.is_dir()
 
-    def create_with_partitions(
+    def create(
         self,
         commit: Commit,
-        partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TStrategyPayload]:
         profiler = Profile()
         profiler.enable()
         return ProcessingStrategyProfilerWrapper(
-            self.__strategy_factory.create_with_partitions(commit, partitions),
+            self.__strategy_factory.create(commit),
             profiler,
             str(self.__output_directory / f"{int(time.time() * 1000)}.prof"),
         )

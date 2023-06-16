@@ -252,13 +252,13 @@ def test_stream_processor_invalid_message_from_submit() -> None:
     ]
 
 
-def test_stream_processor_create_with_partitions() -> None:
+def test_stream_processor_create() -> None:
     topic = Topic("topic")
 
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
-    factory.create_with_partitions.return_value = strategy
+    factory.create.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
         processor: StreamProcessor[int] = StreamProcessor(

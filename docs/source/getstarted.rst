@@ -159,10 +159,9 @@ Here we are using the `RunTask` strategy which runs a custom function over each 
         consumer, while it is destroyed when partitions are revoked or the
         consumer is closed
         """
-        def create_with_partitions(
+        def create(
             self,
             commit: Commit,
-            partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
             return RunTask(handle_message, CommitOffsets(commit))
 
@@ -195,10 +194,9 @@ Now we will chain the `Produce` strategy to produce messages on a second topic a
         consumer, while it is destroyed when partitions are revoked or the
         consumer is closed
         """
-        def create_with_partitions(
+        def create(
             self,
             commit: Commit,
-            partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
             producer = KafkaProducer(
                 build_kafka_configuration(

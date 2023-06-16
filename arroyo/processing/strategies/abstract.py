@@ -116,15 +116,3 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def create(self, commit: Commit) -> ProcessingStrategy[TStrategyPayload]:
         raise NotImplementedError
-
-    def create_with_partitions(
-        self,
-        commit: Commit,
-        partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[TStrategyPayload]:
-        """
-        Deprecated
-        """
-        strategy = self.create(commit)
-        strategy.on_assignment_update(partitions, None)
-        return strategy

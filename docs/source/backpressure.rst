@@ -18,10 +18,9 @@ consumer is supposed to be paused
         def __init__(self):
             self.is_paused = False
 
-        def create_with_partitions(
+        def create(
             self,
             commit: Commit,
-            partitions: Mapping[Partition, int],
         ) -> ProcessingStrategy[KafkaPayload]:
             def handle_message(message: Message[KafkaPayload]) -> Message[KafkaPayload]:
                 if self.is_paused:
