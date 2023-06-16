@@ -25,6 +25,13 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
     significant degree of flexibility for the various implementations.
     """
 
+    def update_partition_assignment(self, partitions: Mapping[Partition, int]) -> None:
+        """
+        This method is called with the complete list of assigned partitions whenever a
+        new assignment or revocation is received.
+        """
+        pass
+
     @abstractmethod
     def poll(self) -> None:
         """
@@ -105,16 +112,18 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
     """
 
     @abstractmethod
+    def create(self, commit: Commit) -> ProcessingStrategy[TStrategyPayload]:
+        raise NotImplementedError
+
+    @abstractmethod
     def create_with_partitions(
         self,
         commit: Commit,
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[TStrategyPayload]:
         """
-        Instantiate and return a ``ProcessingStrategy`` instance.
-
-        :param commit: A function that accepts a mapping of ``Partition`` instances to offset values that should be committed.
-
-        :param partitions: A mapping of a ``Partition`` to it's most recent offset.
+        Deprecated
         """
-        raise NotImplementedError
+        strategy = self.create(commit)
+        strategy.update_partition_assignment(partitions)
+        return strategy

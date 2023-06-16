@@ -189,7 +189,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "%r exited successfully, releasing assignment.",
                 self.__processing_strategy,
             )
-            self.__processing_strategy = None
+            self.__processing_strategy.update_partition_assignment({})
             self.__message = None  # avoid leaking buffered messages across assignments
 
             self.__metrics_buffer.incr_timing(
@@ -197,11 +197,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
-            self.__processing_strategy = (
-                self.__processor_factory.create_with_partitions(
-                    self.__commit, partitions
-                )
-            )
+            if self.__processing_strategy is None:
+                self.__processing_strategy = self.__processor_factory.create(self.__commit)
+            self.__processing_strategy.update_partition_assignment(partitions)
             logger.debug(
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
