@@ -25,7 +25,9 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
     significant degree of flexibility for the various implementations.
     """
 
-    def update_partition_assignment(self, partitions: Mapping[Partition, int]) -> None:
+    def on_assignment_update(
+        self, partitions: Mapping[Partition, int], timeout: Optional[float]
+    ) -> None:
         """
         This method is called with the complete list of assigned partitions whenever a
         new assignment or revocation is received.
@@ -124,5 +126,5 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
         Deprecated
         """
         strategy = self.create(commit)
-        strategy.update_partition_assignment(partitions)
+        strategy.on_assignment_update(partitions, None)
         return strategy
