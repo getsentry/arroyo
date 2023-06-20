@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.12.1
+
+### Various fixes & improvements
+
+- fix: Commit offsets even when topic is empty (#259) by @untitaker
+
 ## 2.12.0
 
 ### Various fixes & improvements
