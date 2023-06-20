@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.13.0
+
+### Various fixes & improvements
+
+- feat: Bump confluent-kafka-python (#258) by @lynnagara
+
 ## 2.12.1
 
 ### Various fixes & improvements
