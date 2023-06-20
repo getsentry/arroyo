@@ -17,7 +17,7 @@ class CommitOffsets(ProcessingStrategy[Any]):
         self.__commit = commit
 
     def poll(self) -> None:
-        pass
+        self.__commit({})
 
     def submit(self, message: Message[Any]) -> None:
         self.__commit(message.committable)

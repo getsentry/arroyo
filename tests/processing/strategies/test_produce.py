@@ -70,12 +70,12 @@ def test_produce_and_commit() -> None:
     assert broker_storage.consume(Partition(result_topic, 0), 1) is None
     assert commit.call_count == 0
     strategy.poll()
-    assert commit.call_count == 1
+    assert commit.call_count == 2
 
     strategy.submit(message)
     strategy.poll()
-    assert commit.call_count == 2
+    assert commit.call_count == 4
 
     # Commit count immediately increases once we call join()
     strategy.join()
-    assert commit.call_count == 3
+    assert commit.call_count == 5
