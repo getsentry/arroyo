@@ -118,3 +118,26 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
         :param partitions: A mapping of a ``Partition`` to it's most recent offset.
         """
         raise NotImplementedError
+
+
+class CachedProcessingStrategyFactory(ProcessingStrategyFactory[TStrategyPayload]):
+    """
+    Same as ProcessingStrategyFactory but reuses the strategy for the life of the consumer
+    and doesn't have access to the assigned partitions.
+    """
+
+    def __init__(self) -> None:
+        self.__strategy: Optional[ProcessingStrategy[TStrategyPayload]] = None
+
+    @abstractmethod
+    def create(self, commit: Commit) -> ProcessingStrategy[TStrategyPayload]:
+        raise NotImplementedError
+
+    def create_with_partitions(
+        self,
+        commit: Commit,
+        partitions: Mapping[Partition, int],
+    ) -> ProcessingStrategy[TStrategyPayload]:
+        if self.__strategy is None:
+            self.__strategy = self.create(commit)
+        return self.__strategy
