@@ -34,6 +34,7 @@ from arroyo.utils.metrics import get_metrics
 logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
+HEALTHCHECK_MAX_FREQUENCY_SEC = 1.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -128,6 +129,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         commit_policy: CommitPolicy,
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
+        healthcheck_file: Optional[str] = None,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -145,6 +147,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
+        self.__healthcheck_file = healthcheck_file
+        self.__healthcheck_file_touched_at = None
         self.__shutdown_requested = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
@@ -301,6 +305,26 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Processor terminated")
             raise
 
+    def __bump_healthcheck(self) -> None:
+        check_file = self.__healthcheck_file
+
+        if check_file is None:
+            return
+
+        now = time.time()
+
+        if (
+            self.__healthcheck_file_touched_at is not None
+            and self.__healthcheck_file_touched_at + HEALTHCHECK_MAX_FREQUENCY_SEC > now
+        ):
+            return
+
+        with open(check_file, "w"):
+            # touch the file
+            pass
+
+        self.__healthcheck_file_touched_at = now
+
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
         # Do not "carry over" message if it is the invalid one. Every other
         # message should be re-submitted to the strategy.
@@ -329,6 +353,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
+        self.__bump_healthcheck()
 
         message_carried_over = self.__message is not None
 

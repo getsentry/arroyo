@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
+import time
 
 import pytest
 
@@ -545,3 +546,32 @@ def test_dlq() -> None:
     processor._run_once()
 
     assert dlq_policy.producer.produce.call_count == 1
+
+
+def test_healthcheck(tmpdir):
+    topic = Topic("topic")
+    partition = Partition(topic, 0)
+    consumer = mock.Mock()
+    consumer.poll.return_value = BrokerValue(0, partition, 1, datetime.now())
+    strategy = mock.Mock()
+    strategy.submit.side_effect = InvalidMessage(partition, 1)
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE, healthcheck_file=str(tmpdir.join("health.txt"))
+    )
+
+    # Assignment
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+    assignment_callback = subscribe_kwargs["on_assign"]
+    offsets = {Partition(topic, 0): 0}
+    assignment_callback(offsets)
+
+    processor._run_once()
+    health_mtime = tmpdir.join("health.txt").mtime()
+    assert health_mtime < time.time() + 1
+
+    processor._run_once()
+    assert tmpdir.join("health.txt").mtime() == health_mtime
