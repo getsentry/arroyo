@@ -25,9 +25,6 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
     significant degree of flexibility for the various implementations.
     """
 
-    def flush(self, timeout: Optional[float]) -> None:
-        pass
-
     @abstractmethod
     def poll(self) -> None:
         """
@@ -61,16 +58,12 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def close(self) -> None:
+    def shutdown(self) -> None:
         """
-        Close this instance. No more messages should be accepted by the
+        Shutdown this instance. No more messages should be accepted by the
         instance after this method has been called.
 
-        This method should not block. Once this strategy instance has
-        finished processing (or discarded) all messages that were submitted
-        prior to this method being called, the strategy should commit its
-        partition offsets and release any resources that will no longer be
-        used (threads, processes, sockets, files, etc.)
+        Called by the shutdown method of the stream processor.
         """
         raise NotImplementedError
 
@@ -84,11 +77,10 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
         raise NotImplementedError
 
     @abstractmethod
-    def join(self, timeout: Optional[float] = None) -> None:
+    def flush(self, timeout: Optional[float]) -> None:
         """
         Block until the processing strategy has completed all previously
-        submitted work, or the provided timeout has been reached. This method
-        should be called after ``close`` to provide a graceful shutdown.
+        submitted work, or the provided timeout has been reached.
 
         This method is called synchronously by the stream processor during
         assignment revocation, and blocks the assignment from being released
@@ -97,6 +89,29 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
         process.
         """
         raise NotImplementedError
+
+
+class LegacyProcessingStrategy(ProcessingStrategy[TStrategyPayload]):
+    """
+    Old style processing strategy, which is closed and recreated
+    on every rebalance. To be deprecated.
+    """
+
+    @abstractmethod
+    def join(self, timeout: Optional[float]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def close(self) -> None:
+        raise NotImplementedError
+
+    def flush(self, timeout: Optional[float]) -> None:
+        self.close()
+        self.join(timeout)
+
+    def shutdown(self) -> None:
+        self.close()
+        self.join(None)
 
 
 class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):

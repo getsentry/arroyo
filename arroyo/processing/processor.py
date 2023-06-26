@@ -445,6 +445,5 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__metrics_buffer.flush()
         self.__consumer.close()
         if self.__processing_strategy is not None:
-            self.__processing_strategy.close()
-            self.__processing_strategy.join(self.__join_timeout)
+            self.__processing_strategy.shutdown()
         logger.info("Stopped")
