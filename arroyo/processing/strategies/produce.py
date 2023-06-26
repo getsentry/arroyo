@@ -6,10 +6,8 @@ from typing import Deque, Optional, Tuple, Union
 
 from arroyo.backends.abstract import Producer
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.types import (
     BrokerValue,
-    Commit,
     FilteredPayload,
     Message,
     Topic,
@@ -128,40 +126,3 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
         self.__next_step.close()
         self.__next_step.join(remaining)
-
-
-class ProduceAndCommit(ProcessingStrategy[TStrategyPayload]):
-    """
-    This strategy produces then commits offsets. It doesn't do much on
-    on it's own since it is simply the Produce and CommitOffsets strategies
-    chained together.
-
-    This is provided for convenience and backwards compatibility. Will be
-    removed in a future version.
-    """
-
-    def __init__(
-        self,
-        producer: Producer[TStrategyPayload],
-        topic: Topic,
-        commit: Commit,
-        max_buffer_size: int = 10000,
-    ):
-        self.__strategy: Produce[TStrategyPayload] = Produce(
-            producer, topic, CommitOffsets(commit), max_buffer_size
-        )
-
-    def poll(self) -> None:
-        self.__strategy.poll()
-
-    def submit(self, message: Message[TStrategyPayload]) -> None:
-        self.__strategy.submit(message)
-
-    def close(self) -> None:
-        self.__strategy.close()
-
-    def terminate(self) -> None:
-        self.__strategy.terminate()
-
-    def join(self, timeout: Optional[float] = None) -> None:
-        self.__strategy.join(timeout)
