@@ -13,7 +13,7 @@ You can pass this option into :py:class:`arroyo.backends.kafka.consumer.KafkaCon
 
    consumer = KafkaConsumer(
        {
-           "max.poll.interval.ms": 5 * 60, # default 5 minutes
+           "max.poll.interval.ms": 300000, # default 5 minutes
        }
    )
 
