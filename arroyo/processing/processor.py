@@ -329,6 +329,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
+
         message_carried_over = self.__message is not None
 
         if message_carried_over:
