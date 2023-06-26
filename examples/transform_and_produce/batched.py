@@ -7,7 +7,7 @@ from arroyo.processing.strategies import (
     BatchStep,
     CommitOffsets,
     Produce,
-    TransformStep,
+    RunTask,
     UnbatchStep,
 )
 from arroyo.processing.strategies.abstract import (
@@ -75,7 +75,7 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
             next_step=Produce(self.__producer, self.__topic, CommitOffsets(commit))
         )
 
-        transform = TransformStep(
+        transform = RunTask(
             function=index_data,
             next_step=unbatch,
         )

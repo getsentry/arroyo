@@ -50,4 +50,6 @@ MetricName = Literal[
     "arroyo.consumer.shutdown.time",
     # Queue size of background queue that librdkafka uses to prefetch messages.
     "arroyo.consumer.librdkafka.total_queue_size",
+    # Counter metric to measure how often the healthcheck file has been touched.
+    "arroyo.processing.strategies.healthcheck.touch",
 ]

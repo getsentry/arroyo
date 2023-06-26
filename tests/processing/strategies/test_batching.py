@@ -8,7 +8,7 @@ import pytest
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
 from arroyo.processing.strategies.reduce import BatchBuilder
-from arroyo.processing.strategies.transform import TransformStep
+from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
 
@@ -348,7 +348,7 @@ def test_batch_unbatch() -> None:
         return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 
     final_step = Mock()
-    next_step: TransformStep[ValuesBatch[str], ValuesBatch[str]] = TransformStep(
+    next_step: RunTask[ValuesBatch[str], ValuesBatch[str]] = RunTask(
         function=transformer, next_step=UnbatchStep(final_step)
     )
 

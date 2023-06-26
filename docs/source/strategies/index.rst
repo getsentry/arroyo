@@ -35,3 +35,4 @@ Messages
     run_task_with_multiprocessing
     produce
     commit_offsets
+    healthcheck
