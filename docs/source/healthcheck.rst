@@ -57,4 +57,4 @@ command would look like:
             - cat
             - /tmp/healthy
           initialDelaySeconds: 5
-          periodSeconds: 5
+          periodSeconds: 320  # should be higher than max.poll.interval.ms
