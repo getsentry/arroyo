@@ -14,14 +14,11 @@ from arroyo.processing.strategies.run_task_in_threads import RunTaskInThreads
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     RunTaskWithMultiprocessing,
 )
-from arroyo.processing.strategies.transform import ParallelTransformStep, TransformStep
 from arroyo.processing.strategies.unfold import Unfold
 
 __all__ = [
     "CommitOffsets",
     "FilterStep",
-    "TransformStep",
-    "ParallelTransformStep",
     "MessageRejected",
     "ProcessingStrategy",
     "ProcessingStrategyFactory",

@@ -4,7 +4,7 @@ import logging
 from typing import Mapping
 
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
-from arroyo.processing.strategies import CommitOffsets, Produce, TransformStep
+from arroyo.processing.strategies import CommitOffsets, Produce, RunTask
 from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
@@ -46,7 +46,7 @@ class HashPasswordAndProduceStrategyFactory(ProcessingStrategyFactory[KafkaPaylo
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
 
-        return TransformStep(
+        return RunTask(
             function=hash_password,
             next_step=Produce(self.__producer, self.__topic, CommitOffsets(commit)),
         )
