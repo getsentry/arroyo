@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
+import time
 
 import pytest
+import py.path
 
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.abstract import MessageStorage
@@ -10,6 +12,7 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
+from arroyo.processing.strategies import Healthcheck
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
     ProcessingStrategy,
@@ -545,3 +548,40 @@ def test_dlq() -> None:
     processor._run_once()
 
     assert dlq_policy.producer.produce.call_count == 1
+
+
+def test_healthcheck(tmpdir: py.path.local) -> None:
+    """
+    Test healthcheck strategy e2e with StreamProcessor, to ensure the
+    combination of both actually touches the file often enough.
+    """
+
+    topic = Topic("topic")
+    partition = Partition(topic, 0)
+    consumer = mock.Mock()
+    consumer.poll.return_value = BrokerValue(0, partition, 1, datetime.now())
+    strategy = mock.Mock()
+    strategy.submit.side_effect = InvalidMessage(partition, 1)
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = Healthcheck(
+        healthcheck_file=str(tmpdir.join("health.txt")),
+        next_step=strategy
+    )
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE,
+    )
+
+    # Assignment
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+    assignment_callback = subscribe_kwargs["on_assign"]
+    offsets = {Partition(topic, 0): 0}
+    assignment_callback(offsets)
+
+    processor._run_once()
+    health_mtime = tmpdir.join("health.txt").mtime()
+    assert health_mtime < time.time() + 1
+
+    processor._run_once()
+    assert tmpdir.join("health.txt").mtime() == health_mtime
