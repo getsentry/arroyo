@@ -4,6 +4,7 @@ from unittest import mock
 import time
 
 import pytest
+import py.path
 
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.abstract import MessageStorage
@@ -548,7 +549,7 @@ def test_dlq() -> None:
     assert dlq_policy.producer.produce.call_count == 1
 
 
-def test_healthcheck(tmpdir):
+def test_healthcheck(tmpdir: py.path.local) -> None:
     topic = Topic("topic")
     partition = Partition(topic, 0)
     consumer = mock.Mock()

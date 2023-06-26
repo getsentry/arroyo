@@ -148,7 +148,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
         self.__healthcheck_file = healthcheck_file
-        self.__healthcheck_file_touched_at = None
+        self.__healthcheck_file_touched_at: Optional[float] = None
         self.__shutdown_requested = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
