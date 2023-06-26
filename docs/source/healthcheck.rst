@@ -48,13 +48,11 @@ command would look like:
       - name: liveness
         image: registry.k8s.io/busybox
         args:
-        - /bin/sh
-        - -c
-        - rm /tmp/health.txt
+          - bin/my_arroyo_consumer
         livenessProbe:
           exec:
             command:
-            - cat
-            - /tmp/healthy
+            - rm
+            - /tmp/health.txt
           initialDelaySeconds: 5
           periodSeconds: 320  # should be higher than max.poll.interval.ms
