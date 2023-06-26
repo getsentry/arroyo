@@ -157,7 +157,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
 
-        def _close_strategy() -> None:
+        def _flush_strategy() -> None:
             start_close = time.time()
 
             if self.__processing_strategy is None:
@@ -166,7 +166,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 return
 
             logger.info("Closing %r...", self.__processing_strategy)
-            self.__processing_strategy.close()
+            # self.__processing_strategy.close()
 
             logger.info("Waiting for %r to exit...", self.__processing_strategy)
 
@@ -174,7 +174,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 start_join = time.time()
 
                 try:
-                    self.__processing_strategy.join(self.__join_timeout)
+                    self.__processing_strategy.flush(self.__join_timeout)
                     self.__metrics_buffer.incr_timing(
                         "arroyo.consumer.join.time", time.time() - start_join
                     )
@@ -201,10 +201,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self.__processing_strategy = self.__processor_factory.create(
                     self.__commit
                 )
-            self.__processing_strategy.flush(self.__join_timeout)
-            logger.debug(
-                "Initialized processing strategy: %r", self.__processing_strategy
-            )
+                logger.debug(
+                    "Initialized processing strategy: %r", self.__processing_strategy
+                )
 
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
@@ -215,7 +214,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     logger.exception(
                         "Partition assignment while processing strategy active"
                     )
-                    _close_strategy()
                 _create_strategy(partitions)
 
         @_rdkafka_callback(metrics=self.__metrics_buffer)
@@ -223,7 +221,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Partitions to revoke: %r", partitions)
 
             if partitions:
-                _close_strategy()
+                _flush_strategy()
 
                 # Recreate the strategy if the consumer still has other partitions
                 # assigned and is not closed or errored
@@ -446,10 +444,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         logger.info("Stopping consumer")
         self.__metrics_buffer.flush()
         self.__consumer.close()
+        if self.__processing_strategy is not None:
+            self.__processing_strategy.close()
+            self.__processing_strategy.join(self.__join_timeout)
         logger.info("Stopped")
-
-        # if there was an active processing strategy, it should be shut down
-        # and unset when the partitions are revoked during consumer close
-        assert (
-            self.__processing_strategy is None
-        ), "processing strategy was not closed on shutdown"
