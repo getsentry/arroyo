@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.14.0
+
+### Various fixes & improvements
+
+- ref: Remove deprecated strategies (#263) by @lynnagara
+- feat: Add liveness healthcheck (#262) by @untitaker
+
 ## 2.13.0
 
 ### Various fixes & improvements
