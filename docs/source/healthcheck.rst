@@ -21,15 +21,27 @@ However, this will not shut down the consumer, it will just keep running doing
 nothing (because it is blocked in the main thread). You want a pod-level
 healthcheck as well.
 
-Arroyo supports touching a file repeatedly from the main thread to indicate health.
+Arroyo supports touching a file repeatedly from the main thread to indicate
+health. Start your pipeline with the
+:py:class:`arroyo.processing.strategies.healthcheck.Healthcheck` strategy.
 
 .. code-block:: Python
 
-    processor = StreamProcessor(
-        consumer=consumer,
-        # Arroyo will touch/create this file at least every second.
-        healtcheck_file="/tmp/health.txt"
-    )
+    def handle_message(message: Message[KafkaPayload]) -> Message[KafkaPayload]:
+        ...
+        return message
+
+    class ConsumerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
+        def __init__(self):
+            self.is_paused = False
+
+        def create_with_partitions(
+            self,
+            commit: Commit,
+            partitions: Mapping[Partition, int],
+        ) -> ProcessingStrategy[KafkaPayload]:
+            step = RunTask(handle_message, CommitOffsets(commit))
+            return Healthcheck("/tmp/health.txt", step)
 
 The Kubernetes `liveness
 <https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/>`_

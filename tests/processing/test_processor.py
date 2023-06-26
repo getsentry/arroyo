@@ -12,6 +12,7 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
+from arroyo.processing.strategies import Healthcheck
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
     ProcessingStrategy,
@@ -550,6 +551,11 @@ def test_dlq() -> None:
 
 
 def test_healthcheck(tmpdir: py.path.local) -> None:
+    """
+    Test healthcheck strategy e2e with StreamProcessor, to ensure the
+    combination of both actually touches the file often enough.
+    """
+
     topic = Topic("topic")
     partition = Partition(topic, 0)
     consumer = mock.Mock()
@@ -557,10 +563,13 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     strategy = mock.Mock()
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()
-    factory.create_with_partitions.return_value = strategy
+    factory.create_with_partitions.return_value = Healthcheck(
+        healthcheck_file=str(tmpdir.join("health.txt")),
+        next_step=strategy
+    )
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE, healthcheck_file=str(tmpdir.join("health.txt"))
+        consumer, topic, factory, IMMEDIATE,
     )
 
     # Assignment
