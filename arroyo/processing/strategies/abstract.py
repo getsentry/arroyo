@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Mapping, Optional
+from typing import Generic, Optional
 
-from arroyo.types import Commit, Message, Partition, TStrategyPayload
+from arroyo.types import Commit, Message, TStrategyPayload
 
 
 class MessageRejected(Exception):
@@ -25,13 +25,7 @@ class ProcessingStrategy(ABC, Generic[TStrategyPayload]):
     significant degree of flexibility for the various implementations.
     """
 
-    def on_assignment_update(
-        self, partitions: Mapping[Partition, int], timeout: Optional[float]
-    ) -> None:
-        """
-        This method is called with the complete list of assigned partitions whenever a
-        new assignment or revocation is received.
-        """
+    def flush(self, timeout: Optional[float]) -> None:
         pass
 
     @abstractmethod

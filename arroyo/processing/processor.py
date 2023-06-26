@@ -189,7 +189,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "%r exited successfully, releasing assignment.",
                 self.__processing_strategy,
             )
-            self.__processing_strategy.on_assignment_update({}, self.__join_timeout)
+            self.__processing_strategy.flush(self.__join_timeout)
             self.__message = None  # avoid leaking buffered messages across assignments
 
             self.__metrics_buffer.incr_timing(
@@ -201,9 +201,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self.__processing_strategy = self.__processor_factory.create(
                     self.__commit
                 )
-            self.__processing_strategy.on_assignment_update(
-                partitions, self.__join_timeout
-            )
+            self.__processing_strategy.flush(self.__join_timeout)
             logger.debug(
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
