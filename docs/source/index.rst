@@ -14,4 +14,3 @@ Contents:
    dlqs
    backpressure
    metrics
-   healthcheck

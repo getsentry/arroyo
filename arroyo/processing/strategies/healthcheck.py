@@ -8,6 +8,13 @@ from arroyo.utils.metrics import get_metrics
 HEALTHCHECK_MAX_FREQUENCY_SEC = 1.0  # In seconds
 
 class Healthcheck(ProcessingStrategy[TStrategyPayload]):
+    """
+    A strategy that takes a filepath, and touches that file everytime
+    `Strategy.poll` is called. If that function is not called multiple times
+    per minute, it indicates that the consumer is overall unhealthy.
+
+    File touches are debounced to happen once per second at most.
+    """
     def __init__(self, healthcheck_file: str, next_step: ProcessingStrategy[TStrategyPayload]):
         self.__healthcheck_file = healthcheck_file
         self.__healthcheck_file_touched_at: Optional[float] = None

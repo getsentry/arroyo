@@ -68,3 +68,7 @@ command would look like:
             - /tmp/health.txt
           initialDelaySeconds: 5
           periodSeconds: 320  # should be higher than max.poll.interval.ms
+
+
+.. automodule:: arroyo.processing.strategies.healthcheck
+   :members:
