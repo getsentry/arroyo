@@ -44,7 +44,7 @@ html_css_files = [
     "custom.css",
 ]
 
-# html_logo = "_static/arroyo.png"
+html_logo = "_static/arroyo-logo.png"
 
 autodoc_inherit_docstrings = False
 
