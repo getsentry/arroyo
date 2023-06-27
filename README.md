@@ -1,7 +1,7 @@
 # Arroyo
 
 <p align="center">
-    <img src=docs/source/_static/arroyo-banner.png width="1183" height="190" />
+    <img src=docs/source/_static/arroyo-banner.png width=583 height=95 />
 </p>
 
 `Arroyo` is a library to build streaming applications that consume from and produce to Kafka.
