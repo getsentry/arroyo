@@ -13,6 +13,8 @@ from arroyo.types import (
     Value,
 )
 
+from arroyo.utils.metrics import get_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +64,7 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
         self.__uncommitted_offsets: MutableMapping[Partition, int] = {}
         self.__closed = False
+        self.__metrics = get_metrics()
 
     def poll(self) -> None:
         self.__next_step.poll()
@@ -79,8 +82,10 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             for partition in message.committable:
                 self.__uncommitted_offsets.pop(partition, None)
             self.__next_step.submit(message)
-        elif self.__commit_policy_state is not None:
-            self.__uncommitted_offsets.update(message.committable)
+        else:
+            self.__metrics.increment("arroyo.strategies.filter.dropped_messages")
+            if self.__commit_policy_state is not None:
+                self.__uncommitted_offsets.update(message.committable)
 
         policy = self.__commit_policy_state
 
