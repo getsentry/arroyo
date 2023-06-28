@@ -8,8 +8,7 @@ intricacies of writing such consumers.
 Goals
 -----
 
-1. Make it easy to build consumers that provide delivery guarantees (the
-   actual guarantees have to be implemented by the user of the library)
+1. Make it easy to build consumers that provide delivery guarantees
 2. Make it easy to write high-throughput kafka consumers
 3. Make it easy to write reliable, high throughput kafka producers
 4. Abstract away rebalancing such that users of the library do not have
@@ -275,4 +274,3 @@ What is a Kafka Consumer Group
 ------------------------------
 
 https://www.educba.com/kafka-consumer-group/
-
