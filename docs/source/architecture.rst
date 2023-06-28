@@ -117,10 +117,4 @@ Common examples are:
   This is a typical way to write messages on a storages in batches to reduce the
   round trips.
 
-* ``Dead letter queue``. It is up to the developer to decide what to do with invalid
-  messages. One common option is to produce them onto a dead-letter topic. Arroyo provides
-  a strategy for that. The application developer writes the consumer logic, and the
-  dead-letter queue strategy wraps this logic and intercepts *InvalidMessage* exceptions
-  sending the content to a dedicated topic.
-
 All strategies included with Arroyo are in `the strategies module <https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies>`_.
