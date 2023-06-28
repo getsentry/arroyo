@@ -18,5 +18,4 @@ The dead letter queue configuration is passed to the `StreamProcessor` and, if p
 
 
 .. automodule:: arroyo.dlq
-   :members:
-   :undoc-members:
+   :members: InvalidMessage, DlqLimit, DlqPolicy, DlqProducer, KafkaDlqProducer, NoopDlqProducer
