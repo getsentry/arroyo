@@ -53,5 +53,5 @@ MetricName = Literal[
     # Counter metric to measure how often the healthcheck file has been touched.
     "arroyo.processing.strategies.healthcheck.touch",
     # Number of messages dropped in the FilterStep strategy
-    "arroyo.strategies.filter_step.dropped_messages",
+    "arroyo.strategies.filter.dropped_messages",
 ]

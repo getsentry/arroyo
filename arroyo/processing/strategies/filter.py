@@ -82,15 +82,10 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             for partition in message.committable:
                 self.__uncommitted_offsets.pop(partition, None)
             self.__next_step.submit(message)
-        elif self.__commit_policy_state is not None:
-            # first scenario, where a CommitPolicy is passed in
-            # and messages are dropped
-            self.__uncommitted_offsets.update(message.committable)
-            self.__metrics.increment("arroyo.strategies.filter_step.dropped_messages")
-        elif self.__commit_policy_state is None:
-            # second scenario, where a CommitPolicy is not passed in
-            # and messages are dropped
-            self.__metrics.increment("arroyo.strategies.filter_step.dropped_messages")
+        else:
+            self.__metrics.increment("arroyo.strategies.filter.dropped_messages")
+            if self.__commit_policy_state is not None:
+                self.__uncommitted_offsets.update(message.committable)
 
         policy = self.__commit_policy_state
 
