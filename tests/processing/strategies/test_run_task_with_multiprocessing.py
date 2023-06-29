@@ -587,7 +587,7 @@ def test_output_block_resizing_max_size() -> None:
         max_batch_size=INPUT_SIZE // 10,
         max_batch_time=60,
         input_block_size=INPUT_SIZE,
-        output_block_size=20,
+        output_block_size=16000,
         resize_input_blocks=False,
         resize_output_blocks=True,
         max_output_block_size=16000,
