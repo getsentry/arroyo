@@ -12,7 +12,6 @@ from arroyo.types import (
     TStrategyPayload,
     Value,
 )
-
 from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -118,4 +117,4 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     def join(self, timeout: Optional[float] = None) -> None:
         self.__flush_uncommitted_offsets(time.time())
         self.__next_step.close()
-        self.__next_step.join(timeout)
+        self.__next_step.join(timeout=timeout)

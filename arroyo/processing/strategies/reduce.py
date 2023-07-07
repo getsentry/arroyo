@@ -154,6 +154,7 @@ class Reduce(
     def terminate(self) -> None:
         self.__closed = True
         self.__batch_builder = None
+        self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
         """

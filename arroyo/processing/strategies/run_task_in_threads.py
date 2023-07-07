@@ -144,7 +144,7 @@ class RunTaskInThreads(
 
         self.__next_step.close()
         self.__executor.shutdown()
-        self.__next_step.join(timeout)
+        self.__next_step.join(timeout=timeout)
 
     def close(self) -> None:
         self.__closed = True
