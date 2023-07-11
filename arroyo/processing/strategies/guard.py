@@ -37,7 +37,7 @@ class _StrategyGuardAfter(BasicStrategy[TStrategyPayload]):
         self.__next_step.poll()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__next_step.join(timeout)
+        self.__next_step.join(timeout=timeout)
 
     def close(self) -> None:
         self.__next_step.close()

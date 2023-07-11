@@ -266,3 +266,26 @@ def test_dlq(
         )
         for partition, offset, type_ in message_pattern
     ]
+
+
+@pytest.mark.parametrize("strategy_factory", FACTORIES)
+def test_terminate(strategy_factory: StrategyFactory) -> None:
+    next_step = Mock()
+
+    step = strategy_factory(next_step)
+    step.terminate()
+
+    assert next_step.terminate.call_args_list == [call()]
+
+
+@pytest.mark.parametrize("strategy_factory", FACTORIES)
+def test_join(strategy_factory: StrategyFactory) -> None:
+    next_step = Mock()
+
+    step = strategy_factory(next_step)
+    step.close()
+    step.join()
+
+    assert next_step.close.call_args_list == [call()]
+
+    assert next_step.join.call_args_list == [call(timeout=None)]
