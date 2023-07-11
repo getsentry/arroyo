@@ -1,5 +1,16 @@
 # Changelog and versioning
 
+## 2.14.1
+
+### Various fixes & improvements
+
+- fix(reduce): Add missing call to next_step.terminate() (#272) by @untitaker
+- metrics: Add metrics about dropped messages in FilterStep (#265) by @ayirr7
+- fix: Logo dimensions on mobile (#268) by @untitaker
+- doc: Update dlq doc (#267) by @lynnagara
+- docs: Update goals (#266) by @lynnagara
+- doc: Add new logo (#264) by @untitaker
+
 ## 2.14.0
 
 ### Various fixes & improvements
