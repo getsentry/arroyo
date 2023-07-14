@@ -527,6 +527,7 @@ class RunTaskWithMultiprocessing(
                 )
             except NextStepTimeoutError:
                 if deadline is None or deadline > time.time():
+                    time.sleep(0.01)
                     continue
                 break
             except multiprocessing.TimeoutError:
