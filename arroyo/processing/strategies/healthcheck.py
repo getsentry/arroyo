@@ -25,6 +25,7 @@ class Healthcheck(ProcessingStrategy[TStrategyPayload]):
         self.__next_step.submit(message)
 
     def poll(self) -> None:
+        self.__next_step.poll()
         now = time.time()
 
         if (
