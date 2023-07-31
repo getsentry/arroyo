@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.14.2
+
+- No documented changes.
+
 ## 2.14.1
 
 ### Various fixes & improvements
