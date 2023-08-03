@@ -27,6 +27,7 @@ SUPPORTED_KAFKA_CONFIGURATION = (
     "sasl.username",
     "sasl.password",
     "security.protocol",
+    "socket.timeout.ms",
     "ssl.ca.location",
     "ssl.ca.certificate.stores",
     "ssl.certificate.location",
