@@ -85,6 +85,15 @@ class RunTaskInThreads(
 
     def poll(self) -> None:
         self.__forward_invalid_offsets()
+
+        if not self.__queue:
+            # specifically for the case where we are idling, poll the next step
+            # so that committing can occur. if there is stuff in the queue and
+            # we are waiting for a future to be finished, we do not really need
+            # to forward polls.
+            self.__next_step.poll()
+            return
+
         while self.__queue:
             message, future = self.__queue[0]
             next_message: Message[TResult]
