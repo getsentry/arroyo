@@ -85,6 +85,9 @@ class RunTaskInThreads(
 
     def poll(self) -> None:
         self.__forward_invalid_offsets()
+
+        self.__next_step.poll()
+
         while self.__queue:
             message, future = self.__queue[0]
             next_message: Message[TResult]

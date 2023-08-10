@@ -289,3 +289,19 @@ def test_join(strategy_factory: StrategyFactory) -> None:
     assert next_step.close.call_args_list == [call()]
 
     assert next_step.join.call_args_list == [call(timeout=None)]
+
+
+@pytest.mark.parametrize("strategy_factory", FACTORIES)
+def test_poll_next_step(strategy_factory: StrategyFactory) -> None:
+    next_step = Mock()
+
+    step = strategy_factory(next_step)
+
+    # Ensure that polling a strategy forwards the poll unconditionally even if
+    # there are no messages to process, or no progress at all. Otherwise there
+    # are weird effects where all messages on a test topic (such as in
+    # benchmarking/QE) have been processed but the last batch of offsets never
+    # gets committed.
+    step.poll()
+
+    assert next_step.poll.call_args_list == [call()]
