@@ -292,10 +292,13 @@ def test_join(strategy_factory: StrategyFactory) -> None:
 
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_poll_next_step(strategy_factory: StrategyFactory) -> None:
+def test_poll_next_step(
+    request: pytest.FixtureRequest, strategy_factory: StrategyFactory
+) -> None:
     next_step = Mock()
 
     step = strategy_factory(next_step)
+    request.addfinalizer(step.terminate)
 
     # Ensure that polling a strategy forwards the poll unconditionally even if
     # there are no messages to process, or no progress at all. Otherwise there
