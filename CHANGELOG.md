@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.14.3
+
+### Various fixes & improvements
+
+- fix(run_task_in_threads): Commit offsets even when consumer is idle (#276) by @untitaker
+- add socket.timeout.ms to supported kafka configurations (#275) by @hubertdeng123
+- release: 2.14.2 (5f8ee08a) by @getsentry-bot
+
 ## 2.14.2
 
 - No documented changes.
