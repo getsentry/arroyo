@@ -73,12 +73,12 @@ two topics.
     docker exec sentry_kafka kafka-topics \
         --create \
         --topic source-topic \
-        --bootstrap-server localhost:9092
+        --bootstrap-server 127.0.0.1:9092
 
     docker exec sentry_kafka kafka-topics \
         --create \
         --topic dest-topic \
-        --bootstrap-server localhost:9092
+        --bootstrap-server 127.0.0.1:9092
 
 Now you should be ready to develop with Arroyo.
 
@@ -108,7 +108,7 @@ This initializes a basic consumer and consumes a message.
     consumer = KafkaConsumer(
         build_kafka_consumer_configuration(
             default_config={},
-            bootstrap_servers=["localhost:9092"],
+            bootstrap_servers=["127.0.0.1:9092"],
             auto_offset_reset="latest",
             group_id="test-group",
         )
@@ -125,7 +125,7 @@ Start this script and use kcat to produce a message:
 
 .. code-block:: Bash
 
-    echo "MESSAGE" | kcat -P -b localhost:9092 -t source-topic
+    echo "MESSAGE" | kcat -P -b 127.0.0.1:9092 -t source-topic
 
 In a while the message should appear on the console:
 
