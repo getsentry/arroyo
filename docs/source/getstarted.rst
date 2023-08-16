@@ -19,27 +19,21 @@ a Kafka docker container. (It requires Docker to be installed).
 
 .. code-block:: Bash
 
-    docker run --rm \
-        -v zookeeper_volume:/var/lib/zookeeper \
-        --env ZOOKEEPER_CLIENT_PORT=2181 \
-        --name=zookeeper \
-        -p 2181:2181 \
+    docker run \
+        --name sentry_zookeeper \
+        -d --network host \
+        -e ZOOKEEPER_CLIENT_PORT=2181 \
         confluentinc/cp-zookeeper:6.2.0
 
-    docker run --rm \
-        -v kafka_volume:/var/lib/kafka \
-        --env KAFKA_ZOOKEEPER_CONNECT=localhost:2181 \
-        --env KAFKA_LISTENERS=INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092 \
-        --env KAFKA_ADVERTISED_LISTENERS=INTERNAL://localhost:9093,EXTERNAL://localhost:9092 \
-        --env KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT \
-        --env KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL \
-        --env KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
-        --env CONFLUENT_SUPPORT_METRICS_ENABLE=false \
-        --env KAFKA_LOG4J_LOGGERS=kafka.cluster=WARN,kafka.controller=WARN,kafka.coordinator=WARN,kafka.log=WARN,kafka.server=WARN,kafka.zookeeper=WARN,state.change.logger=WARN \
-        --env KAFKA_LOG4J_ROOT_LOGLEVEL=WARN \
-        --env KAFKA_TOOLS_LOG4J_LOGLEVEL=WARN \
-        --name=kafka \
-        -p 9092:9092 \
+    docker run \
+        --name sentry_kafka \
+        -d --network host \
+        -e KAFKA_ZOOKEEPER_CONNECT=127.0.0.1:2181 \
+        -e KAFKA_LISTENERS=INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092 \
+        -e KAFKA_ADVERTISED_LISTENERS=INTERNAL://127.0.0.1:9093,EXTERNAL://127.0.0.1:9092 \
+        -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT \
+        -e KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL \
+        -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
         confluentinc/cp-kafka:6.2.0
 
 Now you should see Kafka and Zookeeper running with
