@@ -1,10 +1,10 @@
+import time
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
-import time
 
-import pytest
 import py.path
+import pytest
 
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.abstract import MessageStorage
@@ -123,7 +123,9 @@ def test_stream_processor_lifecycle() -> None:
     with pytest.raises(InvalidStateError):
         processor._run_once()
 
-    with assert_changes(lambda: int(consumer.close.call_count), 0, 1):
+    with assert_changes(lambda: int(consumer.close.call_count), 0, 1), assert_changes(
+        lambda: int(factory.shutdown.call_count), 0, 1
+    ):
         processor._shutdown()
 
     assert list((type(call), call.name) for call in metrics.calls) == [
@@ -564,12 +566,14 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()
     factory.create_with_partitions.return_value = Healthcheck(
-        healthcheck_file=str(tmpdir.join("health.txt")),
-        next_step=strategy
+        healthcheck_file=str(tmpdir.join("health.txt")), next_step=strategy
     )
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE,
+        consumer,
+        topic,
+        factory,
+        IMMEDIATE,
     )
 
     # Assignment
