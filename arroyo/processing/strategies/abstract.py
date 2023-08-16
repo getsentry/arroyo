@@ -118,3 +118,11 @@ class ProcessingStrategyFactory(ABC, Generic[TStrategyPayload]):
         :param partitions: A mapping of a ``Partition`` to it's most recent offset.
         """
         raise NotImplementedError
+
+    def shutdown(self) -> None:
+        """
+        Custom code to execute when the ``StreamProcessor`` shuts down entirely.
+
+        Note that this code will also be executed on crashes of the strategy.
+        """
+        pass

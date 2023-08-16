@@ -298,6 +298,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             logger.info("Closing %r...", self.__consumer)
             self.__consumer.close()
+            self.__processor_factory.shutdown()
             logger.info("Processor terminated")
             raise
 
@@ -446,6 +447,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         logger.info("Stopping consumer")
         self.__metrics_buffer.flush()
         self.__consumer.close()
+        self.__processor_factory.shutdown()
         logger.info("Stopped")
 
         # if there was an active processing strategy, it should be shut down
