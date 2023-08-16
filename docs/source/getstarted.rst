@@ -19,13 +19,13 @@ a Kafka docker container. (It requires Docker to be installed).
 
 .. code-block:: Bash
 
-    docker network create sentry
+    docker network create arroyo
 
     docker run --rm \
         -v zookeeper_volume:/var/lib/zookeeper \
         --env ZOOKEEPER_CLIENT_PORT=2181 \
         --name=sentry_zookeeper \
-        --network=sentry \
+        --network=arroyo \
         -p 2181:2181 \
         confluentinc/cp-zookeeper:6.2.0
 
@@ -42,7 +42,7 @@ a Kafka docker container. (It requires Docker to be installed).
         --env KAFKA_LOG4J_ROOT_LOGLEVEL=WARN \
         --env KAFKA_TOOLS_LOG4J_LOGLEVEL=WARN \
         --name=sentry_kafka \
-        --network=sentry \
+        --network=arroyo \
         -p 9092:9092 \
         confluentinc/cp-kafka:6.2.0
 
