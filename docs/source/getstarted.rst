@@ -19,6 +19,8 @@ a Kafka docker container. (It requires Docker to be installed).
 
 .. code-block:: Bash
 
+    docker network create sentry
+
     docker run --rm \
         -v zookeeper_volume:/var/lib/zookeeper \
         --env ZOOKEEPER_CLIENT_PORT=2181 \
