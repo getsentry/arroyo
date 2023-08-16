@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.4
+
+### Various fixes & improvements
+
+- feat: Add global shutdown handler for strategy factory (#278) by @untitaker
+
 ## 2.14.3
 
 ### Various fixes & improvements
