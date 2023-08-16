@@ -22,15 +22,16 @@ a Kafka docker container. (It requires Docker to be installed).
     docker run --rm \
         -v zookeeper_volume:/var/lib/zookeeper \
         --env ZOOKEEPER_CLIENT_PORT=2181 \
-        --name=zookeeper \
+        --name=sentry_zookeeper \
+        --network=sentry \
         -p 2181:2181 \
         confluentinc/cp-zookeeper:6.2.0
 
     docker run --rm \
         -v kafka_volume:/var/lib/kafka \
-        --env KAFKA_ZOOKEEPER_CONNECT=localhost:2181 \
+        --env KAFKA_ZOOKEEPER_CONNECT=sentry_zookeeper:2181 \
         --env KAFKA_LISTENERS=INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092 \
-        --env KAFKA_ADVERTISED_LISTENERS=INTERNAL://localhost:9093,EXTERNAL://localhost:9092 \
+        --env KAFKA_ADVERTISED_LISTENERS=INTERNAL://127.0.0.1:9093,EXTERNAL://127.0.0.1:9092 \
         --env KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT \
         --env KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL \
         --env KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
@@ -38,7 +39,8 @@ a Kafka docker container. (It requires Docker to be installed).
         --env KAFKA_LOG4J_LOGGERS=kafka.cluster=WARN,kafka.controller=WARN,kafka.coordinator=WARN,kafka.log=WARN,kafka.server=WARN,kafka.zookeeper=WARN,state.change.logger=WARN \
         --env KAFKA_LOG4J_ROOT_LOGLEVEL=WARN \
         --env KAFKA_TOOLS_LOG4J_LOGLEVEL=WARN \
-        --name=kafka \
+        --name=sentry_kafka \
+        --network=sentry \
         -p 9092:9092 \
         confluentinc/cp-kafka:6.2.0
 
@@ -79,12 +81,12 @@ two topics.
     docker exec sentry_kafka kafka-topics \
         --create \
         --topic source-topic \
-        --bootstrap-server localhost:9092
+        --bootstrap-server 127.0.0.1:9092
 
     docker exec sentry_kafka kafka-topics \
         --create \
         --topic dest-topic \
-        --bootstrap-server localhost:9092
+        --bootstrap-server 127.0.0.1:9092
 
 Now you should be ready to develop with Arroyo.
 
@@ -114,7 +116,7 @@ This initializes a basic consumer and consumes a message.
     consumer = KafkaConsumer(
         build_kafka_consumer_configuration(
             default_config={},
-            bootstrap_servers=["localhost:9092"],
+            bootstrap_servers=["127.0.0.1:9092"],
             auto_offset_reset="latest",
             group_id="test-group",
         )
@@ -131,7 +133,7 @@ Start this script and use kcat to produce a message:
 
 .. code-block:: Bash
 
-    echo "MESSAGE" | kcat -P -b localhost:9092 -t source-topic
+    echo "MESSAGE" | kcat -P -b 127.0.0.1:9092 -t source-topic
 
 In a while the message should appear on the console:
 
