@@ -124,5 +124,6 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             self.__next_step.poll()
             self.__next_step.submit(message)
 
+        self.__producer.close()
         self.__next_step.close()
         self.__next_step.join(remaining)

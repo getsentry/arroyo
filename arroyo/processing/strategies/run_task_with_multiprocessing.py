@@ -669,8 +669,6 @@ class RunTaskWithMultiprocessing(
         if self.__batch_builder is not None and len(self.__batch_builder) > 0:
             self.__submit_batch()
 
-        self.__next_step.close()
-
     def terminate(self) -> None:
         self.__closed = True
 
