@@ -354,6 +354,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
+                if self.__message:
+                    self.__buffered_messages.append(self.__message)
                 self.__metrics_buffer.incr_timing(
                     "arroyo.consumer.poll.time", time.time() - start_poll
                 )
@@ -377,8 +379,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     message = (
                         Message(self.__message) if self.__message is not None else None
                     )
-                    if not message_carried_over:
-                        self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
 
                     self.__metrics_buffer.incr_timing(
