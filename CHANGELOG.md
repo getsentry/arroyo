@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.14.5
+
+### Various fixes & improvements
+
+- fix: Ensure carried over message is in buffer (#283) by @lynnagara
+- docs: Actually fix the getting started (#280) by @lynnagara
+
 ## 2.14.4
 
 ### Various fixes & improvements
