@@ -377,8 +377,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     message = (
                         Message(self.__message) if self.__message is not None else None
                     )
-                    if not message_carried_over:
-                        self.__buffered_messages.append(self.__message)
+                    self.__buffered_messages.append(self.__message)
                     self.__processing_strategy.submit(message)
 
                     self.__metrics_buffer.incr_timing(
