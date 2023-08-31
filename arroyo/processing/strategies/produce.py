@@ -87,7 +87,11 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         future: Optional[Future[BrokerValue[TStrategyPayload]]] = None
 
         if not isinstance(message.payload, FilteredPayload):
-            future = self.__producer.produce(self.__topic, message.payload)
+            try:
+                future = self.__producer.produce(self.__topic, message.payload)
+            except BufferError as exc:
+                logger.exception(exc)
+                raise MessageRejected from exc
 
         self.__queue.append((message, future))
 
