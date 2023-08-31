@@ -37,6 +37,9 @@ __all__ = ["RunTaskWithMultiprocessing"]
 TResult = TypeVar("TResult")
 TBatchValue = TypeVar("TBatchValue")
 
+DEFAULT_INPUT_BLOCK_SIZE = 16 * 1024
+DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024
+
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
@@ -303,20 +306,19 @@ class RunTaskWithMultiprocessing(
         ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
         metric is emitted.
 
+        If the value is set to `None`, the `input_block_size` is automatically
+        adjusted to adapt to traffic. Keep in mind that this is a rather
+        experimental feature and less productionized than explicitly setting a
+        value.
+
     :param output_block_size: Size of the shared memory buffer used to store
         results. Like with input data, the batch is implicitly broken up on
         overflow, and
         ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
         metric is incremented.
 
-    :param resize_input_blocks: Experimental feature, whether input blocks
-        should be dynamically resized if they end up being too small for batches.
-        This can technically cause unbounded memory consumption and it is
-        recommended to also configure `max_input_block_size` if this option is
-        used.
-
-    :param resize_output_blocks: Experimental feature, same as
-        `resize_input_blocks` but for the output blocks.
+        Like with `input_block_size`, the value can be set to `None` to enable
+        automatic resizing.
 
     :param max_input_block_size: If automatic resizing is enabled, this sets an
         upper limit on how large those blocks can get.
@@ -426,10 +428,8 @@ class RunTaskWithMultiprocessing(
         num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
-        input_block_size: int,
-        output_block_size: int,
-        resize_input_blocks: bool = False,
-        resize_output_blocks: bool = False,
+        input_block_size: Optional[int] = None,
+        output_block_size: Optional[int] = None,
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
         initializer: Optional[Callable[[], None]] = None,
@@ -439,8 +439,8 @@ class RunTaskWithMultiprocessing(
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
 
-        self.__resize_input_blocks = resize_input_blocks
-        self.__resize_output_blocks = resize_output_blocks
+        self.__resize_input_blocks = input_block_size is None
+        self.__resize_output_blocks = output_block_size is None
         self.__max_input_block_size = max_input_block_size
         self.__max_output_block_size = max_output_block_size
 
@@ -454,12 +454,16 @@ class RunTaskWithMultiprocessing(
         )
 
         self.__input_blocks = [
-            self.__shared_memory_manager.SharedMemory(input_block_size)
+            self.__shared_memory_manager.SharedMemory(
+                input_block_size or DEFAULT_INPUT_BLOCK_SIZE
+            )
             for _ in range(num_processes)
         ]
 
         self.__output_blocks = [
-            self.__shared_memory_manager.SharedMemory(output_block_size)
+            self.__shared_memory_manager.SharedMemory(
+                output_block_size or DEFAULT_OUTPUT_BLOCK_SIZE
+            )
             for _ in range(num_processes)
         ]
 

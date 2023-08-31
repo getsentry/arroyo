@@ -523,11 +523,9 @@ def test_input_block_resizing_max_size() -> None:
         num_processes=2,
         max_batch_size=INPUT_SIZE // 10,
         max_batch_time=60,
-        input_block_size=16000,
+        input_block_size=None,
         output_block_size=16000,
-        resize_input_blocks=True,
         max_input_block_size=16000,
-        resize_output_blocks=False,
     )
 
     with pytest.raises(MessageRejected):
@@ -553,10 +551,8 @@ def test_input_block_resizing_without_limits() -> None:
         num_processes=2,
         max_batch_size=INPUT_SIZE // 10,
         max_batch_time=60,
-        input_block_size=16000,
+        input_block_size=None,
         output_block_size=16000,
-        resize_input_blocks=True,
-        resize_output_blocks=False,
     )
 
     with pytest.raises(MessageRejected):
@@ -587,9 +583,7 @@ def test_output_block_resizing_max_size() -> None:
         max_batch_size=INPUT_SIZE // 10,
         max_batch_time=60,
         input_block_size=INPUT_SIZE,
-        output_block_size=16000,
-        resize_input_blocks=False,
-        resize_output_blocks=True,
+        output_block_size=None,
         max_output_block_size=16000,
     )
 
@@ -616,9 +610,7 @@ def test_output_block_resizing_without_limits() -> None:
         max_batch_size=INPUT_SIZE // 10,
         max_batch_time=60,
         input_block_size=INPUT_SIZE,
-        output_block_size=16000,
-        resize_input_blocks=False,
-        resize_output_blocks=True,
+        output_block_size=None,
     )
 
     for _ in range(INPUT_SIZE // 10):

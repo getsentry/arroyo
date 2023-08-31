@@ -27,12 +27,12 @@ MetricName = Literal[
     # fix.
     "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
     # Arroyo has decided to re-allocate a block in order to combat input buffer
-    # overflow. This can be enabled or disabled using `resize_input_blocks`
-    # setting.
+    # overflow. This behavior can be disabled by explicitly setting
+    # `input_block_size` to a not-None value in `RunTaskWithMultiprocessing`.
     "arroyo.strategies.run_task_with_multiprocessing.batch.input.resize",
     # Arroyo has decided to re-allocate a block in order to combat output buffer
-    # overflow. This can be enabled or disabled using `resize_output_blocks`
-    # setting.
+    # overflow. This behavior can be disabled by explicitly setting
+    # `output_block_size` to a not-None value in `RunTaskWithMultiprocessing`.
     "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize",
     # How many batches are being processed in parallel by multiprocessing.
     "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
