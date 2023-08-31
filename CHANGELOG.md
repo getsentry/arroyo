@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.14.6
+
+### Various fixes & improvements
+
+- fix(produce): Apply backpressure instead of crashing (#281) by @lynnagara
+- feat: Automatically resize blocks if they get too small (#270) by @untitaker
+
 ## 2.14.5
 
 ### Various fixes & improvements
