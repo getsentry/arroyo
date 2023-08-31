@@ -37,6 +37,9 @@ __all__ = ["RunTaskWithMultiprocessing"]
 TResult = TypeVar("TResult")
 TBatchValue = TypeVar("TBatchValue")
 
+DEFAULT_INPUT_BLOCK_SIZE = 16 * 1024
+DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024
+
 LOG_THRESHOLD_TIME = 20  # In seconds
 
 
@@ -303,11 +306,25 @@ class RunTaskWithMultiprocessing(
         ``arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow``
         metric is emitted.
 
+        If the value is set to `None`, the `input_block_size` is automatically
+        adjusted to adapt to traffic. Keep in mind that this is a rather
+        experimental feature and less productionized than explicitly setting a
+        value.
+
     :param output_block_size: Size of the shared memory buffer used to store
         results. Like with input data, the batch is implicitly broken up on
         overflow, and
         ``arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow``
         metric is incremented.
+
+        Like with `input_block_size`, the value can be set to `None` to enable
+        automatic resizing.
+
+    :param max_input_block_size: If automatic resizing is enabled, this sets an
+        upper limit on how large those blocks can get.
+
+    :param max_output_block_size: Same as `max_input_block_size` but for output
+        blocks.
 
     :param initializer: A function to run at the beginning of each subprocess.
 
@@ -411,14 +428,21 @@ class RunTaskWithMultiprocessing(
         num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
-        input_block_size: int,
-        output_block_size: int,
+        input_block_size: Optional[int] = None,
+        output_block_size: Optional[int] = None,
+        max_input_block_size: Optional[int] = None,
+        max_output_block_size: Optional[int] = None,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
+
+        self.__resize_input_blocks = input_block_size is None
+        self.__resize_output_blocks = output_block_size is None
+        self.__max_input_block_size = max_input_block_size
+        self.__max_output_block_size = max_output_block_size
 
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
@@ -430,12 +454,16 @@ class RunTaskWithMultiprocessing(
         )
 
         self.__input_blocks = [
-            self.__shared_memory_manager.SharedMemory(input_block_size)
+            self.__shared_memory_manager.SharedMemory(
+                input_block_size or DEFAULT_INPUT_BLOCK_SIZE
+            )
             for _ in range(num_processes)
         ]
 
         self.__output_blocks = [
-            self.__shared_memory_manager.SharedMemory(output_block_size)
+            self.__shared_memory_manager.SharedMemory(
+                output_block_size or DEFAULT_OUTPUT_BLOCK_SIZE
+            )
             for _ in range(num_processes)
         ]
 
@@ -454,6 +482,8 @@ class RunTaskWithMultiprocessing(
                     ]
                 ],
                 AsyncResult[ParallelRunTaskResult[TResult]],
+                bool,  # was the input block too small?
+                bool,  # was the output block too small?
             ]
         ] = deque()
         self.__invalid_messages = InvalidMessageState()
@@ -481,7 +511,7 @@ class RunTaskWithMultiprocessing(
 
         signal.signal(signal.SIGCHLD, handle_sigchld)
 
-    def __submit_batch(self) -> None:
+    def __submit_batch(self, input_block_too_small: bool) -> None:
         assert self.__batch_builder is not None
         batch = self.__batch_builder.build()
         logger.debug("Submitting %r to %r...", batch, self.__pool)
@@ -492,6 +522,8 @@ class RunTaskWithMultiprocessing(
                     parallel_run_task_worker_apply,
                     (self.__transform_function, batch, self.__output_blocks.pop()),
                 ),
+                input_block_too_small,
+                False,
             )
         )
         self.__batches_in_progress.increment()
@@ -547,7 +579,12 @@ class RunTaskWithMultiprocessing(
                 self.__pool_waiting_time = None
 
     def __check_for_results_impl(self, timeout: Optional[float] = None) -> None:
-        input_batch, async_result = self.__processes[0]
+        (
+            input_batch,
+            async_result,
+            input_block_too_small,
+            output_block_too_small,
+        ) = self.__processes[0]
 
         # If this call is being made in a context where it is intended to be
         # nonblocking, checking if the result is ready (rather than trying to
@@ -558,6 +595,15 @@ class RunTaskWithMultiprocessing(
             raise multiprocessing.TimeoutError()
 
         result = async_result.get(timeout=timeout)
+
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+            len(result.valid_messages_transformed),
+        )
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+            result.valid_messages_transformed.get_content_size(),
+        )
 
         for idx, message in result.valid_messages_transformed:
             if isinstance(message, InvalidMessage):
@@ -604,12 +650,54 @@ class RunTaskWithMultiprocessing(
                         result.next_index_to_process,
                     ),
                 ),
+                input_block_too_small,
+                True,
             )
             return
 
+        old_input_block = input_batch.block
+
+        if (
+            input_block_too_small
+            and self.__resize_input_blocks
+            and (
+                self.__max_input_block_size is None
+                or self.__max_input_block_size > old_input_block.size * 2
+            )
+        ):
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.input.resize"
+            )
+            new_input_block = self.__shared_memory_manager.SharedMemory(
+                old_input_block.size * 2
+            )
+            old_input_block.unlink()
+        else:
+            new_input_block = old_input_block
+
+        old_output_block = result.valid_messages_transformed.block
+
+        if (
+            output_block_too_small
+            and self.__resize_output_blocks
+            and (
+                self.__max_output_block_size is None
+                or self.__max_output_block_size > old_output_block.size * 2
+            )
+        ):
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize"
+            )
+            new_output_block = self.__shared_memory_manager.SharedMemory(
+                old_output_block.size * 2
+            )
+            old_output_block.unlink()
+        else:
+            new_output_block = old_output_block
+
         logger.debug("Completed %r, reclaiming blocks...", input_batch)
-        self.__input_blocks.append(input_batch.block)
-        self.__output_blocks.append(result.valid_messages_transformed.block)
+        self.__input_blocks.append(new_input_block)
+        self.__output_blocks.append(new_output_block)
         self.__batches_in_progress.decrement()
 
         del self.__processes[0]
@@ -621,7 +709,7 @@ class RunTaskWithMultiprocessing(
         self.__check_for_results(timeout=0)
 
         if self.__batch_builder is not None and self.__batch_builder.ready():
-            self.__submit_batch()
+            self.__submit_batch(False)
 
     def __reset_batch_builder(self) -> None:
         try:
@@ -651,7 +739,7 @@ class RunTaskWithMultiprocessing(
             self.__metrics.increment(
                 "arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow"
             )
-            self.__submit_batch()
+            self.__submit_batch(True)
 
             # This may raise ``MessageRejected`` (if all of the shared memory
             # is in use) and create backpressure.
@@ -667,7 +755,7 @@ class RunTaskWithMultiprocessing(
         self.__closed = True
 
         if self.__batch_builder is not None and len(self.__batch_builder) > 0:
-            self.__submit_batch()
+            self.__submit_batch(False)
 
     def terminate(self) -> None:
         self.__closed = True

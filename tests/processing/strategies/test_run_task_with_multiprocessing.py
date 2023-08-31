@@ -222,14 +222,44 @@ def test_parallel_transform_step() -> None:
         lambda: metrics.calls,
         [],
         [
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+                value=2,
+                tags=None,
+            ),
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+                value=16000,
+                tags=None,
+            ),
             IncrementCall(
                 name="arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
                 value=1,
                 tags=None,
             ),
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+                value=1,
+                tags=None,
+            ),
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+                value=16000,
+                tags=None,
+            ),
             GaugeCall(
                 "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
                 1.0,
+                tags=None,
+            ),
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+                value=1,
+                tags=None,
+            ),
+            TimingCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+                value=4000,
                 tags=None,
             ),
             GaugeCall(
@@ -381,9 +411,15 @@ def test_message_rejected_multiple() -> None:
             value=0,
             tags=None,
         ),
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
-            value=1,
+    ] + [
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+            value=2,
+            tags=None,
+        ),
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+            value=0,
             tags=None,
         ),
         IncrementCall(
@@ -391,19 +427,15 @@ def test_message_rejected_multiple() -> None:
             value=1,
             tags=None,
         ),
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
-            value=1,
+    ] * 5 + [
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+            value=2,
             tags=None,
         ),
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
-            value=1,
-            tags=None,
-        ),
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
-            value=1,
+        TimingCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
+            value=0,
             tags=None,
         ),
         GaugeCall(
@@ -475,3 +507,127 @@ def test_regression_join_timeout_many_messages() -> None:
     assert 2 < time_taken < 4
 
     assert next_step.submit.call_count > 0
+
+
+def run_multiply_times_two(x: Message[KafkaPayload]) -> KafkaPayload:
+    return KafkaPayload(None, x.payload.value * 2, [])
+
+
+def test_input_block_resizing_max_size() -> None:
+    INPUT_SIZE = 36000
+    next_step = Mock()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_multiply_times_two,
+        next_step,
+        num_processes=2,
+        max_batch_size=INPUT_SIZE // 10,
+        max_batch_time=60,
+        input_block_size=None,
+        output_block_size=16000,
+        max_input_block_size=16000,
+    )
+
+    with pytest.raises(MessageRejected):
+        for _ in range(INPUT_SIZE // 10):
+            strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    assert not any(
+        x.name == "arroyo.strategies.run_task_with_multiprocessing.batch.input.resize"
+        for x in TestingMetricsBackend.calls
+    )
+
+
+def test_input_block_resizing_without_limits() -> None:
+    INPUT_SIZE = 36000
+    next_step = Mock()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_multiply_times_two,
+        next_step,
+        num_processes=2,
+        max_batch_size=INPUT_SIZE // 10,
+        max_batch_time=60,
+        input_block_size=None,
+        output_block_size=16000,
+    )
+
+    with pytest.raises(MessageRejected):
+        for _ in range(INPUT_SIZE // 10):
+            strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    assert (
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.input.resize",
+            value=1,
+            tags=None,
+        )
+        in TestingMetricsBackend.calls
+    )
+
+
+def test_output_block_resizing_max_size() -> None:
+    INPUT_SIZE = 72000
+    next_step = Mock()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_multiply_times_two,
+        next_step,
+        num_processes=2,
+        max_batch_size=INPUT_SIZE // 10,
+        max_batch_time=60,
+        input_block_size=INPUT_SIZE,
+        output_block_size=None,
+        max_output_block_size=16000,
+    )
+
+    for _ in range(INPUT_SIZE // 10):
+        strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    assert not any(
+        x.name == "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize"
+        for x in TestingMetricsBackend.calls
+    )
+
+
+def test_output_block_resizing_without_limits() -> None:
+    INPUT_SIZE = 144000
+    next_step = Mock()
+
+    strategy = RunTaskWithMultiprocessing(
+        run_multiply_times_two,
+        next_step,
+        num_processes=2,
+        max_batch_size=INPUT_SIZE // 10,
+        max_batch_time=60,
+        input_block_size=INPUT_SIZE,
+        output_block_size=None,
+    )
+
+    for _ in range(INPUT_SIZE // 10):
+        strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    strategy.close()
+    strategy.join(timeout=3)
+
+    assert next_step.submit.call_args_list == [
+        call(Message(Value(KafkaPayload(None, b"x" * 20, []), {}))),
+    ] * (INPUT_SIZE // 10)
+
+    assert (
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.batch.output.resize",
+            value=1,
+            tags=None,
+        )
+        in TestingMetricsBackend.calls
+    )

@@ -5,6 +5,10 @@ MetricName = Literal[
     "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
     # Number of bytes in a multiprocessing batch
     "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+    # Number of messages in a multiprocessing batch after the message transformation
+    "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
+    # Number of bytes in a multiprocessing batch after the message transformation
+    "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
     # Number of times the consumer is spinning
     "arroyo.consumer.run.count",
     # How long it took the Reduce step to fill up a batch
@@ -22,6 +26,14 @@ MetricName = Literal[
     # This can be devastating for throughput. Increase `output_block_size` to
     # fix.
     "arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow",
+    # Arroyo has decided to re-allocate a block in order to combat input buffer
+    # overflow. This behavior can be disabled by explicitly setting
+    # `input_block_size` to a not-None value in `RunTaskWithMultiprocessing`.
+    "arroyo.strategies.run_task_with_multiprocessing.batch.input.resize",
+    # Arroyo has decided to re-allocate a block in order to combat output buffer
+    # overflow. This behavior can be disabled by explicitly setting
+    # `output_block_size` to a not-None value in `RunTaskWithMultiprocessing`.
+    "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize",
     # How many batches are being processed in parallel by multiprocessing.
     "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
     # Counter. A subprocess by multiprocessing unexpectedly died.
