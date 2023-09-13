@@ -1,6 +1,6 @@
 import copy
-import logging
 import json
+import logging
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from arroyo.utils.logging import pylog_to_syslog_level
@@ -42,6 +42,8 @@ SUPPORTED_KAFKA_CONFIGURATION = (
     "ssl.keystore.location",
     "ssl.keystore.password",
     "ssl.sigalgs.list",
+    "session.timeout.ms",
+    "max.poll.interval.ms",
 )
 
 
@@ -75,7 +77,9 @@ def build_kafka_configuration(
 
 def stats_callback(stats_json: str) -> None:
     stats = json.loads(stats_json)
-    get_metrics().gauge("arroyo.consumer.librdkafka.total_queue_size", stats.get("replyq", 0))
+    get_metrics().gauge(
+        "arroyo.consumer.librdkafka.total_queue_size", stats.get("replyq", 0)
+    )
 
 
 def build_kafka_consumer_configuration(
