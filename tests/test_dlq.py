@@ -1,3 +1,4 @@
+import pickle
 from datetime import datetime
 from typing import Generator
 from unittest.mock import ANY
@@ -109,3 +110,10 @@ def test_dlq_policy_wrapper() -> None:
         )
         wrapper.produce(message)
     wrapper.flush({partition: 11})
+
+
+def test_invalid_message_pickleable() -> None:
+    exc = InvalidMessage(Partition(Topic("test_topic"), 0), 2)
+    pickled_exc = pickle.dumps(exc)
+    unpickled_exc = pickle.loads(pickled_exc)
+    assert exc == unpickled_exc

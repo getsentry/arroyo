@@ -65,6 +65,9 @@ class InvalidMessage(Exception):
             and self.needs_commit == other.needs_commit
         )
 
+    def __reduce__(self) -> Tuple[Any, Tuple[Any, ...]]:
+        return self.__class__, (self.partition, self.offset, self.needs_commit)
+
 
 @dataclass(frozen=True)
 class DlqLimit:
