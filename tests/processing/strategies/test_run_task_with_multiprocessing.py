@@ -7,6 +7,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from arroyo.backends.kafka import KafkaPayload
+from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
@@ -631,3 +632,26 @@ def test_output_block_resizing_without_limits() -> None:
         )
         in TestingMetricsBackend.calls
     )
+
+
+def message_processor_raising_invalid_message(x: Message[KafkaPayload]) -> KafkaPayload:
+    raise InvalidMessage(Partition(topic=Topic("test_topic"), index=0), offset=1000)
+
+
+def test_multiprocessing_with_invalid_message() -> None:
+    next_step = Mock()
+
+    strategy = RunTaskWithMultiprocessing(
+        message_processor_raising_invalid_message,
+        next_step,
+        num_processes=2,
+        max_batch_size=1,
+        max_batch_time=60,
+    )
+
+    strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    strategy.poll()
+    strategy.close()
+    with pytest.raises(InvalidMessage):
+        strategy.join(timeout=3)
