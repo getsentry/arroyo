@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.7
+
+### Various fixes & improvements
+
+- fix(dlq): Make InvalidMessage pickleable (#284) by @nikhars
+
 ## 2.14.6
 
 ### Various fixes & improvements
