@@ -639,7 +639,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         # The worker must execute in a separate thread to ensure that callbacks
         # are fired -- otherwise trying to produce "synchronously" via
         # ``produce(...).result()`` could result in a deadlock.
-        self.__result = execute(self.__worker)
+        self.__result = execute(self.__worker, daemon=True)
 
     def __worker(self) -> None:
         """
