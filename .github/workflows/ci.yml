@@ -79,7 +79,7 @@ jobs:
           python -m pip install --upgrade pip
           make install
       - name: Run tests
-        run: pytest -vv
+        run: pytest -vv --cov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         env:
