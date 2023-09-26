@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.14.8
+
+### Various fixes & improvements
+
+- Revert "Add coverage report to CI (#286)" (#288) by @lynnagara
+- feat: Remove pointless (and wrong) config check (#287) by @lynnagara
+- Add coverage report to CI (#286) by @dbanda
+- Make producer thread a deamon (#282) by @dbanda
+
 ## 2.14.7
 
 ### Various fixes & improvements
