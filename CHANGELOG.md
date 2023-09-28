@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.9
+
+### Various fixes & improvements
+
+- ref: A better commit log format (#289) by @lynnagara
+
 ## 2.14.8
 
 ### Various fixes & improvements
