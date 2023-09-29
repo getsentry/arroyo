@@ -16,19 +16,19 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
     def encode(self, value: Commit) -> KafkaPayload:
         assert value.orig_message_ts is not None
 
+        payload = json.dumps(
+            {
+                "offset": value.offset,
+                "orig_message_ts": datetime.timestamp(value.orig_message_ts),
+            }
+        ).encode("utf-8")
+
         return KafkaPayload(
             f"{value.partition.topic.name}:{value.partition.index}:{value.group}".encode(
                 "utf-8"
             ),
-            f"{value.offset}".encode("utf-8"),
-            [
-                (
-                    "orig_message_ts",
-                    datetime.strftime(value.orig_message_ts, DATETIME_FORMAT).encode(
-                        "utf-8"
-                    ),
-                )
-            ],
+            payload,
+            [],
         )
 
     def decode_legacy(self, value: KafkaPayload) -> Commit:
