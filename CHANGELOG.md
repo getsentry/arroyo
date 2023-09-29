@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.10
+
+### Various fixes & improvements
+
+- ref: Use float in commit codec instead of complex datetime format (#290) by @lynnagara
+
 ## 2.14.9
 
 ### Various fixes & improvements
