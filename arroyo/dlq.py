@@ -108,7 +108,15 @@ class DlqLimitState:
             invalid = self.__invalid_messages.get(value.partition, 0)
             valid = self.__valid_messages.get(value.partition, 0)
 
-            ratio = invalid / valid
+            try:
+                ratio = invalid / valid
+            except ZeroDivisionError:
+                # When no valid messages have been processed, we should not
+                # accept the message into the dlq. It could be an indicator
+                # of severe problems on the pipeline. It is best to let the
+                # consumer backlog in those cases.
+                return False
+
             if ratio > self.__limit.max_invalid_ratio:
                 return False
 
