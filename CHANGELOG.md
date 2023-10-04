@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.11
+
+### Various fixes & improvements
+
+- fix(dlq): Gracefully handle case of no valid messages (#291) by @nikhars
+
 ## 2.14.10
 
 ### Various fixes & improvements
