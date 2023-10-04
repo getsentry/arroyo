@@ -1,6 +1,5 @@
 import json
 from datetime import datetime
-from typing import Optional
 
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.commit import Commit
@@ -41,13 +40,9 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
             raise TypeError("payload value must be a bytes object")
 
         headers = {k: v for (k, v) in value.headers}
-        try:
-            orig_message_ts: Optional[datetime] = datetime.strptime(
-                headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
-            )
-        except KeyError:
-            orig_message_ts = None
-
+        orig_message_ts = datetime.strptime(
+            headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
+        )
         topic_name, partition_index, group = key.decode("utf-8").split(":", 3)
         offset = int(val.decode("utf-8"))
         return Commit(
