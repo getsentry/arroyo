@@ -74,7 +74,10 @@ ConsumerTiming = Literal[
     "arroyo.consumer.shutdown.time",
 ]
 
-ConsumerCounter = Literal["arroyo.consumer.run.count"]
+ConsumerCounter = Literal[
+    "arroyo.consumer.run.count",
+    "arroyo.consumer.invalid_message.count",
+]
 
 
 class MetricsBuffer:
@@ -313,6 +316,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__message = None
 
         logger.exception(exc)
+        self.__metrics_buffer.incr_counter("arroyo.consumer.invalid_message.count", 1)
         if self.__dlq_policy:
             start_dlq = time.time()
             invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)

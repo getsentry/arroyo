@@ -11,6 +11,8 @@ MetricName = Literal[
     "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
     # Number of times the consumer is spinning
     "arroyo.consumer.run.count",
+    # Number of times the consumer encounted an invalid message.
+    "arroyo.consumer.invalid_message.count",
     # How long it took the Reduce step to fill up a batch
     "arroyo.strategies.reduce.batch_time",
     # Counter, incremented when a strategy after multiprocessing applies
