@@ -30,6 +30,10 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
 
     This strategy propagates `MessageRejected` exceptions from the
     downstream steps if they are thrown.
+
+    :param max_batch_size: How many messages should be reduced into one at maximum.
+    :param max_batch_time: How much time (in seconds) should be spent reducing
+        messages together before flushing the batch.
     """
 
     def __init__(
