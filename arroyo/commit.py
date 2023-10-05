@@ -66,4 +66,4 @@ class Commit:
     group: str
     partition: Partition
     offset: int
-    orig_message_ts: Optional[datetime]
+    orig_message_ts: datetime
