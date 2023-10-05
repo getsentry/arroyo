@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.14.12
+
+### Various fixes & improvements
+
+- doc: Describe max_batch_size/max_batch_time in our strategies (#294) by @untitaker
+- ref: Timestamp is not optional on commit log (#293) by @lynnagara
+- feat(metrics): Add a metric for number of invalid messages encountered (#292) by @lynnagara
+
 ## 2.14.11
 
 ### Various fixes & improvements
