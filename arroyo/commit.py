@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Mapping, MutableMapping, Optional
 
 from arroyo.types import Partition
@@ -61,9 +60,10 @@ ONCE_PER_SECOND = CommitPolicy(1, None)
 
 @dataclass(frozen=True)
 class Commit:
-    __slots__ = ["group", "partition", "offset", "orig_message_ts"]
+    __slots__ = ["group", "partition", "offset", "orig_message_ts", "received_p99"]
 
     group: str
     partition: Partition
     offset: int
-    orig_message_ts: datetime
+    orig_message_ts: float
+    received_p99: Optional[float]
