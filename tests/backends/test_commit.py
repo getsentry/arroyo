@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+import time
 
 from arroyo.backends.kafka.commit import CommitCodec
 from arroyo.commit import Commit
@@ -11,14 +11,14 @@ def test_encode_decode() -> None:
 
     offset_to_commit = 5
 
-    now = datetime.now()
+    now = time.time()
 
     commit = Commit(
         "leader-a",
         Partition(topic, 0),
         offset_to_commit,
         now,
-        now - timedelta(seconds=5),
+        now - 5,
     )
 
     encoded = commit_codec.encode(commit)
