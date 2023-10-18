@@ -2,9 +2,9 @@ import contextlib
 import itertools
 import os
 import pickle
+import time
 import uuid
 from contextlib import closing
-from datetime import datetime
 from pickle import PickleBuffer
 from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import mock
@@ -195,7 +195,9 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
 
 def test_commit_codec() -> None:
-    commit = Commit("group", Partition(Topic("topic"), 0), 0, datetime.now())
+    commit = Commit(
+        "group", Partition(Topic("topic"), 0), 0, time.time(), time.time() - 5
+    )
     assert commit_codec.decode(commit_codec.encode(commit)) == commit
 
 
