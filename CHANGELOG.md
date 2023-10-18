@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.13
+
+### Various fixes & improvements
+
+- feat: Add optional received_p99 timestamp to commit log (#295) by @lynnagara
+
 ## 2.14.12
 
 ### Various fixes & improvements
