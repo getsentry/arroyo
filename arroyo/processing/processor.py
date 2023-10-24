@@ -350,7 +350,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 raise InvalidStateError(
                     "received message when consumer was expected to be paused"
                 )
-        if not message_carried_over:
+        elif not message_carried_over:
             # Otherwise, we need to try fetch a new message from the consumer,
             # even if there is no active assignment and/or processing strategy.
             try:
@@ -391,20 +391,20 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     # If the processing strategy rejected our message, we need
                     # to pause the consumer and hold the message until it is
                     # accepted, at which point we can resume consuming.
-                    if not message_carried_over:
-                        if self.__backpressure_timestamp is None:
-                            self.__backpressure_timestamp = time.time()
+                    # if not message_carried_over:
+                    if self.__backpressure_timestamp is None:
+                        self.__backpressure_timestamp = time.time()
 
-                            if not self.__is_paused and (
-                                time.time() - self.__backpressure_timestamp > 1
-                            ):
-                                logger.debug(
-                                    "Caught %r while submitting %r, pausing consumer...",
-                                    e,
-                                    self.__message,
-                                )
-                                self.__consumer.pause([*self.__consumer.tell().keys()])
-                                self.__is_paused = True
+                    elif not self.__is_paused and (
+                        time.time() - self.__backpressure_timestamp > 1
+                    ):
+                        logger.debug(
+                            "Caught %r while submitting %r, pausing consumer...",
+                            e,
+                            self.__message,
+                        )
+                        self.__consumer.pause([*self.__consumer.tell().keys()])
+                        self.__is_paused = True
 
                     else:
                         time.sleep(0.01)
@@ -413,22 +413,17 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     self._handle_invalid_message(e)
 
                 else:
-                    # If we were trying to submit a message that failed to be
-                    # submitted on a previous run, we can resume accepting new
-                    # messages.
-                    if (
-                        message_carried_over
-                        and self.__backpressure_timestamp is not None
-                    ):
-                        if self.__is_paused:
-                            self.__consumer.resume([*self.__consumer.tell().keys()])
-                            self.__is_paused = False
+                    # Resume if we are currently in a paused state
+                    if self.__is_paused:
+                        self.__consumer.resume([*self.__consumer.tell().keys()])
+                        self.__is_paused = False
 
+                    # Clear backpressure timestamp if it is set
+                    if self.__backpressure_timestamp is not None:
                         self.__metrics_buffer.incr_timing(
                             "arroyo.consumer.paused.time",
                             time.time() - self.__backpressure_timestamp,
                         )
-
                         self.__backpressure_timestamp = None
 
                     self.__message = None
