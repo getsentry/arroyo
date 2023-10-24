@@ -142,9 +142,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
+        self.__backpressure_timestamp: Optional[float] = None
         # If the consumer is in the paused state, this is when the last call to
-        # ``pause`` occurred or the time the pause metric was last recorded.
-        self.__paused_timestamp: Optional[float] = None
+        # ``pause`` occurred.
+        self.__is_paused = False
 
         self.__commit_policy_state = commit_policy.get_state_machine()
         self.__join_timeout = join_timeout
@@ -345,10 +346,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             # * InvalidMessage. the message should be resubmitted.
             #   _handle_invalid_message is responsible for clearing out
             #   self.__message if it was the invalid one.
-            if (
-                self.__paused_timestamp is not None
-                and self.__consumer.poll(timeout=0) is not None
-            ):
+            if self.__is_paused and self.__consumer.poll(timeout=0) is not None:
                 raise InvalidStateError(
                     "received message when consumer was expected to be paused"
                 )
@@ -394,23 +392,23 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     # to pause the consumer and hold the message until it is
                     # accepted, at which point we can resume consuming.
                     if not message_carried_over:
-                        logger.debug(
-                            "Caught %r while submitting %r, pausing consumer...",
-                            e,
-                            self.__message,
-                        )
-                        self.__consumer.pause([*self.__consumer.tell().keys()])
+                        if self.__backpressure_timestamp is None:
+                            self.__backpressure_timestamp = time.time()
 
-                        self.__paused_timestamp = time.time()
+                            if not self.__is_paused and (
+                                time.time() - self.__backpressure_timestamp > 1
+                            ):
+                                logger.debug(
+                                    "Caught %r while submitting %r, pausing consumer...",
+                                    e,
+                                    self.__message,
+                                )
+                                self.__consumer.pause([*self.__consumer.tell().keys()])
+                                self.__is_paused = True
+
                     else:
-                        current_time = time.time()
                         time.sleep(0.01)
-                        if self.__paused_timestamp:
-                            self.__metrics_buffer.incr_timing(
-                                "arroyo.consumer.paused.time",
-                                current_time - self.__paused_timestamp,
-                            )
-                            self.__paused_timestamp = current_time
+
                 except InvalidMessage as e:
                     self._handle_invalid_message(e)
 
@@ -418,15 +416,20 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     # If we were trying to submit a message that failed to be
                     # submitted on a previous run, we can resume accepting new
                     # messages.
-                    if message_carried_over and self.__paused_timestamp is not None:
-                        self.__consumer.resume([*self.__consumer.tell().keys()])
+                    if (
+                        message_carried_over
+                        and self.__backpressure_timestamp is not None
+                    ):
+                        if self.__is_paused:
+                            self.__consumer.resume([*self.__consumer.tell().keys()])
+                            self.__is_paused = False
 
                         self.__metrics_buffer.incr_timing(
                             "arroyo.consumer.paused.time",
-                            time.time() - self.__paused_timestamp,
+                            time.time() - self.__backpressure_timestamp,
                         )
 
-                        self.__paused_timestamp = None
+                        self.__backpressure_timestamp = None
 
                     self.__message = None
         else:
