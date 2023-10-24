@@ -142,9 +142,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
+        # The timestamp when backpressure state started
         self.__backpressure_timestamp: Optional[float] = None
-        # If the consumer is in the paused state, this is when the last call to
-        # ``pause`` occurred.
+        # Consumer is paused after it is in backpressure state for > 1 second
         self.__is_paused = False
 
         self.__commit_policy_state = commit_policy.get_state_machine()
