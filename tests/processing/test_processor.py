@@ -86,6 +86,8 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
+        time.sleep(1)
+        processor._run_once()  # Should pause now
 
     # If ``Consumer.poll`` returns a message when we expect it to be paused,
     # we should raise an exception.
@@ -132,9 +134,13 @@ def test_stream_processor_lifecycle() -> None:
         (Timing, "arroyo.consumer.poll.time"),
         (Timing, "arroyo.consumer.callback.time"),
         (Timing, "arroyo.consumer.processing.time"),
+        (Increment, "arroyo.consumer.run.count"),
+        (Timing, "arroyo.consumer.processing.time"),
         (Timing, "arroyo.consumer.paused.time"),
         (Timing, "arroyo.consumer.join.time"),
         (Timing, "arroyo.consumer.shutdown.time"),
+        (Timing, "arroyo.consumer.callback.time"),
+        (Timing, "arroyo.consumer.poll.time"),
         (Increment, "arroyo.consumer.run.count"),
     ]
 
