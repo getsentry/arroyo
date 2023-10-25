@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.14
+
+### Various fixes & improvements
+
+- perf: Avoid unnecessarily clearing the rdkafka buffer on backpressure (#296) by @lynnagara
+
 ## 2.14.13
 
 ### Various fixes & improvements
