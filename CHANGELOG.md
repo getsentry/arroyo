@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.15
+
+### Various fixes & improvements
+
+- fix: Revert change when consumer is paused (#297) by @lynnagara
+
 ## 2.14.14
 
 ### Various fixes & improvements
