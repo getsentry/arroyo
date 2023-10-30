@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.16
+
+### Various fixes & improvements
+
+- fix: Temporarily bring back support for legacy commit log format (#298) by @lynnagara
+
 ## 2.14.15
 
 ### Various fixes & improvements
