@@ -195,6 +195,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             )
             self.__processing_strategy = None
             self.__message = None  # avoid leaking buffered messages across assignments
+            self.__is_paused = False
+            self._clear_backpressure()
 
             self.__metrics_buffer.incr_timing(
                 "arroyo.consumer.shutdown.time", time.time() - start_close
@@ -262,7 +264,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         If force is passed, commit immediately and do not throttle. This should
         be used during consumer shutdown where we do not want to wait before committing.
         """
-        for (partition, offset) in offsets.items():
+        for partition, offset in offsets.items():
             self.__buffered_messages.pop(partition, offset - 1)
 
         self.__consumer.stage_offsets(offsets)
@@ -305,6 +307,14 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processor_factory.shutdown()
             logger.info("Processor terminated")
             raise
+
+    def _clear_backpressure(self) -> None:
+        if self.__backpressure_timestamp is not None:
+            self.__metrics_buffer.incr_timing(
+                "arroyo.consumer.paused.time",
+                time.time() - self.__backpressure_timestamp,
+            )
+            self.__backpressure_timestamp = None
 
     def _handle_invalid_message(self, exc: InvalidMessage) -> None:
         # Do not "carry over" message if it is the invalid one. Every other
@@ -419,12 +429,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__is_paused = False
 
                     # Clear backpressure timestamp if it is set
-                    if self.__backpressure_timestamp is not None:
-                        self.__metrics_buffer.incr_timing(
-                            "arroyo.consumer.paused.time",
-                            time.time() - self.__backpressure_timestamp,
-                        )
-                        self.__backpressure_timestamp = None
+                    self._clear_backpressure()
 
                     self.__message = None
         else:
