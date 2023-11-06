@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.17
+
+### Various fixes & improvements
+
+- fix: Cleanup backpressure state between assignments (#299) by @lynnagara
+
 ## 2.14.16
 
 ### Various fixes & improvements
