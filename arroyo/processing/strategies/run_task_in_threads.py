@@ -7,6 +7,7 @@ from typing import Callable, Deque, Generic, Optional, Tuple, TypeVar, Union, ca
 from arroyo.dlq import InvalidMessage, InvalidMessageState
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class RunTaskInThreads(
         self.__next_step = next_step
         self.__closed = False
         self.__invalid_messages = InvalidMessageState()
+        self.__metrics = get_metrics()
 
     def __forward_invalid_offsets(self) -> None:
         if len(self.__invalid_messages):
@@ -71,6 +73,9 @@ class RunTaskInThreads(
         assert not self.__closed
         # The list of pending futures is too long, tell the stream processor to slow down
         if len(self.__queue) > self.__max_pending_futures:
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_in_threads.backpressure"
+            )
             raise MessageRejected
 
         future: Optional[Future[TResult]]

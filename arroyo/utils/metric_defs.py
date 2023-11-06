@@ -68,4 +68,7 @@ MetricName = Literal[
     "arroyo.processing.strategies.healthcheck.touch",
     # Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
+    # Counter, incremented when run task in threads raises a backpressure.
+    # Indicates that there is saturation in the thread pool.
+    "arroyo.strategies.run_task_in_threads.backpressure",
 ]
