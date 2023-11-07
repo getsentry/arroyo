@@ -223,7 +223,6 @@ def parallel_run_task_worker_apply(
     output_block: SharedMemory,
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
-
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
     ] = MessageBatch(output_block)
@@ -624,6 +623,11 @@ class RunTaskWithMultiprocessing(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
                 raise NextStepTimeoutError()
+            except InvalidMessage as e:
+                # For the next invocation of __check_for_results, skip over this message
+                result.valid_messages_transformed.reset_iterator(idx + 1)
+                self.__invalid_messages.append(e)
+                raise e
 
         if result.next_index_to_process != len(input_batch):
             self.__metrics.increment(
