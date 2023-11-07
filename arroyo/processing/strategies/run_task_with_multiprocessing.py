@@ -788,7 +788,7 @@ class RunTaskWithMultiprocessing(
                 )
                 break
             except InvalidMessage:
-                pass
+                raise
 
         logger.debug("Waiting for %s...", self.__pool)
         self.__pool.terminate()
