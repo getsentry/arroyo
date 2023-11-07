@@ -774,14 +774,21 @@ class RunTaskWithMultiprocessing(
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
+        start_join = time.time()
         deadline = time.time() + timeout if timeout is not None else None
         self.__forward_invalid_offsets()
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
-        self.__check_for_results(
-            timeout=timeout,
-        )
+        while True:
+            elapsed = time.time() - start_join
+            try:
+                self.__check_for_results(
+                    timeout=timeout - elapsed if timeout is not None else None,
+                )
+                break
+            except InvalidMessage:
+                pass
 
         logger.debug("Waiting for %s...", self.__pool)
         self.__pool.terminate()

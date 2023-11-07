@@ -655,3 +655,27 @@ def test_multiprocessing_with_invalid_message() -> None:
     strategy.close()
     with pytest.raises(InvalidMessage):
         strategy.join(timeout=3)
+
+
+def test_reraise_invalid_message() -> None:
+    next_step = Mock()
+    partition = Partition(Topic("test"), 0)
+    offset = 5
+    next_step.poll.side_effect = InvalidMessage(partition, offset)
+
+    strategy = RunTaskWithMultiprocessing(
+        run_multiply_times_two,
+        next_step,
+        num_processes=2,
+        max_batch_size=1,
+        max_batch_time=60,
+    )
+
+    strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+
+    with pytest.raises(InvalidMessage):
+        strategy.poll()
+
+    next_step.poll.reset_mock(side_effect=True)
+    strategy.close()
+    strategy.join()
