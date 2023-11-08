@@ -625,7 +625,7 @@ class RunTaskWithMultiprocessing(
                 raise NextStepTimeoutError()
             except InvalidMessage as e:
                 # For the next invocation of __check_for_results, skip over this message
-                result.valid_messages_transformed.reset_iterator(idx + 1)
+                result.valid_messages_transformed.reset_iterator(idx)
                 self.__invalid_messages.append(e)
                 raise e
 
