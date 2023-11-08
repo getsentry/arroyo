@@ -223,7 +223,6 @@ def parallel_run_task_worker_apply(
     output_block: SharedMemory,
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
-
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
     ] = MessageBatch(output_block)
@@ -614,6 +613,13 @@ class RunTaskWithMultiprocessing(
 
             try:
                 self.__next_step.poll()
+            except InvalidMessage as e:
+                # For the next invocation of __check_for_results, start at this message
+                result.valid_messages_transformed.reset_iterator(idx)
+                self.__invalid_messages.append(e)
+                raise e
+
+            try:
                 self.__next_step.submit(message)
 
             except MessageRejected:
@@ -624,6 +630,12 @@ class RunTaskWithMultiprocessing(
                     "arroyo.strategies.run_task_with_multiprocessing.batch.backpressure"
                 )
                 raise NextStepTimeoutError()
+            except InvalidMessage as e:
+                # For the next invocation of __check_for_results, skip over this message
+                # since we do not want to re-submit it.
+                result.valid_messages_transformed.reset_iterator(idx + 1)
+                self.__invalid_messages.append(e)
+                raise e
 
         if result.next_index_to_process != len(input_batch):
             self.__metrics.increment(
@@ -770,14 +782,21 @@ class RunTaskWithMultiprocessing(
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
+        start_join = time.time()
         deadline = time.time() + timeout if timeout is not None else None
         self.__forward_invalid_offsets()
 
         logger.debug("Waiting for %s batches...", len(self.__processes))
 
-        self.__check_for_results(
-            timeout=timeout,
-        )
+        while True:
+            elapsed = time.time() - start_join
+            try:
+                self.__check_for_results(
+                    timeout=timeout - elapsed if timeout is not None else None,
+                )
+                break
+            except InvalidMessage:
+                raise
 
         logger.debug("Waiting for %s...", self.__pool)
         self.__pool.terminate()
