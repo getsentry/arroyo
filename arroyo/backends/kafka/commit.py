@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 from arroyo.backends.kafka import KafkaPayload
@@ -9,6 +10,10 @@ from arroyo.utils.codecs import Codec
 # Kept in decode method for backward compatibility. Will be
 # remove in a future release of Arroyo
 DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
+logger = logging.getLogger(__name__)
+
+max_times_to_log_legacy_message = 10
 
 
 class CommitCodec(Codec[KafkaPayload, Commit]):
@@ -65,6 +70,7 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
         )
 
     def decode_legacy(self, value: KafkaPayload) -> Commit:
+        global max_times_to_log_legacy_message
         key = value.key
         if not isinstance(key, bytes):
             raise TypeError("payload key must be a bytes object")
@@ -80,10 +86,17 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
 
         topic_name, partition_index, group = key.decode("utf-8").split(":", 3)
         offset = int(val.decode("utf-8"))
-        return Commit(
+
+        commit = Commit(
             group,
             Partition(Topic(topic_name), int(partition_index)),
             offset,
             orig_message_ts.timestamp(),
             None,
         )
+
+        if max_times_to_log_legacy_message > 0:
+            max_times_to_log_legacy_message -= 1
+            logger.warn(f"Legacy commit message found: {commit}")
+
+        return commit
