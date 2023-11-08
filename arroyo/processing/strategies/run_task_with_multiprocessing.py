@@ -613,6 +613,13 @@ class RunTaskWithMultiprocessing(
 
             try:
                 self.__next_step.poll()
+            except InvalidMessage as e:
+                # For the next invocation of __check_for_results, start at this message
+                result.valid_messages_transformed.reset_iterator(idx)
+                self.__invalid_messages.append(e)
+                raise e
+
+            try:
                 self.__next_step.submit(message)
 
             except MessageRejected:
@@ -625,7 +632,8 @@ class RunTaskWithMultiprocessing(
                 raise NextStepTimeoutError()
             except InvalidMessage as e:
                 # For the next invocation of __check_for_results, skip over this message
-                result.valid_messages_transformed.reset_iterator(idx)
+                # since we do not want to re-submit it.
+                result.valid_messages_transformed.reset_iterator(idx + 1)
                 self.__invalid_messages.append(e)
                 raise e
 
