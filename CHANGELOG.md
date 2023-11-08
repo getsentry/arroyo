@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.18
+
+### Various fixes & improvements
+
+- fix(dlq): RunTaskWithMultiprocessing supports forwarding downstream invalid message (#301) by @lynnagara
+
 ## 2.14.17
 
 ### Various fixes & improvements
