@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.19
+
+### Various fixes & improvements
+
+- ref: Add extra logging for debugging commits (#302) by @lynnagara
+
 ## 2.14.18
 
 ### Various fixes & improvements
