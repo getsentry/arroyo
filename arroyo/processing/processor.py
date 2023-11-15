@@ -66,7 +66,7 @@ class InvalidStateError(RuntimeError):
 ConsumerTiming = Literal[
     "arroyo.consumer.poll.time",
     "arroyo.consumer.processing.time",
-    "arroyo.consumer.paused.time",
+    "arroyo.consumer.backpressure.time",
     "arroyo.consumer.dlq.time",
     "arroyo.consumer.join.time",
     # This metric's timings overlap with DLQ/join time.
@@ -311,7 +311,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
     def _clear_backpressure(self) -> None:
         if self.__backpressure_timestamp is not None:
             self.__metrics_buffer.incr_timing(
-                "arroyo.consumer.paused.time",
+                "arroyo.consumer.backpressure.time",
                 time.time() - self.__backpressure_timestamp,
             )
             self.__backpressure_timestamp = None
