@@ -49,7 +49,7 @@ MetricName = Literal[
     # strategy.poll)
     "arroyo.consumer.processing.time",
     # Time (unitless) spent pausing the consumer due to backpressure (MessageRejected)
-    "arroyo.consumer.paused.time",
+    "arroyo.consumer.backpressure.time",
     # Time (unitless) spent in handling `InvalidMessage` exceptions and sending
     # messages to the the DLQ.
     "arroyo.consumer.dlq.time",
