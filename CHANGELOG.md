@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.20
+
+### Various fixes & improvements
+
+- ref: Rename backpressure metric (#303) by @lynnagara
+
 ## 2.14.19
 
 ### Various fixes & improvements
