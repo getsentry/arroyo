@@ -416,6 +416,13 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__consumer.pause([*self.__consumer.tell().keys()])
                         self.__is_paused = True
 
+                        # XXX: This is kind of an experiment. We occasionally see the
+                        # `received message when consumer was expected to be paused` error
+                        # in prod. My only theory for why this happens right now is that pausing
+                        # consumer is somehow not synchronous and we are trying to poll before it is
+                        # truly paused. Add a small sleep to see if it makes any difference.
+                        time.sleep(0.02)
+
                     else:
                         time.sleep(0.01)
 
