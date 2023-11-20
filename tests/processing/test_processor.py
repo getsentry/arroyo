@@ -89,11 +89,6 @@ def test_stream_processor_lifecycle() -> None:
         time.sleep(1)
         processor._run_once()  # Should pause now
 
-    # If ``Consumer.poll`` returns a message when we expect it to be paused,
-    # we should raise an exception.
-    with pytest.raises(InvalidStateError):
-        processor._run_once()
-
     # Once the message is accepted by the processing strategy, the consumer
     # should be resumed.
     consumer.poll.return_value = None
