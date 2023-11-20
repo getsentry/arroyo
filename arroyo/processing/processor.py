@@ -348,21 +348,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         message_carried_over = self.__message is not None
 
-        if message_carried_over:
-            # If a message was carried over from the previous run, there are two reasons:
-            #
-            # * MessageRejected. the consumer should be paused and not
-            #   returning any messages on ``poll``.
-            # * InvalidMessage. the message should be resubmitted.
-            #   _handle_invalid_message is responsible for clearing out
-            #   self.__message if it was the invalid one.
-            if self.__is_paused and self.__consumer.poll(timeout=0) is not None:
-                raise InvalidStateError(
-                    "received message when consumer was expected to be paused"
-                )
-        else:
-            # Otherwise, we need to try fetch a new message from the consumer,
-            # even if there is no active assignment and/or processing strategy.
+        if not message_carried_over:
+            # Poll for a new message from the consumer only if there is no carried
+            # over message which we need to successfully submit first.
             try:
                 start_poll = time.time()
                 self.__message = self.__consumer.poll(timeout=1.0)
