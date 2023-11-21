@@ -11,18 +11,24 @@ from arroyo.processing.strategies.reduce import BatchBuilder
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
+NOW = datetime(2022, 1, 1, 0, 0, 1)
+
 
 def broker_value(partition: int, offset: int, payload: str) -> BrokerValue[str]:
     return BrokerValue(
         partition=Partition(topic=Topic("test"), index=partition),
         offset=offset,
         payload=payload,
-        timestamp=datetime(2022, 1, 1, 0, 0, 1),
+        timestamp=NOW,
     )
 
 
 def value(committable: Mapping[Partition, int], payload: str) -> Value[str]:
-    return Value(payload=payload, committable=committable)
+    return Value(
+        payload=payload,
+        committable=committable,
+        timestamp=NOW,
+    )
 
 
 test_builder = [
@@ -174,6 +180,7 @@ test_batch = [
                             broker_value(0, 3, "Message 3"),
                         ],
                         committable={Partition(Topic("test"), 0): 4},
+                        timestamp=datetime(2022, 1, 1, 0, 0, 1),
                     ),
                 )
             )
@@ -200,6 +207,7 @@ test_batch = [
                             broker_value(0, 3, "Message 3"),
                         ],
                         committable={Partition(Topic("test"), 0): 4},
+                        timestamp=NOW,
                     ),
                 )
             ),
@@ -212,6 +220,7 @@ test_batch = [
                             broker_value(1, 3, "Message 3"),
                         ],
                         committable={Partition(Topic("test"), 1): 4},
+                        timestamp=NOW,
                     ),
                 )
             ),
@@ -267,6 +276,7 @@ def test_batch_join() -> None:
                             broker_value(0, 2, "Message 2"),
                         ],
                         committable={Partition(Topic("test"), 0): 3},
+                        timestamp=NOW,
                     ),
                 )
             )
@@ -286,6 +296,7 @@ def test_unbatch_step() -> None:
                 ],
             ),
             committable={Partition(Topic("test"), 1): 4},
+            timestamp=NOW,
         ),
     )
 
@@ -296,9 +307,9 @@ def test_unbatch_step() -> None:
     unbatch_step.submit(msg)
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}))),
-            call(Message(Value("Message 2", {}))),
-            call(Message(Value("Message 3", {partition: 4}))),
+            call(Message(Value("Message 1", {}, NOW))),
+            call(Message(Value("Message 2", {}, NOW))),
+            call(Message(Value("Message 3", {partition: 4}, NOW))),
         ]
     )
 
@@ -317,9 +328,9 @@ def test_unbatch_step() -> None:
     unbatch_step.poll()
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}))),
-            call(Message(Value("Message 2", {}))),
-            call(Message(Value("Message 3", {partition: 4}))),
+            call(Message(Value("Message 1", {}, NOW))),
+            call(Message(Value("Message 2", {}, NOW))),
+            call(Message(Value("Message 3", {partition: 4}, NOW))),
         ]
     )
 
@@ -330,9 +341,9 @@ def test_unbatch_step() -> None:
 
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}))),
-            call(Message(Value("Message 2", {}))),
-            call(Message(Value("Message 3", {partition: 4}))),
+            call(Message(Value("Message 1", {}, NOW))),
+            call(Message(Value("Message 2", {}, NOW))),
+            call(Message(Value("Message 3", {partition: 4}, NOW))),
         ]
     )
 
@@ -368,8 +379,8 @@ def test_batch_unbatch() -> None:
 
     final_step.submit.assert_has_calls(
         [
-            call(Message(Value("Transformed", {}))),
-            call(Message(Value("Transformed", {}))),
-            call(Message(Value("Transformed", {partition: 4}))),
+            call(Message(Value("Transformed", {}, NOW))),
+            call(Message(Value("Transformed", {}, NOW))),
+            call(Message(Value("Transformed", {partition: 4}, NOW))),
         ]
     )

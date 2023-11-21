@@ -10,13 +10,14 @@ from tests.assertions import assert_changes
 def test_run_task() -> None:
     mock_func = Mock()
     next_step = Mock()
+    now = datetime.now()
 
     strategy = RunTask(mock_func, next_step)
     partition = Partition(Topic("topic"), 0)
 
-    strategy.submit(Message(Value(b"hello", {partition: 1})))
+    strategy.submit(Message(Value(b"hello", {partition: 1}, now)))
     strategy.poll()
-    strategy.submit(Message(Value(b"world", {partition: 2})))
+    strategy.submit(Message(Value(b"world", {partition: 2}, now)))
     strategy.poll()
 
     # Wait for async functions to finish
@@ -43,13 +44,14 @@ def test_run_task() -> None:
 
 def test_transform() -> None:
     next_step = Mock()
+    now = datetime.now()
 
     def transform_function(value: Message[int]) -> int:
         return value.payload * 2
 
     transform_step = RunTask(transform_function, next_step)
 
-    original_message = Message(Value(1, {Partition(Topic("topic"), 0): 1}))
+    original_message = Message(Value(1, {Partition(Topic("topic"), 0): 1}, now))
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
         transform_step.submit(original_message)
@@ -59,6 +61,7 @@ def test_transform() -> None:
             Value(
                 transform_function(original_message),
                 original_message.committable,
+                original_message.timestamp,
             )
         )
     )

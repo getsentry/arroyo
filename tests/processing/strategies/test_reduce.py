@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Callable, Set
 from unittest.mock import Mock, call
 
@@ -6,6 +7,8 @@ from arroyo.types import BaseValue, Message, Partition, Topic, Value
 
 
 def test_reduce() -> None:
+    now = datetime.now()
+
     def accumulator(result: Set[int], value: BaseValue[int]) -> Set[int]:
         result.add(value.payload)
         return result
@@ -26,6 +29,7 @@ def test_reduce() -> None:
                     {
                         partition: i + 1,
                     },
+                    now,
                 )
             )
         )
@@ -33,7 +37,7 @@ def test_reduce() -> None:
 
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value({0, 1, 2}, {partition: 3}))),
-            call(Message(Value({3, 4, 5}, {partition: 6}))),
+            call(Message(Value({0, 1, 2}, {partition: 3}, now))),
+            call(Message(Value({3, 4, 5}, {partition: 6}, now))),
         ]
     )

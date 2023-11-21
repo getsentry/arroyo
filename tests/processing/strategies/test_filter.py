@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Union
 from unittest.mock import Mock, call
 
@@ -23,12 +24,14 @@ def test_filter() -> None:
 
     filter_step = FilterStep(test_function, next_step)
 
-    fail_message = Message(Value(False, {Partition(Topic("topic"), 0): 1}))
+    now = datetime.now()
+
+    fail_message = Message(Value(False, {Partition(Topic("topic"), 0): 1}, now))
 
     with assert_does_not_change(lambda: int(next_step.submit.call_count), 0):
         filter_step.submit(fail_message)
 
-    pass_message = Message(Value(True, {Partition(Topic("topic"), 0): 1}))
+    pass_message = Message(Value(True, {Partition(Topic("topic"), 0): 1}, now))
 
     with assert_changes(lambda: int(next_step.submit.call_count), 0, 1):
         filter_step.submit(pass_message)
@@ -55,18 +58,20 @@ def test_commit_policy_basic() -> None:
         test_function, next_step, commit_policy=CommitPolicy(None, 3)
     )
 
-    init_message = Message(Value(False, {Partition(topic, 1): 1}))
+    now = datetime.now()
+
+    init_message = Message(Value(False, {Partition(topic, 1): 1}, now))
 
     filter_step.submit(init_message)
     assert next_step.submit.call_count == 0
 
     for i in range(2):
-        fail_message = Message(Value(False, {Partition(topic, 0): i}))
+        fail_message = Message(Value(False, {Partition(topic, 0): i}, now))
 
         filter_step.submit(fail_message)
         assert next_step.submit.call_count == 0
 
-    fail_message = Message(Value(False, {Partition(topic, 0): 2}))
+    fail_message = Message(Value(False, {Partition(topic, 0): 2}, now))
     filter_step.submit(fail_message)
 
     # Assert that the filter message kept track of the new offsets across
@@ -74,7 +79,10 @@ def test_commit_policy_basic() -> None:
     # and according to our commit policy we are supposed to commit at this
     # point, roughly.
     expected_filter_message: Message[Union[FilteredPayload, bool]] = Message(
-        Value(FILTERED_PAYLOAD, {Partition(topic, 1): 1, Partition(topic, 0): 2})
+        Value(
+            FILTERED_PAYLOAD,
+            {Partition(topic, 1): 1, Partition(topic, 0): 2},
+        )
     )
     assert next_step.submit.mock_calls == [call(expected_filter_message)]
 
@@ -84,7 +92,7 @@ def test_commit_policy_basic() -> None:
     filter_step.join()
     assert next_step.submit.call_count == 0
 
-    fail_message = Message(Value(False, {Partition(topic, 0): 3}))
+    fail_message = Message(Value(False, {Partition(topic, 0): 3}, now))
     filter_step.submit(fail_message)
     assert next_step.submit.call_count == 0
     assert next_step.join.call_count == 1
@@ -105,6 +113,7 @@ def test_commit_policy_basic() -> None:
 def test_commit_policy_filtered_messages_alternating() -> None:
     topic = Topic("topic")
     next_step = Mock()
+    now = datetime.now()
 
     def test_function(message: Message[bool]) -> bool:
         return message.payload
@@ -113,18 +122,18 @@ def test_commit_policy_filtered_messages_alternating() -> None:
         test_function, next_step, commit_policy=CommitPolicy(None, 3)
     )
 
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2})))
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4})))
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6})))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6}, now)))
 
     assert next_step.submit.mock_calls == [
-        call(Message(Value(True, {Partition(topic, 1): 1}))),
-        call(Message(Value(True, {Partition(topic, 1): 3}))),
+        call(Message(Value(True, {Partition(topic, 1): 1}, now))),
+        call(Message(Value(True, {Partition(topic, 1): 3}, now))),
         call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 4}))),
-        call(Message(Value(True, {Partition(topic, 1): 5}))),
+        call(Message(Value(True, {Partition(topic, 1): 5}, now))),
     ]
 
 
@@ -132,20 +141,22 @@ def test_no_commit_policy_does_not_forward_filtered_messages() -> None:
     topic = Topic("topic")
     next_step = Mock()
 
+    now = datetime.now()
+
     def test_function(message: Message[bool]) -> bool:
         return message.payload
 
     filter_step = FilterStep(test_function, next_step)
 
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2})))
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4})))
-    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5})))
-    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6})))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6}, now)))
 
     assert next_step.submit.mock_calls == [
-        call(Message(Value(True, {Partition(topic, 1): 1}))),
-        call(Message(Value(True, {Partition(topic, 1): 3}))),
-        call(Message(Value(True, {Partition(topic, 1): 5}))),
+        call(Message(Value(True, {Partition(topic, 1): 1}, now))),
+        call(Message(Value(True, {Partition(topic, 1): 3}, now))),
+        call(Message(Value(True, {Partition(topic, 1): 5}, now))),
     ]

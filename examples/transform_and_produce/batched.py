@@ -41,6 +41,7 @@ def index_data(
                     value=json.dumps(indexed_messages[i]).encode(),
                 ),
                 committable=batch.payload[i].committable,
+                timestamp=batch.timestamp,
             )
         )
     return ret
@@ -71,7 +72,6 @@ class BatchedIndexerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         commit: Commit,
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
-
         unbatch: UnbatchStep[KafkaPayload] = UnbatchStep(
             next_step=Produce(self.__producer, self.__topic, CommitOffsets(commit))
         )

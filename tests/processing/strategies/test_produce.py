@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest import mock
 
 import pytest
@@ -26,8 +27,9 @@ def test_produce() -> None:
 
     value = b'{"something": "something"}'
     data = KafkaPayload(None, value, [])
+    now = datetime.now()
 
-    message = Message(Value(data, {Partition(orig_topic, 0): 1}))
+    message = Message(Value(data, {Partition(orig_topic, 0): 1}, now))
 
     strategy.submit(message)
 

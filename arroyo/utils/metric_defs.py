@@ -62,6 +62,8 @@ MetricName = Literal[
     # Time (unitless) spent in shutting down the consumer. This metric's
     # timings overlap other timings, and might spike at the same time.
     "arroyo.consumer.shutdown.time",
+    # Consumer latency in seconds. Recorded by the commit offsets strategy.
+    "arroyo.consumer.latency",
     # Queue size of background queue that librdkafka uses to prefetch messages.
     "arroyo.consumer.librdkafka.total_queue_size",
     # Counter metric to measure how often the healthcheck file has been touched.

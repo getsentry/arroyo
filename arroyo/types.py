@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Generic, Mapping, Protocol, TypeVar
+from typing import Any, Generic, Mapping, Optional, Protocol, TypeVar
 
 TReplaced = TypeVar("TReplaced")
 
@@ -89,6 +89,10 @@ class Message(Generic[TMessagePayload]):
     def committable(self) -> Mapping[Partition, int]:
         return self.value.committable
 
+    @property
+    def timestamp(self) -> Optional[datetime]:
+        return self.value.timestamp
+
     def replace(self, payload: TReplaced) -> Message[TReplaced]:
         return Message(self.value.replace(payload))
 
@@ -100,6 +104,10 @@ class BaseValue(Generic[TMessagePayload]):
 
     @property
     def committable(self) -> Mapping[Partition, int]:
+        raise NotImplementedError()
+
+    @property
+    def timestamp(self) -> Optional[datetime]:
         raise NotImplementedError()
 
     def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
@@ -116,12 +124,17 @@ class Value(BaseValue[TMessagePayload]):
     __slots__ = ["__payload", "__committable"]
     __payload: TMessagePayload
     __committable: Mapping[Partition, int]
+    __timestamp: Optional[datetime]
 
     def __init__(
-        self, payload: TMessagePayload, committable: Mapping[Partition, int]
+        self,
+        payload: TMessagePayload,
+        committable: Mapping[Partition, int],
+        timestamp: Optional[datetime] = None,
     ) -> None:
         self.__payload = payload
         self.__committable = committable
+        self.__timestamp = timestamp
 
     @property
     def payload(self) -> TMessagePayload:
@@ -131,8 +144,12 @@ class Value(BaseValue[TMessagePayload]):
     def committable(self) -> Mapping[Partition, int]:
         return self.__committable
 
+    @property
+    def timestamp(self) -> Optional[datetime]:
+        return self.__timestamp
+
     def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
-        return Value(value, self.__committable)
+        return Value(value, self.__committable, self.timestamp)
 
 
 @dataclass(unsafe_hash=True)
