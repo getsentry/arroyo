@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.21
+
+### Various fixes & improvements
+
+- fix: Attempt to fix InvalidStateError (#305) by @lynnagara
+
 ## 2.14.20
 
 ### Various fixes & improvements
