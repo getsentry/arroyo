@@ -607,28 +607,34 @@ def test_output_block_resizing_max_size() -> None:
 
 
 def test_output_block_resizing_without_limits() -> None:
-    INPUT_SIZE = 144000
+    INPUT_SIZE = 144 * 1024 * 1024
+    MSG_SIZE = 10 * 1024
+    NUM_MESSAGES = INPUT_SIZE // MSG_SIZE
     next_step = Mock()
 
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
         num_processes=2,
-        max_batch_size=INPUT_SIZE // 10,
+        max_batch_size=NUM_MESSAGES,
         max_batch_time=60,
         input_block_size=INPUT_SIZE,
         output_block_size=None,
     )
 
-    for _ in range(INPUT_SIZE // 10):
-        strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+    for _ in range(NUM_MESSAGES):
+        strategy.submit(Message(Value(KafkaPayload(None, b"x" * MSG_SIZE, []), {})))
 
     strategy.close()
     strategy.join(timeout=3)
 
-    assert next_step.submit.call_args_list == [
-        call(Message(Value(KafkaPayload(None, b"x" * 20, []), {}))),
-    ] * (INPUT_SIZE // 10)
+    assert (
+        next_step.submit.call_args_list
+        == [
+            call(Message(Value(KafkaPayload(None, b"x" * 2 * MSG_SIZE, []), {}))),
+        ]
+        * NUM_MESSAGES
+    )
 
     assert (
         IncrementCall(
