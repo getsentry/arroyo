@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.22
+
+### Various fixes & improvements
+
+- fix: Default input block size should be larger (#306) by @untitaker
+
 ## 2.14.21
 
 ### Various fixes & improvements
