@@ -69,7 +69,11 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
                     break
 
                 message = Message(
-                    Value(future.result().payload, original_message.committable)
+                    Value(
+                        future.result().payload,
+                        original_message.committable,
+                        original_message.timestamp,
+                    )
                 )
 
             self.__queue.popleft()
@@ -122,7 +126,11 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
                     break
 
                 message = Message(
-                    Value(future.result().payload, original_message.committable)
+                    Value(
+                        future.result().payload,
+                        original_message.committable,
+                        original_message.timestamp,
+                    )
                 )
 
             self.__next_step.poll()

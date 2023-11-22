@@ -19,7 +19,8 @@ from arroyo.types import (
 
 def test_guard() -> None:
     partition = Partition(Topic("topic"), 1)
-    message = Message(BrokerValue(b"", partition, 5, datetime.now()))
+    now = datetime.now()
+    message = Message(BrokerValue(b"", partition, 5, now))
 
     # Reject all messages that aren't the filtered one
     def inner_strategy_submit(msg: Message[bytes]) -> None:

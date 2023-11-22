@@ -139,9 +139,9 @@ def test_filters(strategy_factory: StrategyFactory) -> None:
         return message.payload
 
     messages: Sequence[DummyMessage] = [
-        Message(Value(True, {Partition(Topic("topic"), 0): 1})),
+        Message(Value(True, {Partition(Topic("topic"), 0): 1}, NOW)),
         Message(Value(FILTERED_PAYLOAD, {Partition(Topic("topic"), 0): 2})),
-        Message(Value(True, {Partition(Topic("topic"), 0): 3})),
+        Message(Value(True, {Partition(Topic("topic"), 0): 3}, NOW)),
     ]
 
     for message in messages:

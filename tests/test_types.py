@@ -19,7 +19,7 @@ def test_message() -> None:
     assert pickle.loads(pickle.dumps(broker_message)) == broker_message
 
     # Generic payload
-    message = Message(Value(b"", {partition: 1}))
+    message = Message(Value(b"", {partition: 1}, datetime.now()))
     assert pickle.loads(pickle.dumps(message)) == message
 
     # Replace payload

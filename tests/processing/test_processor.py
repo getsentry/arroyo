@@ -184,7 +184,10 @@ def test_stream_processor_invalid_message_from_poll() -> None:
     consumer.poll.side_effect = [BrokerValue(0, partition, offset, now)]
 
     strategy = mock.Mock()
-    strategy.poll.side_effect = [InvalidMessage(partition, 0, needs_commit=False), None]
+    strategy.poll.side_effect = [
+        InvalidMessage(partition, 0, needs_commit=False),
+        None,
+    ]
 
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
@@ -562,7 +565,8 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     topic = Topic("topic")
     partition = Partition(topic, 0)
     consumer = mock.Mock()
-    consumer.poll.return_value = BrokerValue(0, partition, 1, datetime.now())
+    now = datetime.now()
+    consumer.poll.return_value = BrokerValue(0, partition, 1, now)
     strategy = mock.Mock()
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()

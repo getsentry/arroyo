@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from typing import Callable, Generic, MutableMapping, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
@@ -28,12 +29,17 @@ class BatchBuilder(Generic[TPayload, TResult]):
         self.__max_batch_size = max_batch_size
         self.__accumulator = accumulator
         self.__accumulated_value = initial_value
+
+        # For latency recording.
+        # The timestamp of the last message in the batch is one applied to the batch
+        self.__last_timestamp: Optional[datetime] = None
         self.__count = 0
         self.__offsets: MutableMapping[Partition, int] = {}
         self.init_time = time.time()
 
     def append(self, value: BaseValue[Union[FilteredPayload, TPayload]]) -> None:
         self.__offsets.update(value.committable)
+        self.__last_timestamp = value.timestamp
         if not isinstance(value.payload, FilteredPayload):
             self.__accumulated_value = self.__accumulator(
                 self.__accumulated_value, cast(BaseValue[TPayload], value)
@@ -46,13 +52,22 @@ class BatchBuilder(Generic[TPayload, TResult]):
             self.__count >= self.__max_batch_size
             or time.time() > self.init_time + self.__max_batch_time
         ):
-
-            return Value(payload=self.__accumulated_value, committable=self.__offsets)
+            assert isinstance(self.__last_timestamp, datetime)
+            return Value(
+                payload=self.__accumulated_value,
+                committable=self.__offsets,
+                timestamp=self.__last_timestamp,
+            )
         else:
             return None
 
     def build(self) -> Value[TResult]:
-        return Value(payload=self.__accumulated_value, committable=self.__offsets)
+        assert isinstance(self.__last_timestamp, datetime)
+        return Value(
+            payload=self.__accumulated_value,
+            committable=self.__offsets,
+            timestamp=self.__last_timestamp,
+        )
 
 
 class Reduce(

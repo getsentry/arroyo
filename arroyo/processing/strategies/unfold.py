@@ -55,9 +55,11 @@ class Unfold(
         for idx, value in enumerate(iterable):
             # Last message is special because offsets can be committed along with it
             if idx == num_messages - 1:
-                next_message = Message(Value(value, message.committable))
+                next_message = Message(
+                    Value(value, message.committable, message.timestamp)
+                )
             else:
-                next_message = Message(Value(value, {}))
+                next_message = Message(Value(value, {}, message.timestamp))
 
             if store_remaining_messages == False:
                 try:

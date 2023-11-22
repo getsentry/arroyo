@@ -1,5 +1,6 @@
 import multiprocessing
 import time
+from datetime import datetime
 from multiprocessing.managers import SharedMemoryManager
 from typing import Any
 from unittest.mock import Mock, call
@@ -33,10 +34,7 @@ def test_message_batch() -> None:
     assert block.size == 16384
 
     message = Message(
-        Value(
-            KafkaPayload(None, b"\x00" * 16000, []),
-            {partition: 1},
-        )
+        Value(KafkaPayload(None, b"\x00" * 16000, []), {partition: 1}, datetime.now())
     )
 
     batch: MessageBatch[Message[KafkaPayload]] = MessageBatch(block)
@@ -66,6 +64,7 @@ def test_parallel_run_task_worker_apply() -> None:
             Value(
                 KafkaPayload(None, b"\x00" * size, []),
                 {Partition(Topic("test"), 0): i + 1},
+                datetime.now(),
             )
         )
         for i, size in enumerate([4000, 4000, 8000, 12000])
@@ -132,6 +131,7 @@ def test_parallel_transform_step() -> None:
             Value(
                 KafkaPayload(None, b"\x00" * size, []),
                 {Partition(Topic("test"), 0): i + 1},
+                datetime.now(),
             )
         )
         for i, size in enumerate([4000, 4000, 8000, 2000])
@@ -330,6 +330,8 @@ def test_message_rejected_multiple() -> None:
     next_step = Mock()
     next_step.submit.side_effect = MessageRejected()
 
+    now = datetime.now()
+
     strategy = RunTaskWithMultiprocessing(
         count_calls,
         next_step,
@@ -340,8 +342,8 @@ def test_message_rejected_multiple() -> None:
         output_block_size=4096,
     )
 
-    strategy.submit(Message(Value(1, {})))
-    strategy.submit(Message(Value(-100, {})))
+    strategy.submit(Message(Value(1, {}, now)))
+    strategy.submit(Message(Value(-100, {}, now)))
 
     start_time = time.time()
 
@@ -355,11 +357,11 @@ def test_message_rejected_multiple() -> None:
     # The strategy keeps trying to submit the same message
     # since it's continually rejected
     assert next_step.submit.call_args_list == [
-        call(Message(Value(2, {}))),
-        call(Message(Value(2, {}))),
-        call(Message(Value(2, {}))),
-        call(Message(Value(2, {}))),
-        call(Message(Value(2, {}))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(2, {}, now))),
     ]
 
     # clear the side effect, let the message through now
@@ -375,15 +377,15 @@ def test_message_rejected_multiple() -> None:
 
     # The messages should have been submitted successfully now
     assert next_step.submit.call_args_list == [
-        call(Message(Value(2, {}))),
-        call(Message(Value(-98, {}))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(-98, {}, now))),
     ]
 
     strategy.close()
     strategy.join()
     assert next_step.submit.call_args_list == [
-        call(Message(Value(2, {}))),
-        call(Message(Value(-98, {}))),
+        call(Message(Value(2, {}, now))),
+        call(Message(Value(-98, {}, now))),
     ]
 
     assert TestingMetricsBackend.calls == [
@@ -467,7 +469,7 @@ def test_regression_join_timeout_one_message() -> None:
     )
 
     strategy.poll()
-    strategy.submit(Message(Value(10, {})))
+    strategy.submit(Message(Value(10, {}, datetime.now())))
 
     start = time.time()
 
@@ -496,7 +498,7 @@ def test_regression_join_timeout_many_messages() -> None:
     )
 
     for _ in range(10):
-        strategy.submit(Message(Value(0.1, {})))
+        strategy.submit(Message(Value(0.1, {}, datetime.now())))
 
     start = time.time()
 
@@ -612,6 +614,8 @@ def test_output_block_resizing_without_limits() -> None:
     NUM_MESSAGES = INPUT_SIZE // MSG_SIZE
     next_step = Mock()
 
+    now = datetime.now()
+
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
@@ -623,7 +627,9 @@ def test_output_block_resizing_without_limits() -> None:
     )
 
     for _ in range(NUM_MESSAGES):
-        strategy.submit(Message(Value(KafkaPayload(None, b"x" * MSG_SIZE, []), {})))
+        strategy.submit(
+            Message(Value(KafkaPayload(None, b"x" * MSG_SIZE, []), {}, now))
+        )
 
     strategy.close()
     strategy.join(timeout=3)
@@ -631,7 +637,7 @@ def test_output_block_resizing_without_limits() -> None:
     assert (
         next_step.submit.call_args_list
         == [
-            call(Message(Value(KafkaPayload(None, b"x" * 2 * MSG_SIZE, []), {}))),
+            call(Message(Value(KafkaPayload(None, b"x" * 2 * MSG_SIZE, []), {}, now))),
         ]
         * NUM_MESSAGES
     )
@@ -647,7 +653,10 @@ def test_output_block_resizing_without_limits() -> None:
 
 
 def message_processor_raising_invalid_message(x: Message[KafkaPayload]) -> KafkaPayload:
-    raise InvalidMessage(Partition(topic=Topic("test_topic"), index=0), offset=1000)
+    raise InvalidMessage(
+        Partition(topic=Topic("test_topic"), index=0),
+        offset=1000,
+    )
 
 
 def test_multiprocessing_with_invalid_message() -> None:
@@ -661,7 +670,9 @@ def test_multiprocessing_with_invalid_message() -> None:
         max_batch_time=60,
     )
 
-    strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+    strategy.submit(
+        Message(Value(KafkaPayload(None, b"x" * 10, []), {}, datetime.now()))
+    )
 
     strategy.poll()
     strategy.close()
@@ -673,6 +684,7 @@ def test_reraise_invalid_message() -> None:
     next_step = Mock()
     partition = Partition(Topic("test"), 0)
     offset = 5
+    now = datetime.now()
     next_step.poll.side_effect = InvalidMessage(partition, offset)
 
     strategy = RunTaskWithMultiprocessing(
@@ -683,7 +695,7 @@ def test_reraise_invalid_message() -> None:
         max_batch_time=60,
     )
 
-    strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {})))
+    strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {}, now)))
 
     with pytest.raises(InvalidMessage):
         strategy.poll()
