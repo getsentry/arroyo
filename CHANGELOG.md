@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.23
+
+### Various fixes & improvements
+
+- feat: Enable automatic latency recording for consumers (#308) by @lynnagara
+
 ## 2.14.22
 
 ### Various fixes & improvements
