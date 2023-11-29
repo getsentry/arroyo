@@ -9,6 +9,7 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.dlq import (
     BufferedMessages,
     DlqLimit,
+    DlqLimitState,
     DlqPolicy,
     DlqPolicyWrapper,
     InvalidMessage,
@@ -102,12 +103,12 @@ def test_dlq_policy_wrapper() -> None:
     dlq_policy = DlqPolicy(
         KafkaDlqProducer(broker.get_producer(), dlq_topic), DlqLimit(), None
     )
+    partition = Partition(topic, 0)
     wrapper = DlqPolicyWrapper(dlq_policy)
+    wrapper.reset_offsets({partition: 0})
     wrapper.MAX_PENDING_FUTURES = 1
     for i in range(10):
-        message = BrokerValue(
-            KafkaPayload(None, b"", []), Partition(topic, 0), i, datetime.now()
-        )
+        message = BrokerValue(KafkaPayload(None, b"", []), partition, i, datetime.now())
         wrapper.produce(message)
     wrapper.flush({partition: 11})
 
@@ -117,3 +118,21 @@ def test_invalid_message_pickleable() -> None:
     pickled_exc = pickle.dumps(exc)
     unpickled_exc = pickle.loads(pickled_exc)
     assert exc == unpickled_exc
+
+
+def test_dlq_limit_state() -> None:
+    starting_offset = 2
+    partition = Partition(Topic("test_topic"), 0)
+    last_invalid_offset = {partition: starting_offset}
+    limit = DlqLimit(None, 5)
+    state = DlqLimitState(limit, last_invalid_offsets=last_invalid_offset)
+
+    # 1 valid message followed by 4 invalid
+    for i in range(4, 9):
+        value = BrokerValue(i, partition, i, datetime.now())
+        state.update_invalid_value(value)
+        assert state.should_accept(value)
+
+    # Next message should not be accepted
+    state.update_invalid_value(BrokerValue(9, partition, 9, datetime.now()))
+    assert state.should_accept(value) == False

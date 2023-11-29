@@ -157,9 +157,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             dlq_policy
         )
 
-        self.__dlq_policy: Optional[DlqPolicyWrapper[TStrategyPayload]] = (
-            DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
-        )
+        self.__dlq_policy = DlqPolicyWrapper(dlq_policy)
 
         def _close_strategy() -> None:
             start_close = time.time()
@@ -216,6 +214,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             self.__buffered_messages.reset()
+            self.__dlq_policy.reset_offsets(partitions)
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
@@ -274,8 +273,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             now,
             offsets,
         ):
-            if self.__dlq_policy:
-                self.__dlq_policy.flush(offsets)
+            self.__dlq_policy.flush(offsets)
 
             self.__consumer.commit_offsets()
             logger.debug(
@@ -328,20 +326,19 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         logger.exception(exc)
         self.__metrics_buffer.incr_counter("arroyo.consumer.invalid_message.count", 1)
-        if self.__dlq_policy:
-            start_dlq = time.time()
-            invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
-            if invalid_message is None:
-                raise Exception(
-                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
-                ) from None
+        start_dlq = time.time()
+        invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+        if invalid_message is None:
+            raise Exception(
+                f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+            ) from None
 
-            # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
-            self.__dlq_policy.produce(invalid_message)
+        # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
+        self.__dlq_policy.produce(invalid_message)
 
-            self.__metrics_buffer.incr_timing(
-                "arroyo.consumer.dlq.time", time.time() - start_dlq
-            )
+        self.__metrics_buffer.incr_timing(
+            "arroyo.consumer.dlq.time", time.time() - start_dlq
+        )
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
