@@ -329,16 +329,19 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
     ) -> None:
         self.MAX_PENDING_FUTURES = 1000  # This is a per partition max
         self.__dlq_policy = policy
-        if policy:
-            self.__futures: MutableMapping[
-                Partition,
-                Deque[
-                    Tuple[
-                        BrokerValue[TStrategyPayload],
-                        Future[BrokerValue[TStrategyPayload]],
-                    ]
-                ],
-            ] = defaultdict(deque)
+        if policy is None:
+            return
+
+        self.__futures: MutableMapping[
+            Partition,
+            Deque[
+                Tuple[
+                    BrokerValue[TStrategyPayload],
+                    Future[BrokerValue[TStrategyPayload]],
+                ]
+            ],
+        ] = defaultdict(deque)
+        self.reset_offsets({})
 
     def reset_offsets(self, assignment: Mapping[Partition, int]) -> None:
         """
