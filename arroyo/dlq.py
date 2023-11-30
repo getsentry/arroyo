@@ -325,12 +325,10 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
 
     def __init__(
         self,
-        policy: Optional[DlqPolicy[TStrategyPayload]],
+        policy: DlqPolicy[TStrategyPayload],
     ) -> None:
         self.MAX_PENDING_FUTURES = 1000  # This is a per partition max
         self.__dlq_policy = policy
-        if policy is None:
-            return
 
         self.__futures: MutableMapping[
             Partition,
@@ -347,9 +345,6 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         """
         Called on consumer assignment
         """
-        if self.__dlq_policy is None:
-            return
-
         self.__dlq_limit_state = self.__dlq_policy.producer.build_initial_state(
             self.__dlq_policy.limit, assignment
         )
@@ -359,9 +354,6 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         Removes all completed futures, then appends the given future to the list.
         Blocks if the list is full.
         """
-        if self.__dlq_policy is None:
-            return
-
         for values in self.__futures.values():
             while len(values) > 0:
                 msg, future = values[0]
@@ -384,9 +376,6 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         Blocks until all messages up to the committable have been produced so
         they are safe to commit.
         """
-        if self.__dlq_policy is None:
-            return
-
         for partition, offset in committable.items():
             while len(self.__futures[partition]) > 0:
                 values = self.__futures[partition]

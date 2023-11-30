@@ -157,7 +157,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
             dlq_policy
         )
 
-        self.__dlq_policy = DlqPolicyWrapper(dlq_policy)
+        self.__dlq_policy: Optional[DlqPolicyWrapper[TStrategyPayload]] = (
+            DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
+        )
 
         def _close_strategy() -> None:
             start_close = time.time()
@@ -214,7 +216,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             self.__buffered_messages.reset()
-            self.__dlq_policy.reset_offsets(partitions)
+            if self.__dlq_policy:
+                self.__dlq_policy.reset_offsets(partitions)
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
@@ -273,7 +276,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             now,
             offsets,
         ):
-            self.__dlq_policy.flush(offsets)
+            if self.__dlq_policy:
+                self.__dlq_policy.flush(offsets)
 
             self.__consumer.commit_offsets()
             logger.debug(
