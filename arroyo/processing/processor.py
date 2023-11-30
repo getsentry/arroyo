@@ -326,19 +326,20 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         logger.exception(exc)
         self.__metrics_buffer.incr_counter("arroyo.consumer.invalid_message.count", 1)
-        start_dlq = time.time()
-        invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
-        if invalid_message is None:
-            raise Exception(
-                f"Invalid message not found in buffer {exc.partition} {exc.offset}",
-            ) from None
+        if self.__dlq_policy:
+            start_dlq = time.time()
+            invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
+            if invalid_message is None:
+                raise Exception(
+                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
+                ) from None
 
-        # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
-        self.__dlq_policy.produce(invalid_message)
+            # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
+            self.__dlq_policy.produce(invalid_message)
 
-        self.__metrics_buffer.incr_timing(
-            "arroyo.consumer.dlq.time", time.time() - start_dlq
-        )
+            self.__metrics_buffer.incr_timing(
+                "arroyo.consumer.dlq.time", time.time() - start_dlq
+            )
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
