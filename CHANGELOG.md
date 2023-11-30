@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.24
+
+### Various fixes & improvements
+
+- fix(dlq): Actually respect the DLQ limits (#309) by @lynnagara
+
 ## 2.14.23
 
 ### Various fixes & improvements
