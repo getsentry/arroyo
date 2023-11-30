@@ -216,6 +216,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             self.__buffered_messages.reset()
+            if self.__dlq_policy:
+                self.__dlq_policy.reset_offsets(partitions)
             if partitions:
                 if self.__processing_strategy is not None:
                     logger.exception(
