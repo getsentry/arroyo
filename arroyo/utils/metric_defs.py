@@ -75,6 +75,10 @@ MetricName = Literal[
     "arroyo.consumer.run.close_strategy",
     # Duration metric measuring the time it took to create the processing strategy.
     "arroyo.consumer.run.create_strategy",
+    # How many partitions have been revoked just now.
+    "arroyo.consumer.partitions_revoked.count",
+    # How many partitions have been assigned just now.
+    "arroyo.consumer.partitions_assigned.count",
     # Time (unitless) spent in shutting down the consumer. This metric's
     # Consumer latency in seconds. Recorded by the commit offsets strategy.
     "arroyo.consumer.latency",

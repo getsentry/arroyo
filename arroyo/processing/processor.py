@@ -230,6 +230,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            self.__metrics_buffer.metrics.increment(
+                "arroyo.consumer.partitions_assigned.count", len(partitions)
+            )
+
             self.__buffered_messages.reset()
             if self.__dlq_policy:
                 self.__dlq_policy.reset_offsets(partitions)
@@ -244,6 +248,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions to revoke: %r", partitions)
+
+            self.__metrics_buffer.metrics.increment(
+                "arroyo.consumer.partitions_revoked.count", len(partitions)
+            )
 
             if partitions:
                 _close_strategy()
