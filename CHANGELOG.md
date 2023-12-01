@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.14.25
+
+### Various fixes & improvements
+
+- ref: Add more metrics for slow rebalancing (#310) by @untitaker
+
 ## 2.14.24
 
 ### Various fixes & improvements
