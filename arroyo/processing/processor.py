@@ -50,9 +50,13 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 logger.exception(f"{f.__name__} crashed")
                 raise
             finally:
-                metrics.incr_timing(
-                    "arroyo.consumer.callback.time", time.time() - start_time
+                value = time.time() - start_time
+                metrics.metrics.timing(
+                    "arroyo.consumer.run.callback",
+                    value,
+                    tags={"callback_name": f.__name__},
                 )
+                metrics.incr_timing("arroyo.consumer.callback.time", value)
 
         return cast(F, wrapper)
 
@@ -82,7 +86,7 @@ ConsumerCounter = Literal[
 
 class MetricsBuffer:
     def __init__(self) -> None:
-        self.__metrics = get_metrics()
+        self.metrics = get_metrics()
         self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
         self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
         self.__reset()
@@ -100,9 +104,9 @@ class MetricsBuffer:
         value: Union[float, int]
 
         for metric, value in self.__timers.items():
-            self.__metrics.timing(metric, value)
+            self.metrics.timing(metric, value)
         for metric, value in self.__counters.items():
-            self.__metrics.increment(metric, value)
+            self.metrics.increment(metric, value)
         self.__reset()
 
     def __reset(self) -> None:
@@ -198,16 +202,27 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__is_paused = False
             self._clear_backpressure()
 
-            self.__metrics_buffer.incr_timing(
-                "arroyo.consumer.shutdown.time", time.time() - start_close
+            value = time.time() - start_close
+
+            self.__metrics_buffer.metrics.timing(
+                "arroyo.consumer.run.close_strategy", value
             )
 
+            self.__metrics_buffer.incr_timing("arroyo.consumer.shutdown.time", value)
+
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
+            start_create = time.time()
+
             self.__processing_strategy = (
                 self.__processor_factory.create_with_partitions(
                     self.__commit, partitions
                 )
             )
+
+            self.__metrics_buffer.metrics.timing(
+                "arroyo.consumer.run.create_strategy", time.time() - start_create
+            )
+
             logger.debug(
                 "Initialized processing strategy: %r", self.__processing_strategy
             )
@@ -215,6 +230,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            self.__metrics_buffer.metrics.increment(
+                "arroyo.consumer.partitions_assigned.count", len(partitions)
+            )
+
             self.__buffered_messages.reset()
             if self.__dlq_policy:
                 self.__dlq_policy.reset_offsets(partitions)
@@ -229,6 +248,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions to revoke: %r", partitions)
+
+            self.__metrics_buffer.metrics.increment(
+                "arroyo.consumer.partitions_revoked.count", len(partitions)
+            )
 
             if partitions:
                 _close_strategy()

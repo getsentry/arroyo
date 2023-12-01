@@ -59,9 +59,27 @@ MetricName = Literal[
     # Time (unitless) spent in librdkafka callbacks. This metric's timings
     # overlap other timings, and might spike at the same time.
     "arroyo.consumer.callback.time",
-    # Time (unitless) spent in shutting down the consumer. This metric's
     # timings overlap other timings, and might spike at the same time.
     "arroyo.consumer.shutdown.time",
+    # A regular duration metric where each datapoint is measuring the time it
+    # took to execute a single callback. This metric is distinct from the
+    # arroyo.consumer.*.time metrics as it does not attempt to accumulate time
+    # spent per second in an attempt to keep monitoring overhead low.
+    #
+    # The metric is tagged by the name of the internal callback function being
+    # executed, as 'callback_name'. Possible values are on_partitions_assigned
+    # and on_partitions_revoked.
+    "arroyo.consumer.run.callback",
+    # Duration metric measuring the time it took to flush in-flight messages
+    # and shut down the strategies.
+    "arroyo.consumer.run.close_strategy",
+    # Duration metric measuring the time it took to create the processing strategy.
+    "arroyo.consumer.run.create_strategy",
+    # How many partitions have been revoked just now.
+    "arroyo.consumer.partitions_revoked.count",
+    # How many partitions have been assigned just now.
+    "arroyo.consumer.partitions_assigned.count",
+    # Time (unitless) spent in shutting down the consumer. This metric's
     # Consumer latency in seconds. Recorded by the commit offsets strategy.
     "arroyo.consumer.latency",
     # Queue size of background queue that librdkafka uses to prefetch messages.
