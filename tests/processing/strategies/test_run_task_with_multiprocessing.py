@@ -215,8 +215,6 @@ def test_parallel_transform_step() -> None:
 
         transform_step.close()
 
-        pool.close()
-
     metrics.calls.clear()
 
     with assert_changes(
@@ -275,6 +273,7 @@ def test_parallel_transform_step() -> None:
         ],
     ):
         transform_step.join()
+        pool.close()
 
     assert next_step.submit.call_count == len(messages)
 
@@ -308,8 +307,7 @@ def test_parallel_run_task_terminate_workers() -> None:
         starting_processes,
     ), assert_changes(lambda: int(next_step.terminate.call_count), 0, 1):
         transform_step.terminate()
-
-    pool.close()
+        pool.close()
 
 
 _COUNT_CALLS = 0
@@ -654,6 +652,7 @@ def test_output_block_resizing_without_limits() -> None:
 
     strategy.close()
     strategy.join(timeout=3)
+    pool.close()
 
     assert (
         next_step.submit.call_args_list
@@ -671,8 +670,6 @@ def test_output_block_resizing_without_limits() -> None:
         )
         in TestingMetricsBackend.calls
     )
-
-    pool.close()
 
 
 def message_processor_raising_invalid_message(x: Message[KafkaPayload]) -> KafkaPayload:

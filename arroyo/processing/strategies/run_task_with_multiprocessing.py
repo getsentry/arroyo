@@ -811,7 +811,7 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager.shutdown()
 
         logger.info("Terminating %r...", self.__next_step)
-        # self.__next_step.terminate()
+        self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
         start_join = time.time()
