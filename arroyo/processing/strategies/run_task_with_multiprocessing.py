@@ -279,6 +279,44 @@ def parallel_run_task_worker_apply(
     return ParallelRunTaskResult(next_index_to_process, valid_messages_transformed)
 
 
+class MultiprocessingPool:
+    """
+    Multiprocessing pool for the RunTaskWithMultiprocessing strategy.
+    It can be re-used each time the strategy is created on assignments.
+
+    :param num_processes: The number of processes to spawn.
+
+    :param initializer: A function to run at the beginning of each subprocess.
+
+        Subprocesses are spawned without any of the state of the parent
+        process, they are entirely new Python interpreters. You might want to
+        re-initialize your Django application here.
+
+    """
+
+    def __init__(
+        self,
+        num_processes: int,
+        initializer: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self.__pool = Pool(
+            num_processes,
+            initializer=partial(parallel_worker_initializer, initializer),
+            context=multiprocessing.get_context("spawn"),
+        )
+        self.__num_processes = num_processes
+
+    @property
+    def num_processes(self) -> int:
+        return self.__num_processes
+
+    def apply_async(self, *args: Any, **kwargs: Any) -> Any:
+        return self.__pool.apply_async(*args, **kwargs)
+
+    def terminate(self) -> None:
+        self.__pool.terminate()
+
+
 class RunTaskWithMultiprocessing(
     ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
     Generic[TStrategyPayload, TResult],
@@ -291,9 +329,12 @@ class RunTaskWithMultiprocessing(
 
     :param function: The function to use for transforming.
     :param next_step: The processing strategy to forward transformed messages to.
-    :param num_processes: The number of processes to spawn.
     :param max_batch_size: Wait at most for this many messages before "closing" a batch.
     :param max_batch_time: Wait at most for this many seconds before closing a batch.
+
+    :param pool: The multiprocessing pool to use for parallel processing. The same pool
+        instance can be re-used each time ``RunTaskWithMultiprocessing`` is created on
+        rebalance.
 
     :param input_block_size: For each subprocess, a shared memory buffer of
         ``input_block_size`` is allocated. This value should be at least
@@ -325,11 +366,6 @@ class RunTaskWithMultiprocessing(
     :param max_output_block_size: Same as `max_input_block_size` but for output
         blocks.
 
-    :param initializer: A function to run at the beginning of each subprocess.
-
-        Subprocesses are spawned without any of the state of the parent
-        process, they are entirely new Python interpreters. You might want to
-        re-initialize your Django application here.
 
     Number of processes
     ~~~~~~~~~~~~~~~~~~~
@@ -424,14 +460,13 @@ class RunTaskWithMultiprocessing(
         self,
         function: Callable[[Message[TStrategyPayload]], TResult],
         next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
-        num_processes: int,
         max_batch_size: int,
         max_batch_time: float,
+        pool: MultiprocessingPool,
         input_block_size: Optional[int] = None,
         output_block_size: Optional[int] = None,
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
-        initializer: Optional[Callable[[], None]] = None,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
@@ -446,11 +481,8 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
 
-        self.__pool = Pool(
-            num_processes,
-            initializer=partial(parallel_worker_initializer, initializer),
-            context=multiprocessing.get_context("spawn"),
-        )
+        self.__pool = pool
+        num_processes = self.__pool.num_processes
 
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(
@@ -799,7 +831,7 @@ class RunTaskWithMultiprocessing(
                 raise
 
         logger.debug("Waiting for %s...", self.__pool)
-        self.__pool.terminate()
+        # self.__pool.terminate()
 
         self.__shared_memory_manager.shutdown()
 

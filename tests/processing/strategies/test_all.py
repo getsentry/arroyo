@@ -26,6 +26,7 @@ from arroyo.processing.strategies.reduce import Reduce
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.processing.strategies.run_task_in_threads import RunTaskInThreads
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
+    MultiprocessingPool,
     RunTaskWithMultiprocessing,
 )
 from arroyo.types import (
@@ -72,9 +73,9 @@ def run_task_with_multiprocessing_factory(
     return RunTaskWithMultiprocessing(
         partial(run_task_function, raises_invalid_message),
         next_step=next_step,
-        num_processes=4,
         max_batch_size=10,
         max_batch_time=60,
+        pool=MultiprocessingPool(num_processes=4),
         input_block_size=16384,
         output_block_size=16384,
     )
