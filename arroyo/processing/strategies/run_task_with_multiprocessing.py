@@ -313,7 +313,7 @@ class MultiprocessingPool:
     def apply_async(self, *args: Any, **kwargs: Any) -> Any:
         return self.__pool.apply_async(*args, **kwargs)
 
-    def terminate(self) -> None:
+    def close(self) -> None:
         self.__pool.terminate()
 
 
@@ -805,13 +805,13 @@ class RunTaskWithMultiprocessing(
         self.__closed = True
 
         logger.info("Terminating %r...", self.__pool)
-        self.__pool.terminate()
+        # self.__pool.terminate()
 
         logger.info("Shutting down %r...", self.__shared_memory_manager)
         self.__shared_memory_manager.shutdown()
 
         logger.info("Terminating %r...", self.__next_step)
-        self.__next_step.terminate()
+        # self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
         start_join = time.time()
