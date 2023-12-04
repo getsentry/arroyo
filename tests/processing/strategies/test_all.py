@@ -2,18 +2,10 @@
 A general-purpose testsuite that asserts certain behavior is implemented by all strategies.
 """
 
+from abc import ABC, abstractmethod
 from datetime import datetime
 from functools import partial
-from typing import (
-    Any,
-    Literal,
-    MutableSequence,
-    Optional,
-    Protocol,
-    Sequence,
-    Tuple,
-    Union,
-)
+from typing import Any, Literal, MutableSequence, Optional, Sequence, Tuple, Type, Union
 from unittest.mock import Mock, call
 
 import pytest
@@ -46,11 +38,16 @@ DummyMessage = Message[Union[FilteredPayload, bool]]
 NOW = datetime.now()
 
 
-class StrategyFactory(Protocol):
-    def __call__(
+class StrategyFactory(ABC):
+    @abstractmethod
+    def strategy(
         self, next_step: DummyStrategy, raises_invalid_message: bool = False
     ) -> DummyStrategy:
-        ...
+        raise NotImplementedError
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        raise NotImplementedError
 
 
 def run_task_function(raises_invalid_message: bool, x: Message[bool]) -> bool:
@@ -61,80 +58,105 @@ def run_task_function(raises_invalid_message: bool, x: Message[bool]) -> bool:
     return x.payload
 
 
-def run_task_factory(
-    next_step: DummyStrategy, raises_invalid_message: bool = False
-) -> RunTask[bool, bool]:
-    return RunTask(partial(run_task_function, raises_invalid_message), next_step)
+class RunTaskFactory(StrategyFactory):
+    def strategy(
+        self, next_step: DummyStrategy, raises_invalid_message: bool = False
+    ) -> DummyStrategy:
+        return RunTask(partial(run_task_function, raises_invalid_message), next_step)
+
+    def shutdown(self) -> None:
+        pass
 
 
-def run_task_with_multiprocessing_factory(
-    next_step: DummyStrategy, raises_invalid_message: bool = False
-) -> RunTaskWithMultiprocessing[bool, bool]:
-    return RunTaskWithMultiprocessing(
-        partial(run_task_function, raises_invalid_message),
-        next_step=next_step,
-        max_batch_size=10,
-        max_batch_time=60,
-        pool=MultiprocessingPool(num_processes=4),
-        input_block_size=16384,
-        output_block_size=16384,
-    )
+class RunTaskWithMultiprocessingFactory(StrategyFactory):
+    def __init__(self) -> None:
+        self.__pool = MultiprocessingPool(num_processes=4)
+
+    def strategy(
+        self, next_step: DummyStrategy, raises_invalid_message: bool = False
+    ) -> DummyStrategy:
+        return RunTaskWithMultiprocessing(
+            partial(run_task_function, raises_invalid_message),
+            next_step=next_step,
+            max_batch_size=10,
+            max_batch_time=60,
+            pool=MultiprocessingPool(num_processes=4),
+            input_block_size=16384,
+            output_block_size=16384,
+        )
+
+    def shutdown(self) -> None:
+        self.__pool.close()
 
 
-def run_task_in_threads_factory(
-    next_step: DummyStrategy, raises_invalid_message: bool = False
-) -> RunTaskInThreads[bool, bool]:
-    return RunTaskInThreads(
-        partial(run_task_function, raises_invalid_message),
-        next_step=next_step,
-        concurrency=1,
-        max_pending_futures=10,
-    )
+class RunTaskInThreadsFactory(StrategyFactory):
+    def strategy(
+        self, next_step: DummyStrategy, raises_invalid_message: bool = False
+    ) -> DummyStrategy:
+        return RunTaskInThreads(
+            partial(run_task_function, raises_invalid_message),
+            next_step=next_step,
+            concurrency=1,
+            max_pending_futures=10,
+        )
+
+    def shutdown(self) -> None:
+        pass
 
 
-def filter_step_factory(
-    next_step: DummyStrategy, raises_invalid_message: bool = False
-) -> FilterStep[bool]:
-    if raises_invalid_message:
-        pytest.skip("does not support invalid message")
-    return FilterStep(
-        lambda message: message.payload, next_step, commit_policy=IMMEDIATE
-    )
+class FilterFactory(StrategyFactory):
+    def strategy(
+        self, next_step: DummyStrategy, raises_invalid_message: bool = False
+    ) -> DummyStrategy:
+        if raises_invalid_message:
+            pytest.skip("does not support invalid message")
+
+        return FilterStep(
+            lambda message: message.payload, next_step, commit_policy=IMMEDIATE
+        )
+
+    def shutdown(self) -> None:
+        pass
 
 
-def reduce_step_factory(
-    next_step: DummyStrategy, raises_invalid_message: bool = False
-) -> Reduce[bool, bool]:
-    if raises_invalid_message:
-        pytest.skip("does not support invalid message")
+class ReduceFactory(StrategyFactory):
+    def strategy(
+        self, next_step: DummyStrategy, raises_invalid_message: bool = False
+    ) -> DummyStrategy:
+        if raises_invalid_message:
+            pytest.skip("does not support invalid message")
 
-    def accumulator(result: bool, value: BaseValue[bool]) -> bool:
-        assert isinstance(result, bool)
-        assert isinstance(value.payload, bool)
-        return value.payload
+        def accumulator(result: bool, value: BaseValue[bool]) -> bool:
+            assert isinstance(result, bool)
+            assert isinstance(value.payload, bool)
+            return value.payload
 
-    return Reduce(
-        max_batch_size=1,
-        max_batch_time=1,
-        accumulator=accumulator,
-        initial_value=bool,
-        next_step=next_step,
-    )
+        return Reduce(
+            max_batch_size=1,
+            max_batch_time=1,
+            accumulator=accumulator,
+            initial_value=bool,
+            next_step=next_step,
+        )
+
+    def shutdown(self) -> None:
+        pass
 
 
-FACTORIES: Sequence[StrategyFactory] = [
-    run_task_factory,
-    run_task_with_multiprocessing_factory,
-    run_task_in_threads_factory,
-    filter_step_factory,
-    reduce_step_factory,
+FACTORIES: Sequence[Type[StrategyFactory]] = [
+    RunTaskFactory,
+    RunTaskWithMultiprocessingFactory,
+    RunTaskInThreadsFactory,
+    FilterFactory,
+    ReduceFactory,
 ]
 
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_filters(strategy_factory: StrategyFactory) -> None:
+def test_filters(strategy_factory: Type[StrategyFactory]) -> None:
     next_step = Mock()
-    step = strategy_factory(next_step)
+    factory = strategy_factory()
+    step = factory.strategy(next_step)
 
     def test_function(message: Message[bool]) -> bool:
         return message.payload
@@ -151,6 +173,7 @@ def test_filters(strategy_factory: StrategyFactory) -> None:
 
     step.close()
     step.join()
+    factory.shutdown()
 
     assert next_step.submit.call_args_list == list(map(call, messages))
 
@@ -208,12 +231,13 @@ class MockProcessingStep(ProcessingStrategy[Any]):
     ],
 )
 def test_dlq(
-    strategy_factory: StrategyFactory,
+    strategy_factory: Type[StrategyFactory],
     message_pattern: MessagePattern,
     expected_output: MessagePattern,
 ) -> None:
     next_step = Mock(wraps=MockProcessingStep())
-    step = strategy_factory(next_step, raises_invalid_message=True)
+    factory = strategy_factory()
+    step = factory.strategy(next_step, raises_invalid_message=True)
 
     topic = Topic("topic")
 
@@ -249,6 +273,8 @@ def test_dlq(
         if join_count > len(messages):
             raise RuntimeError("needed to call join() too often")
 
+    factory.shutdown()
+
     assert invalid_messages == [
         InvalidMessage(Partition(topic, partition), offset, needs_commit=False)
         for partition, offset, type_ in message_pattern
@@ -270,22 +296,25 @@ def test_dlq(
 
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_terminate(strategy_factory: StrategyFactory) -> None:
+def test_terminate(strategy_factory: Type[StrategyFactory]) -> None:
     next_step = Mock()
-
-    step = strategy_factory(next_step)
+    factory = strategy_factory()
+    step = factory.strategy(next_step)
     step.terminate()
 
     assert next_step.terminate.call_args_list == [call()]
+    factory.shutdown()
 
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_join(strategy_factory: StrategyFactory) -> None:
+def test_join(strategy_factory: Type[StrategyFactory]) -> None:
     next_step = Mock()
 
-    step = strategy_factory(next_step)
+    factory = strategy_factory()
+    step = factory.strategy(next_step)
     step.close()
     step.join()
+    factory.shutdown()
 
     assert next_step.close.call_args_list == [call()]
 
@@ -294,11 +323,11 @@ def test_join(strategy_factory: StrategyFactory) -> None:
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
 def test_poll_next_step(
-    request: pytest.FixtureRequest, strategy_factory: StrategyFactory
+    request: pytest.FixtureRequest, strategy_factory: Type[StrategyFactory]
 ) -> None:
     next_step = Mock()
-
-    step = strategy_factory(next_step)
+    factory = strategy_factory()
+    step = factory.strategy(next_step)
     request.addfinalizer(step.terminate)
 
     # Ensure that polling a strategy forwards the poll unconditionally even if
@@ -307,5 +336,6 @@ def test_poll_next_step(
     # benchmarking/QE) have been processed but the last batch of offsets never
     # gets committed.
     step.poll()
+    factory.shutdown()
 
     assert next_step.poll.call_args_list == [call()]
