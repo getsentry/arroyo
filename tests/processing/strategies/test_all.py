@@ -80,7 +80,7 @@ class RunTaskWithMultiprocessingFactory(StrategyFactory):
             next_step=next_step,
             max_batch_size=10,
             max_batch_time=60,
-            pool=MultiprocessingPool(num_processes=4),
+            pool=self.__pool,
             input_block_size=16384,
             output_block_size=16384,
         )
@@ -126,7 +126,9 @@ class ReduceFactory(StrategyFactory):
         if raises_invalid_message:
             pytest.skip("does not support invalid message")
 
-        def accumulator(result: bool, value: BaseValue[bool]) -> bool:
+        def accumulator(
+            result: Union[FilteredPayload, bool], value: BaseValue[bool]
+        ) -> bool:
             assert isinstance(result, bool)
             assert isinstance(value.payload, bool)
             return value.payload
@@ -336,6 +338,5 @@ def test_poll_next_step(
     # benchmarking/QE) have been processed but the last batch of offsets never
     # gets committed.
     step.poll()
-    factory.shutdown()
 
     assert next_step.poll.call_args_list == [call()]
