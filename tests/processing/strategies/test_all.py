@@ -324,13 +324,10 @@ def test_join(strategy_factory: Type[StrategyFactory]) -> None:
 
 
 @pytest.mark.parametrize("strategy_factory", FACTORIES)
-def test_poll_next_step(
-    request: pytest.FixtureRequest, strategy_factory: Type[StrategyFactory]
-) -> None:
+def test_poll_next_step(strategy_factory: Type[StrategyFactory]) -> None:
     next_step = Mock()
     factory = strategy_factory()
     step = factory.strategy(next_step)
-    request.addfinalizer(step.terminate)
 
     # Ensure that polling a strategy forwards the poll unconditionally even if
     # there are no messages to process, or no progress at all. Otherwise there
@@ -338,6 +335,7 @@ def test_poll_next_step(
     # benchmarking/QE) have been processed but the last batch of offsets never
     # gets committed.
     step.poll()
+    step.terminate()
     factory.shutdown()
 
     assert next_step.poll.call_args_list == [call()]
