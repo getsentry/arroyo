@@ -810,7 +810,6 @@ class RunTaskWithMultiprocessing(
         self.__closed = True
 
         logger.info("Terminating %r...", self.__pool)
-        # self.__pool.terminate()
 
         logger.info("Shutting down %r...", self.__shared_memory_manager)
         self.__shared_memory_manager.shutdown()
@@ -836,7 +835,6 @@ class RunTaskWithMultiprocessing(
                 raise
 
         logger.debug("Waiting for %s...", self.__pool)
-        # self.__pool.terminate()
 
         self.__shared_memory_manager.shutdown()
 
