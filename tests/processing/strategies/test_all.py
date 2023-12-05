@@ -338,5 +338,6 @@ def test_poll_next_step(
     # benchmarking/QE) have been processed but the last batch of offsets never
     # gets committed.
     step.poll()
+    factory.shutdown()
 
     assert next_step.poll.call_args_list == [call()]
