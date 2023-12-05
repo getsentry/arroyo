@@ -284,6 +284,8 @@ class MultiprocessingPool:
     Multiprocessing pool for the RunTaskWithMultiprocessing strategy.
     It can be re-used each time the strategy is created on assignments.
 
+    NOTE: The close() method must be called when shutting down the consumer.
+
     :param num_processes: The number of processes to spawn.
 
     :param initializer: A function to run at the beginning of each subprocess.
@@ -314,6 +316,9 @@ class MultiprocessingPool:
         return self.__pool.apply_async(*args, **kwargs)
 
     def close(self) -> None:
+        """
+        Must be called manually when shutting down the consumer.
+        """
         self.__pool.terminate()
 
 
