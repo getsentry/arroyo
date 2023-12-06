@@ -307,10 +307,15 @@ class MultiprocessingPool:
             context=multiprocessing.get_context("spawn"),
         )
         self.__num_processes = num_processes
+        self.__initializer = initializer
 
     @property
     def num_processes(self) -> int:
         return self.__num_processes
+
+    @property
+    def initializer(self) -> Optional[Callable[[], None]]:
+        return self.__initializer
 
     def apply_async(self, *args: Any, **kwargs: Any) -> Any:
         return self.__pool.apply_async(*args, **kwargs)
