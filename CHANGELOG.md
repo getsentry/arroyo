@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.15.0
+
+### Various fixes & improvements
+
+- feat: Reusable multiprocessing pool (#311) by @lynnagara
+- ref: Combine DlqLimitState methods (#312) by @loewenheim
+
 ## 2.14.25
 
 ### Various fixes & improvements
