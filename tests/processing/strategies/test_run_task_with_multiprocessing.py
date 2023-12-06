@@ -12,6 +12,7 @@ from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
     MessageBatch,
+    MultiprocessingPool,
     RunTaskWithMultiprocessing,
     ValueTooLarge,
     parallel_run_task_worker_apply,
@@ -197,12 +198,13 @@ def test_parallel_transform_step() -> None:
             ),
         ],
     ):
+        pool = MultiprocessingPool(worker_processes)
         transform_step = RunTaskWithMultiprocessing(
             transform_payload_expand,
             next_step,
-            num_processes=worker_processes,
             max_batch_size=5,
             max_batch_time=60,
+            pool=pool,
             input_block_size=16384,
             output_block_size=16384,
         )
@@ -271,6 +273,7 @@ def test_parallel_transform_step() -> None:
         ],
     ):
         transform_step.join()
+        pool.close()
 
     assert next_step.submit.call_count == len(messages)
 
@@ -287,12 +290,13 @@ def test_parallel_run_task_terminate_workers() -> None:
         starting_processes,
         starting_processes + worker_processes + manager_processes,
     ):
+        pool = MultiprocessingPool(worker_processes)
         transform_step = RunTaskWithMultiprocessing(
             transform_payload_expand,  # doesn't matter
             next_step,
-            num_processes=worker_processes,
             max_batch_size=5,
             max_batch_time=60,
+            pool=pool,
             input_block_size=4096,
             output_block_size=4096,
         )
@@ -303,6 +307,7 @@ def test_parallel_run_task_terminate_workers() -> None:
         starting_processes,
     ), assert_changes(lambda: int(next_step.terminate.call_count), 0, 1):
         transform_step.terminate()
+        pool.close()
 
 
 _COUNT_CALLS = 0
@@ -331,13 +336,13 @@ def test_message_rejected_multiple() -> None:
     next_step.submit.side_effect = MessageRejected()
 
     now = datetime.now()
-
+    pool = MultiprocessingPool(num_processes=1)
     strategy = RunTaskWithMultiprocessing(
         count_calls,
         next_step,
-        num_processes=1,
         max_batch_size=1,
         max_batch_time=60,
+        pool=pool,
         input_block_size=4096,
         output_block_size=4096,
     )
@@ -448,6 +453,8 @@ def test_message_rejected_multiple() -> None:
         ),
     ]
 
+    pool.close()
+
 
 def run_sleep(value: Message[float]) -> float:
     time.sleep(value.payload)
@@ -457,13 +464,13 @@ def run_sleep(value: Message[float]) -> float:
 def test_regression_join_timeout_one_message() -> None:
     next_step = Mock()
     next_step.submit.side_effect = MessageRejected()
-
+    pool = MultiprocessingPool(num_processes=1)
     strategy = RunTaskWithMultiprocessing(
         run_sleep,
         next_step,
-        num_processes=1,
         max_batch_size=1,
         max_batch_time=60,
+        pool=pool,
         input_block_size=4096,
         output_block_size=4096,
     )
@@ -482,16 +489,19 @@ def test_regression_join_timeout_one_message() -> None:
 
     assert next_step.submit.call_count == 0
 
+    pool.close()
+
 
 def test_regression_join_timeout_many_messages() -> None:
     next_step = Mock()
     next_step.submit.side_effect = MessageRejected()
 
+    pool = MultiprocessingPool(num_processes=1)
     strategy = RunTaskWithMultiprocessing(
         run_sleep,
         next_step,
-        num_processes=1,
         max_batch_size=1,
+        pool=pool,
         max_batch_time=60,
         input_block_size=4096,
         output_block_size=4096,
@@ -511,6 +521,8 @@ def test_regression_join_timeout_many_messages() -> None:
 
     assert next_step.submit.call_count > 0
 
+    pool.close()
+
 
 def run_multiply_times_two(x: Message[KafkaPayload]) -> KafkaPayload:
     return KafkaPayload(None, x.payload.value * 2, [])
@@ -521,13 +533,13 @@ def test_input_block_resizing_max_size() -> None:
     MSG_SIZE = 10 * 1024
     NUM_MESSAGES = INPUT_SIZE // MSG_SIZE
     next_step = Mock()
-
+    pool = MultiprocessingPool(num_processes=2)
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
-        num_processes=2,
         max_batch_size=NUM_MESSAGES,
         max_batch_time=60,
+        pool=pool,
         input_block_size=None,
         output_block_size=INPUT_SIZE // 2,
         max_input_block_size=16000,
@@ -545,6 +557,8 @@ def test_input_block_resizing_max_size() -> None:
         for x in TestingMetricsBackend.calls
     )
 
+    pool.close()
+
 
 def test_input_block_resizing_without_limits() -> None:
     INPUT_SIZE = 36 * 1024 * 1024
@@ -552,12 +566,13 @@ def test_input_block_resizing_without_limits() -> None:
     NUM_MESSAGES = INPUT_SIZE // MSG_SIZE
     next_step = Mock()
 
+    pool = MultiprocessingPool(num_processes=2)
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
-        num_processes=2,
         max_batch_size=NUM_MESSAGES,
         max_batch_time=60,
+        pool=pool,
         input_block_size=None,
         output_block_size=INPUT_SIZE // 2,
     )
@@ -578,19 +593,22 @@ def test_input_block_resizing_without_limits() -> None:
         in TestingMetricsBackend.calls
     )
 
+    pool.close()
+
 
 def test_output_block_resizing_max_size() -> None:
     INPUT_SIZE = 72 * 1024 * 1024
     MSG_SIZE = 10 * 1024
     NUM_MESSAGES = INPUT_SIZE // MSG_SIZE
     next_step = Mock()
+    pool = MultiprocessingPool(num_processes=2)
 
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
-        num_processes=2,
         max_batch_size=NUM_MESSAGES,
         max_batch_time=60,
+        pool=pool,
         input_block_size=INPUT_SIZE,
         output_block_size=None,
         max_output_block_size=16000,
@@ -606,6 +624,7 @@ def test_output_block_resizing_max_size() -> None:
         x.name == "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize"
         for x in TestingMetricsBackend.calls
     )
+    pool.close()
 
 
 def test_output_block_resizing_without_limits() -> None:
@@ -615,13 +634,13 @@ def test_output_block_resizing_without_limits() -> None:
     next_step = Mock()
 
     now = datetime.now()
-
+    pool = MultiprocessingPool(num_processes=2)
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
-        num_processes=2,
         max_batch_size=NUM_MESSAGES,
         max_batch_time=60,
+        pool=pool,
         input_block_size=INPUT_SIZE,
         output_block_size=None,
     )
@@ -633,6 +652,7 @@ def test_output_block_resizing_without_limits() -> None:
 
     strategy.close()
     strategy.join(timeout=3)
+    pool.close()
 
     assert (
         next_step.submit.call_args_list
@@ -661,13 +681,13 @@ def message_processor_raising_invalid_message(x: Message[KafkaPayload]) -> Kafka
 
 def test_multiprocessing_with_invalid_message() -> None:
     next_step = Mock()
-
+    pool = MultiprocessingPool(num_processes=2)
     strategy = RunTaskWithMultiprocessing(
         message_processor_raising_invalid_message,
         next_step,
-        num_processes=2,
         max_batch_size=1,
         max_batch_time=60,
+        pool=pool,
     )
 
     strategy.submit(
@@ -678,6 +698,7 @@ def test_multiprocessing_with_invalid_message() -> None:
     strategy.close()
     with pytest.raises(InvalidMessage):
         strategy.join(timeout=3)
+    pool.close()
 
 
 def test_reraise_invalid_message() -> None:
@@ -686,13 +707,14 @@ def test_reraise_invalid_message() -> None:
     offset = 5
     now = datetime.now()
     next_step.poll.side_effect = InvalidMessage(partition, offset)
+    pool = MultiprocessingPool(num_processes=2)
 
     strategy = RunTaskWithMultiprocessing(
         run_multiply_times_two,
         next_step,
-        num_processes=2,
         max_batch_size=1,
         max_batch_time=60,
+        pool=pool,
     )
 
     strategy.submit(Message(Value(KafkaPayload(None, b"x" * 10, []), {}, now)))
@@ -703,3 +725,49 @@ def test_reraise_invalid_message() -> None:
     next_step.poll.reset_mock(side_effect=True)
     strategy.close()
     strategy.join()
+    pool.close()
+
+
+def slow_func(message: Message[int]) -> int:
+    time.sleep(0.2)
+    return message.payload
+
+
+def test_reuse_pool() -> None:
+    # To be reused in strategy_one and strategy_two
+    pool = MultiprocessingPool(num_processes=2)
+    next_step = Mock()
+
+    strategy_one = RunTaskWithMultiprocessing(
+        slow_func,
+        next_step,
+        max_batch_size=2,
+        max_batch_time=5,
+        pool=pool,
+    )
+
+    strategy_one.submit(Message(Value(10, committable={})))
+
+    strategy_one.close()
+
+    # Join with timeout=0.0 to ensure there will be unprocessed pending messages
+    # in the first batch
+    strategy_one.join(0.0)
+
+    strategy_two = RunTaskWithMultiprocessing(
+        slow_func,
+        next_step,
+        max_batch_size=2,
+        max_batch_time=5,
+        pool=pool,
+    )
+
+    strategy_two.submit(Message(Value(10, committable={})))
+
+    strategy_two.close()
+
+    # Join with no timeout so the pending task will complete and message gets submitted
+    strategy_two.join()
+
+    assert next_step.submit.call_count == 1
+    pool.close()
