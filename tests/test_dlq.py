@@ -129,10 +129,7 @@ def test_dlq_limit_state() -> None:
 
     # 1 valid message followed by 4 invalid
     for i in range(4, 9):
-        value = BrokerValue(i, partition, i, datetime.now())
-        state.update_invalid_value(value)
-        assert state.should_accept(value)
+        assert state.record_invalid_message(BrokerValue(i, partition, i, datetime.now()))
 
     # Next message should not be accepted
-    state.update_invalid_value(BrokerValue(9, partition, 9, datetime.now()))
-    assert state.should_accept(value) == False
+    assert not state.record_invalid_message(BrokerValue(9, partition, 9, datetime.now()))

@@ -108,13 +108,16 @@ class DlqLimitState:
             last_invalid_offsets or {}
         )
 
-    def update_invalid_value(self, value: BrokerValue[TStrategyPayload]) -> None:
+    def record_invalid_message(self, value: BrokerValue[TStrategyPayload]) -> bool:
         """
-        This method should be called (prior to should_accept) with each invalid value
-        to update the count of valid and invalid messages
+        Records an invalid message.
+
+        This updates the internal statistics about the message's partition and
+        returns True if the message should be produced to the DLQ according to the
+        configured limit.
         """
         if self.__limit is None:
-            return
+            return True
 
         partition = value.partition
 
@@ -138,10 +141,11 @@ class DlqLimitState:
                 self.__invalid_messages.get(partition, 0) + 1
             )
             self.__last_invalid_offsets[partition] = value.offset
-
-    def should_accept(self, value: BrokerValue[TStrategyPayload]) -> bool:
-        if self.__limit is None:
-            return True
+        else:
+            self.__valid_messages[partition] = 0
+            self.__invalid_messages[partition] = 1
+            self.__invalid_consecutive_messages[partition] = 1
+            self.__last_invalid_offsets[partition] = value.offset
 
         if self.__limit.max_invalid_ratio is not None:
             invalid = self.__invalid_messages.get(value.partition, 0)
@@ -365,8 +369,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
                 values[0][1].result()
                 values.popleft()
 
-        self.__dlq_limit_state.update_invalid_value(message)
-        should_accept = self.__dlq_limit_state.should_accept(message)
+        should_accept = self.__dlq_limit_state.record_invalid_message(message)
         if should_accept:
             future = self.__dlq_policy.producer.produce(message)
             self.__futures[message.partition].append((message, future))
