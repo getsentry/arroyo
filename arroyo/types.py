@@ -35,6 +35,9 @@ class FilteredPayload:
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, FilteredPayload)
 
+    def __repr__(self) -> str:
+        return "<FilteredPayload>"
+
 
 FILTERED_PAYLOAD = FilteredPayload()
 
@@ -64,7 +67,7 @@ class Message(Generic[TMessagePayload]):
         # ``__slots__`` for performance reasons. The class variable names
         # would conflict with the instance slot names, causing an error.
 
-        if type(self.payload) in (float, int):
+        if type(self.payload) in (float, int, bool, FilteredPayload):
             # For the case where value is a float or int, the repr is small and
             # therefore safe. This is very useful in tests.
             #
