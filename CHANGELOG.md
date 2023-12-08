@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.15.1
+
+### Various fixes & improvements
+
+- fix(filter): Handle MessageRejected correctly (INC-584) (#313) by @untitaker
+
 ## 2.15.0
 
 ### Various fixes & improvements
