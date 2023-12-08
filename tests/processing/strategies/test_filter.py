@@ -2,7 +2,10 @@ from datetime import datetime
 from typing import Union
 from unittest.mock import Mock, call
 
+import pytest
+
 from arroyo.commit import CommitPolicy
+from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.filter import FilterStep
 from arroyo.types import (
     FILTERED_PAYLOAD,
@@ -55,7 +58,7 @@ def test_commit_policy_basic() -> None:
         return message.payload
 
     filter_step = FilterStep(
-        test_function, next_step, commit_policy=CommitPolicy(None, 3)
+        test_function, next_step, commit_policy=CommitPolicy(None, 4)
     )
 
     now = datetime.now()
@@ -159,4 +162,89 @@ def test_no_commit_policy_does_not_forward_filtered_messages() -> None:
         call(Message(Value(True, {Partition(topic, 1): 1}, now))),
         call(Message(Value(True, {Partition(topic, 1): 3}, now))),
         call(Message(Value(True, {Partition(topic, 1): 5}, now))),
+    ]
+
+
+def test_backpressure_in_join() -> None:
+    topic = Topic("topic")
+    next_step = Mock()
+    next_step.submit.side_effect = [None] * 6 + [MessageRejected]  # type: ignore
+
+    now = datetime.now()
+
+    def test_function(message: Message[bool]) -> bool:
+        return message.payload
+
+    filter_step = FilterStep(
+        test_function, next_step, commit_policy=CommitPolicy(None, 3)
+    )
+
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 3}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 4}, now)))
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 5}, now)))
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 6}, now)))
+
+    filter_step.join()
+
+    assert next_step.submit.mock_calls == [
+        call(Message(Value(True, {Partition(topic, 1): 1}, now))),
+        call(Message(Value(True, {Partition(topic, 1): 3}, now))),
+        call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 4}))),
+        call(Message(Value(True, {Partition(topic, 1): 5}, now))),
+        call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 6}))),
+    ]
+
+
+def test_backpressure_in_submit() -> None:
+    """
+    Assert that MessageRejected is propagated for the right messages, and
+    handled correctly in join() (i.e. suppressed)
+    """
+    topic = Topic("topic")
+    next_step = Mock()
+    next_step.submit.side_effect = [
+        MessageRejected,
+        None,
+        MessageRejected,
+        MessageRejected,
+        None,
+    ]
+
+    now = datetime.now()
+
+    def test_function(message: Message[bool]) -> bool:
+        return message.payload
+
+    filter_step = FilterStep(
+        test_function, next_step, commit_policy=CommitPolicy(None, 3)
+    )
+
+    with pytest.raises(MessageRejected):
+        filter_step.submit(Message(Value(True, {Partition(topic, 1): 1}, now)))
+
+    filter_step.submit(Message(Value(True, {Partition(topic, 1): 1}, now)))
+
+    filter_step.submit(Message(Value(False, {Partition(topic, 1): 2}, now)))
+
+    assert next_step.submit.mock_calls == [
+        call(Message(Value(True, {Partition(topic, 1): 1}, now))),
+        call(Message(Value(True, {Partition(topic, 1): 1}, now))),
+    ]
+
+    next_step.submit.mock_calls.clear()
+
+    filter_step.join()
+
+    assert next_step.submit.mock_calls == [
+        call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 2}))),
+    ]
+
+    next_step.submit.mock_calls.clear()
+
+    filter_step.join()
+
+    assert next_step.submit.mock_calls == [
+        call(Message(Value(FILTERED_PAYLOAD, {Partition(topic, 1): 2}))),
     ]

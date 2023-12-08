@@ -3,7 +3,7 @@ import time
 from typing import Callable, MutableMapping, Optional, Union, cast
 
 from arroyo.commit import CommitPolicy, CommitPolicyState
-from arroyo.processing.strategies.abstract import ProcessingStrategy
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import (
     FILTERED_PAYLOAD,
     FilteredPayload,
@@ -73,7 +73,10 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     ) -> None:
         assert not self.__closed
 
+        policy = self.__commit_policy_state
         now = time.time()
+        if policy is not None and policy.should_commit(now, self.__uncommitted_offsets):
+            self.__flush_uncommitted_offsets(now, can_backpressure=True)
 
         if not isinstance(message.payload, FilteredPayload) and self.__test_function(
             cast(Message[TStrategyPayload], message)
@@ -86,19 +89,27 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             if self.__commit_policy_state is not None:
                 self.__uncommitted_offsets.update(message.committable)
 
-        policy = self.__commit_policy_state
+        if policy is not None and policy.should_commit(now, self.__uncommitted_offsets):
+            # We cannot let MessageRejected propagate here. The caller will
+            # think it is for `message` (which has already been successfully
+            # submitted), and will double-send it.
+            self.__flush_uncommitted_offsets(now, can_backpressure=False)
 
-        if policy is not None and policy.should_commit(now, message.committable):
-            self.__flush_uncommitted_offsets(now)
-
-    def __flush_uncommitted_offsets(self, now: float) -> None:
+    def __flush_uncommitted_offsets(self, now: float, can_backpressure: bool) -> None:
         if not self.__uncommitted_offsets:
             return
 
         new_message: Message[Union[FilteredPayload, TStrategyPayload]] = Message(
             Value(FILTERED_PAYLOAD, self.__uncommitted_offsets)
         )
-        self.__next_step.submit(new_message)
+        try:
+            self.__next_step.submit(new_message)
+        except MessageRejected:
+            if can_backpressure:
+                raise
+            # We have little to gain from reattempting the submission.
+            # Filtering is not supposed to be that expensive.
+            return
 
         if self.__commit_policy_state is not None:
             self.__commit_policy_state.did_commit(now, self.__uncommitted_offsets)
@@ -115,6 +126,8 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__flush_uncommitted_offsets(time.time())
+        # We cannot let MessageRejected propagate here. join() is not supposed
+        # to raise this exception at all.
+        self.__flush_uncommitted_offsets(time.time(), can_backpressure=False)
         self.__next_step.close()
         self.__next_step.join(timeout=timeout)
