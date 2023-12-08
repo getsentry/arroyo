@@ -89,12 +89,6 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             if self.__commit_policy_state is not None:
                 self.__uncommitted_offsets.update(message.committable)
 
-        if policy is not None and policy.should_commit(now, self.__uncommitted_offsets):
-            # We cannot let MessageRejected propagate here. The caller will
-            # think it is for `message` (which has already been successfully
-            # submitted), and will double-send it.
-            self.__flush_uncommitted_offsets(now, can_backpressure=False)
-
     def __flush_uncommitted_offsets(self, now: float, can_backpressure: bool) -> None:
         if not self.__uncommitted_offsets:
             return
