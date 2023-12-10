@@ -340,8 +340,7 @@ class MultiprocessingPool:
         Also called from strategy.join() if there are pending futures in order
         ensure state is completely cleaned up.
         """
-        if self.__pool:
-            self.__pool.terminate()
+        self.__pool.terminate()
 
 
 class RunTaskWithMultiprocessing(
