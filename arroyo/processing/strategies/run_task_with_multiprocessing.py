@@ -284,11 +284,12 @@ class MultiprocessingPool:
     Multiprocessing pool for the RunTaskWithMultiprocessing strategy.
     It can be re-used each time the strategy is created on assignments.
 
-    The multiprocessing pool is lazily created whe the first message is submitted.
-    Reset() is called from strategy.join() if there are pending futures that
-    have not been completed yet.
-
     NOTE: The close() method must be called when shutting down the consumer.
+
+    The `close()` method is also called by `RunTaskWithMultiprocessing` when
+    there are uncompleted pending tasks to ensure no state is carried over.
+    The `maybe_create_pool` function is called on every assignment to ensure
+    the pool is re-created again, in case it was closed on the previous recovation.
 
     :param num_processes: The number of processes to spawn.
 
