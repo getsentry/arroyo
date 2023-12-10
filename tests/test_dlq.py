@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Generator
 from unittest.mock import ANY
 
+import pytest
+
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.backends.local.backend import LocalBroker
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
@@ -113,6 +115,22 @@ def test_dlq_policy_wrapper() -> None:
     wrapper.flush({partition: 11})
 
 
+def test_dlq_policy_wrapper_limit_exceeded() -> None:
+    broker: LocalBroker[KafkaPayload] = LocalBroker(MemoryMessageStorage())
+    broker.create_topic(dlq_topic, 1)
+    dlq_policy = DlqPolicy(
+        KafkaDlqProducer(broker.get_producer(), dlq_topic), DlqLimit(0.0, 1), None
+    )
+    partition = Partition(topic, 0)
+    wrapper = DlqPolicyWrapper(dlq_policy)
+    wrapper.reset_offsets({partition: 0})
+    wrapper.MAX_PENDING_FUTURES = 1
+
+    message = BrokerValue(KafkaPayload(None, b"", []), partition, 1, datetime.now())
+    with pytest.raises(RuntimeError):
+        wrapper.produce(message)
+
+
 def test_invalid_message_pickleable() -> None:
     exc = InvalidMessage(Partition(Topic("test_topic"), 0), 2)
     pickled_exc = pickle.dumps(exc)
@@ -129,7 +147,11 @@ def test_dlq_limit_state() -> None:
 
     # 1 valid message followed by 4 invalid
     for i in range(4, 9):
-        assert state.record_invalid_message(BrokerValue(i, partition, i, datetime.now()))
+        assert state.record_invalid_message(
+            BrokerValue(i, partition, i, datetime.now())
+        )
 
     # Next message should not be accepted
-    assert not state.record_invalid_message(BrokerValue(9, partition, 9, datetime.now()))
+    assert not state.record_invalid_message(
+        BrokerValue(9, partition, 9, datetime.now())
+    )
