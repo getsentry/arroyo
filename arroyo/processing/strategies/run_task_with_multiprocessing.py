@@ -307,7 +307,7 @@ class MultiprocessingPool:
     ) -> None:
         self.__num_processes = num_processes
         self.__initializer = initializer
-        self.__pool: Optional[Pool] = None
+        self.__create_pool()
 
     def __create_pool(self) -> None:
         self.__pool = Pool(
@@ -325,15 +325,14 @@ class MultiprocessingPool:
         return self.__initializer
 
     def apply_async(self, *args: Any, **kwargs: Any) -> Any:
-        if not self.__pool:
-            self.__create_pool()
-        return cast(Pool, self.__pool).apply_async(*args, **kwargs)
+        return self.__pool.apply_async(*args, **kwargs)
 
     def reset(self) -> None:
         """
-        Alias for close() to make it clear that the pool is being reset.
+        Close and re-create pool.
         """
         self.close()
+        self.__create_pool()
 
     def close(self) -> None:
         """
@@ -343,7 +342,6 @@ class MultiprocessingPool:
         """
         if self.__pool:
             self.__pool.terminate()
-            self.__pool = None
 
 
 class RunTaskWithMultiprocessing(
@@ -836,6 +834,8 @@ class RunTaskWithMultiprocessing(
         logger.info("Terminating %r...", self.__pool)
 
         logger.info("Shutting down %r...", self.__shared_memory_manager)
+        self.__pool.reset()
+
         self.__shared_memory_manager.shutdown()
 
         logger.info("Terminating %r...", self.__next_step)
