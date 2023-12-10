@@ -284,6 +284,10 @@ class MultiprocessingPool:
     Multiprocessing pool for the RunTaskWithMultiprocessing strategy.
     It can be re-used each time the strategy is created on assignments.
 
+    The multiprocessing pool is lazily created whe the first message is submitted.
+    Reset() is called from strategy.join() if there are pending futures that
+    have not been completed yet.
+
     NOTE: The close() method must be called when shutting down the consumer.
 
     :param num_processes: The number of processes to spawn.
@@ -301,13 +305,16 @@ class MultiprocessingPool:
         num_processes: int,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
-        self.__pool = Pool(
-            num_processes,
-            initializer=partial(parallel_worker_initializer, initializer),
-            context=multiprocessing.get_context("spawn"),
-        )
         self.__num_processes = num_processes
         self.__initializer = initializer
+        self.__pool: Optional[Pool] = None
+
+    def __create_pool(self) -> None:
+        self.__pool = Pool(
+            self.__num_processes,
+            initializer=partial(parallel_worker_initializer, self.__initializer),
+            context=multiprocessing.get_context("spawn"),
+        )
 
     @property
     def num_processes(self) -> int:
@@ -318,13 +325,25 @@ class MultiprocessingPool:
         return self.__initializer
 
     def apply_async(self, *args: Any, **kwargs: Any) -> Any:
-        return self.__pool.apply_async(*args, **kwargs)
+        if not self.__pool:
+            self.__create_pool()
+        return cast(Pool, self.__pool).apply_async(*args, **kwargs)
+
+    def reset(self) -> None:
+        """
+        Alias for close() to make it clear that the pool is being reset.
+        """
+        self.close()
 
     def close(self) -> None:
         """
         Must be called manually when shutting down the consumer.
+        Also called from strategy.join() if there are pending futures in order
+        ensure state is completely cleaned up.
         """
-        self.__pool.terminate()
+        if self.__pool:
+            self.__pool.terminate()
+            self.__pool = None
 
 
 class RunTaskWithMultiprocessing(
@@ -840,6 +859,11 @@ class RunTaskWithMultiprocessing(
                 raise
 
         logger.debug("Waiting for %s...", self.__pool)
+
+        # XXX: We need to recreate the pool if there are still pending futures, to avoid
+        # state from the previous assignment not being properly cleaned up.
+        if len(self.__processes):
+            self.__pool.reset()
 
         self.__shared_memory_manager.shutdown()
 
