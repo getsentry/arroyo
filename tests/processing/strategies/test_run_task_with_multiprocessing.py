@@ -399,6 +399,11 @@ def test_message_rejected_multiple() -> None:
     ]
 
     assert TestingMetricsBackend.calls == [
+        IncrementCall(
+            name="arroyo.strategies.run_task_with_multiprocessing.pool.create",
+            value=1,
+            tags=None,
+        ),
         GaugeCall(
             name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
             value=0.0,
