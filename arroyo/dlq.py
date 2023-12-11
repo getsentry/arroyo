@@ -356,7 +356,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
     def produce(self, message: BrokerValue[TStrategyPayload]) -> None:
         """
         Removes all completed futures, then appends the given future to the list.
-        Blocks if the list is full.
+        Blocks if the list is full. If the DLQ limit is exceeded, an exception is raised.
         """
         for values in self.__futures.values():
             while len(values) > 0:
@@ -373,6 +373,8 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         if should_accept:
             future = self.__dlq_policy.producer.produce(message)
             self.__futures[message.partition].append((message, future))
+        else:
+            raise RuntimeError("Dlq limit exceeded")
 
     def flush(self, committable: Mapping[Partition, int]) -> None:
         """
