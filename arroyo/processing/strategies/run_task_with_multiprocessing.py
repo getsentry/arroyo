@@ -286,6 +286,11 @@ class MultiprocessingPool:
 
     NOTE: The close() method must be called when shutting down the consumer.
 
+    The `close()` method is also called by `RunTaskWithMultiprocessing` when
+    there are uncompleted pending tasks to ensure no state is carried over.
+    The `maybe_create_pool` function is called on every assignment to ensure
+    the pool is re-created again, in case it was closed on the previous recovation.
+
     :param num_processes: The number of processes to spawn.
 
     :param initializer: A function to run at the beginning of each subprocess.
@@ -301,13 +306,22 @@ class MultiprocessingPool:
         num_processes: int,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
-        self.__pool = Pool(
-            num_processes,
-            initializer=partial(parallel_worker_initializer, initializer),
-            context=multiprocessing.get_context("spawn"),
-        )
         self.__num_processes = num_processes
         self.__initializer = initializer
+        self.__pool: Optional[Pool] = None
+        self.__metrics = get_metrics()
+        self.maybe_create_pool()
+
+    def maybe_create_pool(self) -> None:
+        if self.__pool is None:
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.pool.create"
+            )
+            self.__pool = Pool(
+                self.__num_processes,
+                initializer=partial(parallel_worker_initializer, self.__initializer),
+                context=multiprocessing.get_context("spawn"),
+            )
 
     @property
     def num_processes(self) -> int:
@@ -318,13 +332,20 @@ class MultiprocessingPool:
         return self.__initializer
 
     def apply_async(self, *args: Any, **kwargs: Any) -> Any:
-        return self.__pool.apply_async(*args, **kwargs)
+        if self.__pool:
+            return self.__pool.apply_async(*args, **kwargs)
+        else:
+            raise RuntimeError("No pool available")
 
     def close(self) -> None:
         """
         Must be called manually when shutting down the consumer.
+        Also called from strategy.join() if there are pending futures in order
+        ensure state is completely cleaned up.
         """
-        self.__pool.terminate()
+        if self.__pool:
+            self.__pool.terminate()
+            self.__pool = None
 
 
 class RunTaskWithMultiprocessing(
@@ -488,11 +509,12 @@ class RunTaskWithMultiprocessing(
         self.__max_input_block_size = max_input_block_size
         self.__max_output_block_size = max_output_block_size
 
+        self.__pool = pool
+        self.__pool.maybe_create_pool()
+        num_processes = self.__pool.num_processes
+
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
-
-        self.__pool = pool
-        num_processes = self.__pool.num_processes
 
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(
@@ -817,6 +839,8 @@ class RunTaskWithMultiprocessing(
         logger.info("Terminating %r...", self.__pool)
 
         logger.info("Shutting down %r...", self.__shared_memory_manager)
+        self.__pool.close()
+
         self.__shared_memory_manager.shutdown()
 
         logger.info("Terminating %r...", self.__next_step)
@@ -840,6 +864,11 @@ class RunTaskWithMultiprocessing(
                 raise
 
         logger.debug("Waiting for %s...", self.__pool)
+
+        # XXX: We need to recreate the pool if there are still pending futures, to avoid
+        # state from the previous assignment not being properly cleaned up.
+        if len(self.__processes):
+            self.__pool.close()
 
         self.__shared_memory_manager.shutdown()
 
