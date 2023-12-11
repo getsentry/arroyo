@@ -309,10 +309,14 @@ class MultiprocessingPool:
         self.__num_processes = num_processes
         self.__initializer = initializer
         self.__pool: Optional[Pool] = None
+        self.__metrics = get_metrics()
         self.maybe_create_pool()
 
     def maybe_create_pool(self) -> None:
         if self.__pool is None:
+            self.__metrics.increment(
+                "arroyo.strategies.run_task_with_multiprocessing.pool.create"
+            )
             self.__pool = Pool(
                 self.__num_processes,
                 initializer=partial(parallel_worker_initializer, self.__initializer),
