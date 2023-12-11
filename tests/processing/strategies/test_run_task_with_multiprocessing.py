@@ -151,6 +151,11 @@ def test_parallel_transform_step() -> None:
         lambda: metrics.calls,
         [],
         [
+            IncrementCall(
+                name="arroyo.strategies.run_task_with_multiprocessing.pool.create",
+                value=1,
+                tags=None,
+            ),
             GaugeCall(
                 "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
                 0.0,
