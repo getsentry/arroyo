@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.15.2
+
+### Various fixes & improvements
+
+- fix(dlq): Ensure consumer crashes if DLQ limit is reached (#314) by @lynnagara
+- fix(multiprocessing): Reset pool if tasks are not completed (#315) by @lynnagara
+
 ## 2.15.1
 
 ### Various fixes & improvements
