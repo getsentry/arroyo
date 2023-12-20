@@ -11,7 +11,7 @@ from arroyo.backends.local.storages.abstract import MessageStorage
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.dlq import DlqPolicy, InvalidMessage
-from arroyo.processing.processor import InvalidStateError, StreamProcessor
+from arroyo.processing.processor import StreamProcessor
 from arroyo.processing.strategies import Healthcheck
 from arroyo.processing.strategies.abstract import (
     MessageRejected,
@@ -61,18 +61,18 @@ def test_stream_processor_lifecycle() -> None:
     offsets = {Partition(topic, 0): 0}
     assignment_callback(offsets)
 
-    # If ``Consumer.poll`` doesn't return a message, we should poll the
-    # processing strategy, but not submit anything for processing.
+    # If ``Consumer.poll`` doesn't return a message, we should not have created
+    # or polled a strategy yet
     consumer.poll.return_value = None
     with assert_changes(
-        lambda: int(strategy.poll.call_count), 0, 1
+        lambda: int(strategy.poll.call_count), 0, 0
     ), assert_does_not_change(lambda: int(strategy.submit.call_count), 0):
         processor._run_once()
 
     # If ``Consumer.poll`` **does** return a message, we should poll the
     # processing strategy and submit the message for processing.
     consumer.poll.return_value = message.value
-    with assert_changes(lambda: int(strategy.poll.call_count), 1, 2), assert_changes(
+    with assert_changes(lambda: int(strategy.poll.call_count), 0, 1), assert_changes(
         lambda: int(strategy.submit.call_count), 0, 1
     ):
         processor._run_once()
@@ -98,8 +98,7 @@ def test_stream_processor_lifecycle() -> None:
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
 
-    # Strategy should be closed and recreated if it already exists and
-    # we got another partition assigned.
+    # Strategy should be closed, but not created again.
     with assert_changes(lambda: int(strategy.close.call_count), 0, 1):
         assignment_callback({Partition(topic, 0): 0})
 
@@ -107,18 +106,14 @@ def test_stream_processor_lifecycle() -> None:
     # strategy instance to be closed.
     consumer.tell.return_value = {}
 
-    with assert_changes(lambda: int(strategy.close.call_count), 1, 2):
+    # there should not be an active strategy between assigning and revoking, so
+    # closing should not happen.
+    with assert_changes(lambda: int(strategy.close.call_count), 1, 1):
         revocation_callback([Partition(topic, 0)])
 
     # Revocation should noop without an active assignment.
     revocation_callback([Partition(topic, 0)])
     revocation_callback([Partition(topic, 0)])
-
-    # The processor should not accept non-heartbeat messages without an
-    # assignment or active processor.
-    consumer.poll.return_value = message.value
-    with pytest.raises(InvalidStateError):
-        processor._run_once()
 
     with assert_changes(lambda: int(consumer.close.call_count), 0, 1), assert_changes(
         lambda: int(factory.shutdown.call_count), 0, 1
@@ -127,18 +122,16 @@ def test_stream_processor_lifecycle() -> None:
 
     assert list((type(call), call.name) for call in metrics.calls) == [
         (Increment, "arroyo.consumer.partitions_assigned.count"),
-        (Timing, "arroyo.consumer.run.create_strategy"),
         (Timing, "arroyo.consumer.run.callback"),
+        (Timing, "arroyo.consumer.run.create_strategy"),
         (Timing, "arroyo.consumer.poll.time"),
         (Timing, "arroyo.consumer.callback.time"),
         (Timing, "arroyo.consumer.processing.time"),
         (Increment, "arroyo.consumer.run.count"),
         (Increment, "arroyo.consumer.partitions_assigned.count"),
         (Timing, "arroyo.consumer.run.close_strategy"),
-        (Timing, "arroyo.consumer.run.create_strategy"),
         (Timing, "arroyo.consumer.run.callback"),
         (Increment, "arroyo.consumer.partitions_revoked.count"),
-        (Timing, "arroyo.consumer.run.close_strategy"),
         (Timing, "arroyo.consumer.run.callback"),
         (Increment, "arroyo.consumer.partitions_revoked.count"),
         (Timing, "arroyo.consumer.run.callback"),
@@ -149,7 +142,6 @@ def test_stream_processor_lifecycle() -> None:
         (Timing, "arroyo.consumer.join.time"),
         (Timing, "arroyo.consumer.shutdown.time"),
         (Timing, "arroyo.consumer.callback.time"),
-        (Timing, "arroyo.consumer.poll.time"),
         (Increment, "arroyo.consumer.run.count"),
     ]
 
@@ -278,10 +270,18 @@ def test_stream_processor_invalid_message_from_submit() -> None:
 def test_stream_processor_create_with_partitions() -> None:
     topic = Topic("topic")
 
+    partition = Partition(topic, 0)
+    offset = 0
+    now = datetime.now()
+    payload = 0
+
+    message = Message(BrokerValue(payload, partition, offset, now))
+
     consumer = mock.Mock()
     strategy = mock.Mock()
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
+    consumer.poll.return_value = message
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
         processor: StreamProcessor[int] = StreamProcessor(
@@ -296,7 +296,9 @@ def test_stream_processor_create_with_partitions() -> None:
 
     # First partition assigned
     offsets_p0 = {Partition(topic, 0): 0}
+    consumer.tell.return_value = offsets_p0
     assignment_callback(offsets_p0)
+    processor._run_once()
 
     create_args, _ = factory.create_with_partitions.call_args
     assert factory.create_with_partitions.call_count == 1
@@ -304,17 +306,20 @@ def test_stream_processor_create_with_partitions() -> None:
 
     # Second partition assigned
     offsets_p1 = {Partition(topic, 1): 0}
+    consumer.tell.return_value = {**offsets_p0, **offsets_p1}
     assignment_callback(offsets_p1)
+    processor._run_once()
 
     create_args, _ = factory.create_with_partitions.call_args
     assert factory.create_with_partitions.call_count == 2
-    assert create_args[1] == offsets_p1
-
+    assert create_args[1] == {**offsets_p0, **offsets_p1}
     processor._run_once()
 
     # First partition revoked
     consumer.tell.return_value = {**offsets_p0, **offsets_p1}
     revocation_callback([Partition(topic, 0)])
+    consumer.tell.return_value = offsets_p1
+    processor._run_once()
 
     create_args, _ = factory.create_with_partitions.call_args
     assert factory.create_with_partitions.call_count == 3
