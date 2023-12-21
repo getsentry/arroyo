@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.15.3
+
+### Various fixes & improvements
+
+- fix: Make `arroyo.consumer.latency` a timing metric (#316) by @lynnagara
+
 ## 2.15.2
 
 ### Various fixes & improvements
