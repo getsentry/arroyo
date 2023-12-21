@@ -27,7 +27,7 @@ class CommitOffsets(ProcessingStrategy[Any]):
         now = time.time()
         if self.__last_record_time is None or now - self.__last_record_time > 1:
             if message.timestamp is not None:
-                self.__metrics.increment(
+                self.__metrics.timing(
                     "arroyo.consumer.latency", now - message.timestamp.timestamp()
                 )
                 self.__last_record_time = now
