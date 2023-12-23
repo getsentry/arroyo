@@ -152,6 +152,18 @@ Here we are using the `RunTask` strategy which runs a custom function over each 
 
 .. code-block:: Python
 
+    from collections.abc import Mapping
+
+    from arroyo.backends.kafka import KafkaPayload
+    from arroyo.processing.strategies import (
+        CommitOffsets,
+        ProcessingStrategy,
+        ProcessingStrategyFactory,
+        RunTask,
+    )
+    from arroyo.types import Commit, Message, Partition, Topic
+
+
     def handle_message(message: Message[KafkaPayload]) -> Message[KafkaPayload]:
         print(f"MSG: {message.payload}")
         return message
@@ -174,10 +186,14 @@ The code above is orchestrated by the Arroyo runtime called `StreamProcessor`.
 
 .. code-block:: Python
 
+    from arroyo.processing import StreamProcessor
+    from arroyo.commit import ONCE_PER_SECOND
+
     processor = StreamProcessor(
         consumer=consumer,
         topic=TOPIC,
         processor_factory=ConsumerStrategyFactory(),
+        commit_policy=ONCE_PER_SECOND,
     )
 
     processor.run()
