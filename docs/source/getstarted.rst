@@ -208,6 +208,10 @@ Now we will chain the `Produce` strategy to produce messages on a second topic a
 
 .. code-block:: Python
 
+    from arroyo.backends.kafka import KafkaProducer
+    from arroyo.backends.kafka.configuration import build_kafka_configuration
+    from arroyo.processing.strategies import Produce
+
     class ConsumerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         """
         The factory manages the lifecycle of the `ProcessingStrategy`.
