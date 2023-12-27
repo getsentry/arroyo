@@ -152,7 +152,7 @@ Here we are using the `RunTask` strategy which runs a custom function over each 
 
 .. code-block:: Python
 
-    from collections.abc import Mapping
+    from typing import Mapping
 
     from arroyo.backends.kafka import KafkaPayload
     from arroyo.processing.strategies import (
