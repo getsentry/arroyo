@@ -473,18 +473,22 @@ class RunTaskWithMultiprocessing(
     encounter a lot of issues at once, best to fix them in this order:
 
     1. First, tune ``input_block_size`` to fix input overflow. This will
-       increase average/effective batch size.
+       increase average/effective batch size. Alternatively, set it to `None`
+       (default) to let arroyo auto-tune it.
     2. Then, tune ``max_batch_size`` and ``max_batch_time`` so that you get the
        highest throughput. Test this by running your consumer on a backlog of
-       messages and look at consumer offset rate, or time it takes to get consumer
-       lag back to normal.
+       messages and look at consumer offset rate (vs broker/total offset rate),
+       or time it takes to get consumer lag back to normal. For as long as you
+       have enough RAM, increment it in large steps (like 2x) and fine-tune
+       afterwards.
     3. Then, tune ``output_block_size`` to fix output overflow. If in your
        previous tests there was a lot of output overflow, this will remove a lot
        of CPU load from your consumer and potentially also increase throughput.
     4. Now take a look at the ``batch.backpressure`` metric. If it is emitted,
        you need to optimize the next strategy (``next_step``) because that's what
        you're bottlenecked on. If it is not emitted, you may need to increase
-       ``num_processes`` or increase batch size.
+       ``num_processes`` or increase batch size, so that
+       `RunTaskWithMultiprocessing` itself is not the bottleneck.
     """
 
     def __init__(
