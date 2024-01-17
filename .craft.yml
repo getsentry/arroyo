@@ -6,5 +6,6 @@ changelogPolicy: auto
 targets:
   - name: github
   - name: pypi
+  - name: crates
   - name: sentry-pypi
     internalPypiRepo: getsentry/pypi
