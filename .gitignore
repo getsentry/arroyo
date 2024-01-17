@@ -8,3 +8,5 @@
 .tox
 .benchmarks/
 .idea/
+target/
+/Cargo.lock

@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
-      - name: Run linter
-        run: cd rust-arroyo && cargo check && cargo fmt --check
+      - run: cargo check
+      - run: cargo fmt --check
 
   test:
     name: "Tests"
@@ -29,4 +29,4 @@ jobs:
       - name: Run Zookeeper and Kafka
         run: sh scripts/run-kafka.sh
       - name: Run tests
-        run: cd rust-arroyo && cargo test
+        run: cargo test

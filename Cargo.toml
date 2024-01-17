@@ -1,9 +1,12 @@
 [package]
 name = "rust_arroyo"
-version = "0.1.0"
+version = "2.15.3"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "rust-arroyo/src/lib.rs"
 
 [dependencies]
 chrono = "0.4.26"
@@ -25,3 +28,15 @@ tracing-subscriber = "0.3.18"
 
 [patch.crates-io]
 rdkafka = { git = "https://github.com/fede1024/rust-rdkafka" }
+
+[[example]]
+name = "base_processor"
+path = "rust-arroyo/examples/base_processor.rs"
+
+[[example]]
+name = "transform_and_produce"
+path = "rust-arroyo/examples/transform_and_produce.rs"
+
+[[example]]
+name = "base_consumer"
+path = "rust-arroyo/examples/base_consumer.rs"
