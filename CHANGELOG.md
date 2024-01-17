@@ -1,5 +1,36 @@
 # Changelog and versioning
 
+## 2.15.4
+
+### Various fixes & improvements
+
+- ref: Add release workflow for Rust (#327) by @untitaker
+- ref(ci): Add Rust CI (#324) by @untitaker
+- Revert "ref: Move rust-arroyo from snuba to arroyo" (#325) by @untitaker
+- ref: Move rust-arroyo from snuba to arroyo (#323) by @untitaker
+- move rust-arroyo to subdirectory (#323) by @untitaker
+- fix(multiprocessing): Implement better error messages for block overflow (#322) by @untitaker
+- rust: add rust concurrency metric (#5341) by @untitaker
+- ref(rust): Don't panic in RunTaskInThreads::poll (#5387) by @untitaker
+- deps(rust): Change rdkafka dep to upstream master (#5386) by @untitaker
+- ref(metrics): Refactor how global tags work, and introduce min_partition tag (#5346) by @untitaker
+- Add Metrics impl based on `merni` (#5351) by @untitaker
+- fix: Remove any panics in threads (#5353) by @untitaker
+- ref(devserver): Use Rust consumers almost everywhere, and fix commitlog implementation (#5311) by @untitaker
+- Avoid calling `Topic::new` for every received Message (#5331) by @untitaker
+- Reuse Tokio Handle in DlqPolicy (#5329) by @untitaker
+- ref(rust): Log actual error if strategy panics (#5317) by @untitaker
+- fix(rust): add testcase for empty batches (#5299) by @untitaker
+- Revert "ref(rust): Do not do extra work when merging if not needed (#5294)" (#323) by @untitaker
+- ref(rust): Remove explicit buffering of gauges (#5293) by @untitaker
+- doc: Add some notes to the fine-tuning section of RunTaskWithMultiprocessing, based on work in SBC (#321) by @untitaker
+- ref(rust): Do not do extra work when merging if not needed (#5294) by @untitaker
+- feat(rust): Add number of rows processed to the batch size instead of 1 (#5284) by @untitaker
+- ref: Run CI on python 3.12 (#320) by @lynnagara
+- fix(rust): Remove print stmt (#5269) by @untitaker
+
+_Plus 140 more_
+
 ## 2.15.3
 
 ### Various fixes & improvements
