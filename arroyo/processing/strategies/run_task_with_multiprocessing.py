@@ -69,11 +69,12 @@ class MessageBatch(Generic[TBatchValue]):
     shared across processes.
     """
 
-    def __init__(self, block: SharedMemory) -> None:
+    def __init__(self, block: SharedMemory, overflow_error_message: str) -> None:
         self.block = block
         self.__items: MutableSequence[SerializedBatchValue] = []
         self.__offset = 0
         self.__iter_offset = 0
+        self.__overflow_error_message = overflow_error_message
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__}: {len(self)} items, {self.__offset} bytes>"
@@ -152,8 +153,9 @@ class MessageBatch(Generic[TBatchValue]):
             length = len(value)
             if offset + length > self.block.size:
                 raise ValueTooLarge(
-                    f"value exceeds available space in block, {length} "
-                    f"bytes needed but {self.block.size - offset} bytes free"
+                    f"{self.__overflow_error_message}\n\n"
+                    f"Value exceeds available space in block, {length} "
+                    f"bytes needed but {self.block.size - offset} bytes free."
                 )
             self.block.buf[offset : offset + length] = value
             self.__offset += length
@@ -225,7 +227,10 @@ def parallel_run_task_worker_apply(
 ) -> ParallelRunTaskResult[TResult]:
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
-    ] = MessageBatch(output_block)
+    ] = MessageBatch(
+        output_block,
+        "A message was too large for the output block. Consider increasing --output-block-size",
+    )
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
@@ -798,7 +803,10 @@ class RunTaskWithMultiprocessing(
             raise MessageRejected("no available input blocks") from e
 
         self.__batch_builder = BatchBuilder(
-            MessageBatch(input_block),
+            MessageBatch(
+                input_block,
+                "A message is too large for the input block. Consider increasing --input-block-size",
+            ),
             self.__max_batch_size,
             self.__max_batch_time,
         )

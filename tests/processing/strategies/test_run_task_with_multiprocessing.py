@@ -38,7 +38,7 @@ def test_message_batch() -> None:
         Value(KafkaPayload(None, b"\x00" * 16000, []), {partition: 1}, datetime.now())
     )
 
-    batch: MessageBatch[Message[KafkaPayload]] = MessageBatch(block)
+    batch: MessageBatch[Message[KafkaPayload]] = MessageBatch(block, "test")
     with assert_changes(lambda: len(batch), 0, 1):
         batch.append(message)
 
@@ -76,7 +76,7 @@ def test_parallel_run_task_worker_apply() -> None:
     input_block = smm.SharedMemory(32768)
     assert input_block.size == 32768
 
-    input_batch = MessageBatch[Message[Any]](input_block)
+    input_batch = MessageBatch[Message[Any]](input_block, "test")
     for message in messages:
         input_batch.append(message)
 
