@@ -1,0 +1,10 @@
+minVersion: 0.34.1
+github:
+  owner: getsentry
+  repo: arroyo
+changelogPolicy: auto
+targets:
+  - name: github
+  - name: pypi
+  - name: sentry-pypi
+    internalPypiRepo: getsentry/pypi
