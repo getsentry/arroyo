@@ -26,5 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
+      - name: Run Zookeeper and Kafka
+        run: sh scripts/run-kafka.sh
       - name: Run tests
         run: cd rust-arroyo && cargo test
