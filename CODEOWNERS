@@ -1,2 +1,2 @@
 * @getsentry/owners-snuba
-/rust-arroyo @getsentry/owners-snuba @getsentry/owners-processing
+/rust-arroyo @getsentry/owners-snuba @getsentry/processing
