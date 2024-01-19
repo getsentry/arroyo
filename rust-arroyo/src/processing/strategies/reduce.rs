@@ -184,8 +184,7 @@ impl<T, TResult: Clone> Reduce<T, TResult> {
             return Ok(());
         }
 
-        // FIXME: this used to be in seconds
-        timer!("arroyo.strategies.reduce.batch_time", batch_time);
+        timer!("arroyo.strategies.reduce.batch_time.ms", batch_time);
 
         let batch_state = mem::replace(
             &mut self.batch_state,
