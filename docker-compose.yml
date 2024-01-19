@@ -1,0 +1,60 @@
+# copied from https://github.com/confluentinc/kafka-images/blob/ec53840b3673a039a9eae6623f773399ad50c31c/examples/kafka-cluster/docker-compose.yml
+# major changes:
+# - use getsentry's image mirrors to avoid docker rate limits
+# - avoid network_mode: host due to limitations on macos
+# - trim down on zookeeper nodes (just for simplicity, might want to add it
+#   later to test something more specific)
+---
+version: '3'
+name: arroyo
+
+x-zookeeper-common: &zookeeper-common
+  image: ghcr.io/getsentry/image-mirror-confluentinc-cp-zookeeper:6.2.0
+
+x-zookeeper-common-env: &zookeeper-common-env
+  ZOOKEEPER_CLIENT_PORT: 2181
+  ZOOKEEPER_TICK_TIME: 2000
+  ZOOKEEPER_INIT_LIMIT: 5
+  ZOOKEEPER_SYNC_LIMIT: 2
+
+x-kafka-common: &kafka-common
+  image: "ghcr.io/getsentry/image-mirror-confluentinc-cp-kafka:6.2.0"
+  depends_on:
+    - zookeeper-1
+
+x-kafka-common-env: &kafka-common-env
+  KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_LISTENERS: INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092
+
+services:
+  zookeeper-1:
+    <<: *zookeeper-common
+    environment:
+      <<: *zookeeper-common-env
+      ZOOKEEPER_SERVER_ID: 1
+
+  kafka-1:
+    <<: *kafka-common
+    ports: ["19092:9092"]
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://127.0.0.1:19092,INTERNAL://kafka-1:9093
+
+  kafka-2:
+    <<: *kafka-common
+    ports: ["29092:9092"]
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://127.0.0.1:29092,INTERNAL://kafka-2:9093
+
+  kafka-3:
+    <<: *kafka-common
+    ports: ["39092:9092"]
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://127.0.0.1:39092,INTERNAL://kafka-3:9093

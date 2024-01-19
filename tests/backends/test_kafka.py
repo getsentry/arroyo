@@ -2,6 +2,7 @@ import contextlib
 import itertools
 import os
 import pickle
+import subprocess
 import time
 import uuid
 from contextlib import closing
@@ -14,7 +15,10 @@ from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
-from arroyo.backends.kafka.configuration import build_kafka_configuration
+from arroyo.backends.kafka.configuration import (
+    KafkaBrokerConfig,
+    build_kafka_configuration,
+)
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import IMMEDIATE, Commit
 from arroyo.errors import ConsumerError, EndOfPartition
@@ -70,10 +74,26 @@ def get_topic(
 
 
 class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
+    distributed = False
 
-    configuration = build_kafka_configuration(
-        {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
-    )
+    @property
+    def configuration(self) -> KafkaBrokerConfig:
+        if self.distributed:
+            return build_kafka_configuration(
+                {
+                    "bootstrap.servers": os.environ.get(
+                        "DEFAULT_DISTRIBUTED_BROKERS", "127.0.0.1:19092"
+                    )
+                }
+            )
+        else:
+            return build_kafka_configuration(
+                {
+                    "bootstrap.servers": os.environ.get(
+                        "DEFAULT_BROKERS", "127.0.0.1:9092"
+                    )
+                }
+            )
 
     @contextlib.contextmanager
     def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
@@ -192,6 +212,32 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 with pytest.raises(RuntimeError):
                     processor.run()
+
+    def test_kafka_broker_died(self) -> None:
+        self.distributed = True
+
+        with self.get_topic(partitions=32) as topic:
+            with closing(self.get_producer()) as producer:
+                payloads = self.get_payloads()
+                for _ in range(100):
+                    producer.produce(topic, next(payloads)).result(5.0)
+
+            with closing(self.get_consumer(auto_offset_reset="earliest")) as consumer:
+                consumer.subscribe([topic])
+
+                value = consumer.poll(10.0)
+                assert isinstance(value, BrokerValue)
+
+                subprocess.check_call(["docker", "kill", "arroyo-kafka-1-1"])
+                subprocess.check_call(["docker", "kill", "arroyo-kafka-2-1"])
+
+                consumer.stage_offsets(value.committable)
+
+                with pytest.raises(Exception):
+                    consumer.commit_offsets()
+
+                with pytest.raises(Exception):
+                    consumer.poll(10.0)
 
 
 def test_commit_codec() -> None:
