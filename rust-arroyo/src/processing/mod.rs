@@ -135,7 +135,6 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
 
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>) {
         tracing::info!("Partitions to revoke: {:?}", partitions);
-        tracing::info!("Start revoke partitions");
         counter!(
             "arroyo.consumer.partitions_revoked.count",
             partitions.len() as i64,
@@ -175,7 +174,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
 
         timer!("arroyo.consumer.join.time", start.elapsed());
 
-        tracing::info!("End revoke partitions");
+        tracing::info!("Partition revocation complete.");
 
         // TODO: Figure out how to flush the metrics buffer from the recovation callback.
     }
