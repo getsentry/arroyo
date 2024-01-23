@@ -14,12 +14,12 @@ from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
 from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
 from arroyo.utils.metrics import get_metrics
 
-TPayload = TypeVar("TPayload")
-TResult = TypeVar("TResult")
+TPayload = TypeVar("TPayload", contravariant=True)
+TResult = TypeVar("TResult", covariant=True)
 
 
 # Does the protocol need to be generic over the payload and result?
-class BufferProtocol(Protocol):
+class BufferProtocol(Protocol[TPayload, TResult]):
     """Reduce strategy buffer protocol.
 
     Buffer is agnostic to the caller. It accepts messages and describes its state to caller's
@@ -85,7 +85,7 @@ class Buffer(
 
     def __init__(
         self,
-        buffer: BufferProtocol,
+        buffer: BufferProtocol[TPayload, TResult],
         next_step: ProcessingStrategy[TResult],
     ) -> None:
         self.__buffer = buffer
@@ -113,6 +113,8 @@ class Buffer(
             return None
 
         # Push the buffer to the next step.
+        assert isinstance(self.__last_timestamp, datetime)
+
         buffer_msg = Message(
             Value(
                 payload=cast(TResult, self.__buffer.buffer),
@@ -151,7 +153,10 @@ class Buffer(
             return
 
         self.__flush(force=False)
-        self.__buffer.append(cast(BaseValue[TPayload], message.value))
+
+        self.__offsets.update(message.value.committable)
+        self.__last_timestamp = message.value.timestamp
+        self.__buffer.append(cast(BaseValue[TPayload], message.value).payload)
 
     def poll(self) -> None:
         assert not self.__closed
