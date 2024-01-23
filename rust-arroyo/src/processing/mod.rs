@@ -117,6 +117,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
     // initialization.  But we just provide a signal back to the
     // processor to do that.
     fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+        tracing::info!("New partitions assigned: {:?}", partitions);
         counter!(
             "arroyo.consumer.partitions_assigned.count",
             partitions.len() as i64
@@ -133,7 +134,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
     }
 
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>) {
-        tracing::info!("Start revoke partitions");
+        tracing::info!("Partitions to revoke: {:?}", partitions);
         counter!(
             "arroyo.consumer.partitions_revoked.count",
             partitions.len() as i64,
@@ -173,7 +174,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
 
         timer!("arroyo.consumer.join.time", start.elapsed());
 
-        tracing::info!("End revoke partitions");
+        tracing::info!("Partition revocation complete.");
 
         // TODO: Figure out how to flush the metrics buffer from the recovation callback.
     }
