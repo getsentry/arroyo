@@ -120,7 +120,7 @@ class Buffer(
                 timestamp=self.__last_timestamp,
             )
         )
-        self.__next_step.submit(cast(Message[TResult], buffer_msg))
+        self.__next_step.submit(buffer_msg)
         self.__metrics.timing(
             "arroyo.strategies.reduce.batch_time",
             time.time() - self.__init_time,
