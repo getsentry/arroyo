@@ -1,16 +1,17 @@
 from datetime import datetime
 from unittest.mock import Mock, call
+from typing import List
 
 from arroyo.processing.strategies.buffer import Buffer
 from arroyo.types import Message, Partition, Topic, Value
 
 
 class BufferTest:
-    def __init__(self):
-        self._buffer = []
+    def __init__(self) -> None:
+        self._buffer: List[int] = []
 
     @property
-    def buffer(self) -> list[int]:
+    def buffer(self) -> List[int]:
         return self._buffer
 
     @property
@@ -24,7 +25,7 @@ class BufferTest:
     def append(self, message: int) -> None:
         self._buffer.append(message)
 
-    def new(self):
+    def new(self) -> "BufferTest":
         return BufferTest()
 
 

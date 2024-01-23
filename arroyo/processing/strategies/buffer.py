@@ -54,7 +54,7 @@ class BufferProtocol(Protocol[TPayload, TResult]):
         """Accept a TPayload mutating the internal state of the batch builder."""
         ...
 
-    def new(self) -> "BufferProtocol":
+    def new(self) -> "BufferProtocol[TPayload, TResult]":
         """Return a new instance of the "BufferProtocol" class.
 
         This is defined as an instance method (as opposed to a factory method) because we do
@@ -117,7 +117,7 @@ class Buffer(
 
         buffer_msg = Message(
             Value(
-                payload=cast(TResult, self.__buffer.buffer),
+                payload=self.__buffer.buffer,
                 committable=self.__offsets,
                 timestamp=self.__last_timestamp,
             )
