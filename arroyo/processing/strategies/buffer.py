@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
 from typing import (
-    Callable,
     Generic,
     MutableMapping,
     Optional,
@@ -19,11 +18,8 @@ TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
 
 
-Accumulator = Callable[[TResult, BaseValue[TPayload]], TResult]
-
-
 # Does the protocol need to be generic over the payload and result?
-class Buffer(Protocol[TPayload, TResult]):
+class BufferProtocol(Protocol):
     """Reduce strategy buffer protocol.
 
     Buffer is agnostic to the caller. It accepts messages and describes its state to caller's
@@ -58,8 +54,8 @@ class Buffer(Protocol[TPayload, TResult]):
         """Accept a TPayload mutating the internal state of the batch builder."""
         ...
 
-    def new(self) -> "Buffer":
-        """Return a new instance of the "Buffer" protocol class.
+    def new(self) -> "BufferProtocol":
+        """Return a new instance of the "BufferProtocol" class.
 
         This is defined as an instance method (as opposed to a factory method) because we do
         not want the Reduce strategy to know _anything_ about the buffer's implementation. The
@@ -75,7 +71,7 @@ class Buffer(Protocol[TPayload, TResult]):
         ...
 
 
-class Reduce(
+class Buffer(
     ProcessingStrategy[Union[FilteredPayload, TPayload]], Generic[TPayload, TResult]
 ):
     """Accumulates messages until the buffer declares its ready to commit. The accumulator
@@ -87,7 +83,11 @@ class Reduce(
     downstream steps if they are thrown.
     """
 
-    def __init__(self, buffer: Buffer, next_step: ProcessingStrategy[TResult]) -> None:
+    def __init__(
+        self,
+        buffer: BufferProtocol,
+        next_step: ProcessingStrategy[TResult],
+    ) -> None:
         self.__buffer = buffer
         self.__next_step = next_step
         self.__metrics = get_metrics()
@@ -115,12 +115,12 @@ class Reduce(
         # Push the buffer to the next step.
         buffer_msg = Message(
             Value(
-                payload=self.__buffer.buffer,
+                payload=cast(TResult, self.__buffer.buffer),
                 committable=self.__offsets,
                 timestamp=self.__last_timestamp,
             )
         )
-        self.__next_step.submit(buffer_msg)
+        self.__next_step.submit(cast(Message[TResult], buffer_msg))
         self.__metrics.timing(
             "arroyo.strategies.reduce.batch_time",
             time.time() - self.__init_time,
