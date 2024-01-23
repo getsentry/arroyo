@@ -190,4 +190,4 @@ class Buffer(
         )
 
 
-__all__ = ["Reduce"]
+__all__ = ["Buffer"]
