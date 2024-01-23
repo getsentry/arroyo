@@ -3,7 +3,7 @@ from unittest.mock import Mock, call
 from typing import List
 
 from arroyo.processing.strategies.buffer import Buffer
-from arroyo.types import Message, Partition, Topic, Value
+from arroyo.types import BaseValue, Message, Partition, Topic, Value
 
 
 class BufferTest:
@@ -22,8 +22,8 @@ class BufferTest:
     def is_ready(self) -> bool:
         return len(self._buffer) >= 3
 
-    def append(self, message: int) -> None:
-        self._buffer.append(message)
+    def append(self, message: BaseValue[int]) -> None:
+        self._buffer.append(message.payload)
 
     def new(self) -> "BufferTest":
         return BufferTest()

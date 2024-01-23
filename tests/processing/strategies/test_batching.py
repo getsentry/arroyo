@@ -7,7 +7,6 @@ import pytest
 
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
-from arroyo.processing.strategies.reduce import BatchBuilder
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
@@ -109,44 +108,6 @@ test_builder = [
         id="Messages with multiple offsets to commit",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "values_in, time_create, time_end, expected_offsets, expected_ready", test_builder
-)
-@patch("time.time")
-def test_batch_builder(
-    mock_time: Any,
-    values_in: Sequence[BaseValue[str]],
-    time_create: datetime,
-    time_end: datetime,
-    expected_offsets: Mapping[Partition, int],
-    expected_ready: bool,
-) -> None:
-    start = time.mktime(time_create.timetuple())
-    mock_time.return_value = start
-
-    def accumulator(
-        result: ValuesBatch[str], value: BaseValue[str]
-    ) -> ValuesBatch[str]:
-        result.append(value)
-        return result
-
-    batch_builder: BatchBuilder[str, ValuesBatch[str]] = BatchBuilder(
-        accumulator, [], 5, 10.0
-    )
-    for m in values_in:
-        batch_builder.append(m)
-
-    flush = time.mktime(time_end.timetuple())
-    mock_time.return_value = flush
-    batch = batch_builder.build_if_ready()
-    if expected_ready:
-        assert batch is not None
-        assert len(batch.payload) == len(values_in)
-        assert batch.committable == expected_offsets
-    else:
-        assert batch is None
 
 
 def message(partition: int, offset: int, payload: str) -> Message[str]:
