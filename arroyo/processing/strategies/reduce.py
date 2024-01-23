@@ -1,11 +1,9 @@
 import time
-from datetime import datetime
-from typing import Callable, Generic, MutableMapping, Optional, TypeVar, Union, cast
+from typing import Callable, Generic, Optional, TypeVar, Union
 
 from arroyo.processing.strategies.buffer import Buffer
-from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
-from arroyo.utils.metrics import get_metrics
+from arroyo.processing.strategies import ProcessingStrategy
+from arroyo.types import BaseValue, FilteredPayload, Message
 
 TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
