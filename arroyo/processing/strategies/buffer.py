@@ -50,7 +50,7 @@ class BufferProtocol(Protocol[TPayload, TResult]):
         """
         ...
 
-    def append(self, message: TPayload) -> None:
+    def append(self, message: BaseValue[TPayload]) -> None:
         """Accept a TPayload mutating the internal state of the batch builder."""
         ...
 
@@ -156,7 +156,7 @@ class Buffer(
 
         self.__offsets.update(message.value.committable)
         self.__last_timestamp = message.value.timestamp
-        self.__buffer.append(cast(BaseValue[TPayload], message.value).payload)
+        self.__buffer.append(cast(BaseValue[TPayload], message.value))
 
     def poll(self) -> None:
         assert not self.__closed
