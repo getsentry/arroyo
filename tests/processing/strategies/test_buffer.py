@@ -19,7 +19,7 @@ class BufferTest:
         return len(self._buffer) == 0
 
     @property
-    def ready_to_commit(self) -> bool:
+    def is_ready(self) -> bool:
         return len(self._buffer) >= 3
 
     def append(self, message: int) -> None:

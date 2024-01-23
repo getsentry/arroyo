@@ -42,7 +42,7 @@ class BufferProtocol(Protocol[TPayload, TResult]):
         ...
 
     @property
-    def ready_to_commit(self) -> bool:
+    def is_ready(self) -> bool:
         """Return "True" if the buffer is ready to be committed.
 
         Determined by message count, buffer size, the time of day, the phase of the moon,
@@ -109,7 +109,7 @@ class Buffer(
             return None
 
         # If you're not forcing me and I'm not ready to commit then I'm not doing anything.
-        if not force and not self.__buffer.ready_to_commit:
+        if not force and not self.__buffer.is_ready:
             return None
 
         # Push the buffer to the next step.
