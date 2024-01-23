@@ -8,7 +8,7 @@ import pytest
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 
 NOW = datetime(2022, 1, 1, 0, 0, 1)
 
