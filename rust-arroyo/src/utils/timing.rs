@@ -7,6 +7,7 @@ pub struct Deadline {
     duration: Duration,
 }
 
+#[inline(always)]
 fn now() -> coarsetime::Instant {
     coarsetime::Instant::now_without_cache_update()
 }
