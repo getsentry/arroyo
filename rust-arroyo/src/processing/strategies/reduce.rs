@@ -413,6 +413,7 @@ mod tests {
         assert!(submitted_messages_clone.lock().unwrap().is_empty());
     }
 
+    #[test]
     fn test_reduce_with_zero_batch_size_flush() {
         let submitted_messages = Arc::new(Mutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();

@@ -1,5 +1,5 @@
+use fxhash::FxHashMap;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
-use std::collections::HashMap;
 
 use super::InitialOffset;
 
@@ -11,7 +11,7 @@ pub struct OffsetResetConfig {
 
 #[derive(Debug, Clone)]
 pub struct KafkaConfig {
-    config_map: HashMap<String, String>,
+    config_map: FxHashMap<String, String>,
     // Only applies to consumers
     offset_reset_config: Option<OffsetResetConfig>,
 }
@@ -19,9 +19,9 @@ pub struct KafkaConfig {
 impl KafkaConfig {
     pub fn new_config(
         bootstrap_servers: Vec<String>,
-        override_params: Option<HashMap<String, String>>,
+        override_params: Option<FxHashMap<String, String>>,
     ) -> Self {
-        let mut config_map = HashMap::new();
+        let mut config_map = FxHashMap::default();
         config_map.insert("bootstrap.servers".to_string(), bootstrap_servers.join(","));
         let config = Self {
             config_map,
@@ -37,7 +37,7 @@ impl KafkaConfig {
         auto_offset_reset: InitialOffset,
         strict_offset_reset: bool,
         max_poll_interval_ms: usize,
-        override_params: Option<HashMap<String, String>>,
+        override_params: Option<FxHashMap<String, String>>,
     ) -> Self {
         let mut config = KafkaConfig::new_config(bootstrap_servers, None);
         config.offset_reset_config = Some(OffsetResetConfig {
@@ -68,7 +68,7 @@ impl KafkaConfig {
 
     pub fn new_producer_config(
         bootstrap_servers: Vec<String>,
-        override_params: Option<HashMap<String, String>>,
+        override_params: Option<FxHashMap<String, String>>,
     ) -> Self {
         let config = KafkaConfig::new_config(bootstrap_servers, None);
 
@@ -104,7 +104,7 @@ impl From<KafkaConfig> for RdKafkaConfig {
 
 fn apply_override_params(
     mut config: KafkaConfig,
-    override_params: Option<HashMap<String, String>>,
+    override_params: Option<FxHashMap<String, String>>,
 ) -> KafkaConfig {
     if let Some(params) = override_params {
         for (param, value) in params {
@@ -119,8 +119,8 @@ mod tests {
     use crate::backends::kafka::InitialOffset;
 
     use super::KafkaConfig;
+    use fxhash::FxHashMap;
     use rdkafka::config::ClientConfig as RdKafkaConfig;
-    use std::collections::HashMap;
 
     #[test]
     fn test_build_consumer_configuration() {
@@ -130,7 +130,7 @@ mod tests {
             InitialOffset::Error,
             false,
             30_000,
-            Some(HashMap::from([(
+            Some(FxHashMap::from_iter([(
                 "queued.max.messages.kbytes".to_string(),
                 "1000000".to_string(),
             )])),

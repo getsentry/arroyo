@@ -6,6 +6,7 @@ use super::ConsumerError;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use parking_lot::Mutex;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
@@ -16,8 +17,6 @@ use rdkafka::message::{BorrowedMessage, Message};
 use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use rdkafka::types::{RDKafkaErrorCode, RDKafkaRespErr};
 use sentry::Hub;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -108,7 +107,7 @@ fn create_kafka_message(topics: &[Topic], msg: BorrowedMessage) -> BrokerMessage
 
 fn commit_impl<C: AssignmentCallbacks>(
     consumer: &BaseConsumer<CustomContext<C>>,
-    offsets: HashMap<Partition, u64>,
+    offsets: FxHashMap<Partition, u64>,
 ) -> Result<(), ConsumerError> {
     let mut partitions = TopicPartitionList::with_capacity(offsets.len());
     for (partition, offset) in &offsets {
@@ -128,7 +127,7 @@ struct OffsetCommitter<'a, C: AssignmentCallbacks> {
 }
 
 impl<'a, C: AssignmentCallbacks> CommitOffsets for OffsetCommitter<'a, C> {
-    fn commit(self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn commit(self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         commit_impl(self.consumer, offsets)
     }
 }
@@ -227,8 +226,10 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
                     .committed_offsets((*tpl).clone(), None)
                     .unwrap();
 
-                let mut offset_map: HashMap<Partition, u64> =
-                    HashMap::with_capacity(committed_offsets.count());
+                let mut offset_map: FxHashMap<Partition, u64> = FxHashMap::with_capacity_and_hasher(
+                    committed_offsets.count(),
+                    FxBuildHasher::default(),
+                );
                 let mut tpl = TopicPartitionList::with_capacity(committed_offsets.count());
 
                 for partition in committed_offsets.elements() {
@@ -293,9 +294,9 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
 struct OffsetState {
     // offsets: the currently-*read* offset of the consumer, updated on poll()
     // staged_offsets do not exist: the Commit strategy takes care of offset staging
-    offsets: HashMap<Partition, u64>,
+    offsets: FxHashMap<Partition, u64>,
     // list of partitions that are currently paused
-    paused: HashSet<Partition>,
+    paused: FxHashSet<Partition>,
 }
 
 pub struct KafkaConsumer<C: AssignmentCallbacks> {
@@ -372,7 +373,7 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
         }
     }
 
-    fn pause(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError> {
+    fn pause(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError> {
         self.state.assert_consuming_state()?;
 
         let mut topic_partition_list = TopicPartitionList::with_capacity(partitions.len());
@@ -402,7 +403,7 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
         Ok(())
     }
 
-    fn resume(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError> {
+    fn resume(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError> {
         self.state.assert_consuming_state()?;
 
         let mut topic_partition_list = TopicPartitionList::new();
@@ -432,17 +433,17 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
         Ok(())
     }
 
-    fn paused(&self) -> Result<HashSet<Partition>, ConsumerError> {
+    fn paused(&self) -> Result<FxHashSet<Partition>, ConsumerError> {
         self.state.assert_consuming_state()?;
         Ok(self.offset_state.lock().paused.clone())
     }
 
-    fn tell(&self) -> Result<HashMap<Partition, u64>, ConsumerError> {
+    fn tell(&self) -> Result<FxHashMap<Partition, u64>, ConsumerError> {
         self.state.assert_consuming_state()?;
         Ok(self.offset_state.lock().offsets.clone())
     }
 
-    fn seek(&self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn seek(&self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         self.state.assert_consuming_state()?;
 
         {
@@ -471,7 +472,7 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
         Ok(())
     }
 
-    fn commit_offsets(&mut self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn commit_offsets(&mut self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         self.state.assert_consuming_state()?;
         commit_impl(&self.consumer, offsets)
     }
@@ -479,8 +480,6 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::{AssignmentCallbacks, InitialOffset, KafkaConsumer};
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::producer::KafkaProducer;
@@ -488,13 +487,13 @@ mod tests {
     use crate::backends::{Consumer, Producer};
     use crate::testutils::{get_default_broker, TestTopic};
     use crate::types::{BrokerMessage, Partition, Topic};
-    use std::collections::HashMap;
+    use fxhash::{FxHashMap, FxHashSet};
     use std::thread::sleep;
     use std::time::Duration;
 
     struct EmptyCallbacks {}
     impl AssignmentCallbacks for EmptyCallbacks {
-        fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+        fn on_assign(&self, partitions: FxHashMap<Partition, u64>) {
             println!("assignment event: {:?}", partitions);
         }
         fn on_revoke<C>(&self, _: C, partitions: Vec<Partition>) {
@@ -556,7 +555,7 @@ mod tests {
         );
         let mut consumer =
             KafkaConsumer::new(configuration, &[topic.topic], EmptyCallbacks {}).unwrap();
-        assert_eq!(consumer.tell().unwrap(), HashMap::new());
+        assert_eq!(consumer.tell().unwrap(), FxHashMap::default());
 
         // Getting the assignment may take a while
         for _ in 0..10 {
@@ -602,7 +601,7 @@ mod tests {
 
         let mut consumer =
             KafkaConsumer::new(configuration, &[topic.topic], EmptyCallbacks {}).unwrap();
-        assert_eq!(consumer.tell().unwrap(), HashMap::new());
+        assert_eq!(consumer.tell().unwrap(), FxHashMap::default());
 
         let mut consumer_message = None;
 
@@ -626,7 +625,7 @@ mod tests {
             .is_none());
 
         consumer
-            .commit_offsets(HashMap::from([(
+            .commit_offsets(FxHashMap::from_iter([(
                 consumer_message.partition,
                 consumer_message.offset + 1,
             )]))
@@ -650,7 +649,7 @@ mod tests {
         let mut consumer =
             KafkaConsumer::new(configuration, &[topic.topic], EmptyCallbacks {}).unwrap();
 
-        let positions = HashMap::from([(
+        let positions = FxHashMap::from_iter([(
             Partition {
                 topic: topic.topic,
                 index: 0,
@@ -698,7 +697,7 @@ mod tests {
         let old_offsets = consumer.tell().unwrap();
         assert_eq!(
             old_offsets,
-            HashMap::from([(Partition::new(topic.topic, 0), 0)])
+            FxHashMap::from_iter([(Partition::new(topic.topic, 0), 0)])
         );
 
         let consumer_message = blocking_poll(&mut consumer).unwrap();
@@ -712,12 +711,12 @@ mod tests {
         // -- "Seeking to a specific partition offset and immediately pausing that partition causes
         // the seek to be ignored for some reason."
         consumer.seek(old_offsets.clone()).unwrap();
-        let current_partitions: HashSet<_> = consumer.tell().unwrap().into_keys().collect();
+        let current_partitions: FxHashSet<_> = consumer.tell().unwrap().into_keys().collect();
         assert_eq!(current_partitions.len(), 1);
         consumer.pause(current_partitions.clone()).unwrap();
         assert_eq!(
             consumer.tell().unwrap(),
-            HashMap::from([(Partition::new(topic.topic, 0), 0)])
+            FxHashMap::from_iter([(Partition::new(topic.topic, 0), 0)])
         );
 
         let empty_poll = consumer.poll(Some(Duration::from_secs(5))).unwrap();

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -116,7 +116,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
     // Revisit this so that it is not the callback that perform the
     // initialization.  But we just provide a signal back to the
     // processor to do that.
-    fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+    fn on_assign(&self, partitions: FxHashMap<Partition, u64>) {
         tracing::info!("New partitions assigned: {:?}", partitions);
         counter!(
             "arroyo.consumer.partitions_assigned.count",
@@ -425,7 +425,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         self.processor_handle.clone()
     }
 
-    pub fn tell(&self) -> HashMap<Partition, u64> {
+    pub fn tell(&self) -> FxHashMap<Partition, u64> {
         self.consumer.tell().unwrap()
     }
 
@@ -443,7 +443,6 @@ mod tests {
     use crate::backends::storages::memory::MemoryMessageStorage;
     use crate::types::{Message, Partition, Topic};
     use crate::utils::clock::SystemClock;
-    use std::collections::HashMap;
     use std::time::Duration;
     use uuid::Uuid;
 
@@ -454,7 +453,7 @@ mod tests {
         #[allow(clippy::manual_map)]
         fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
             Ok(self.message.as_ref().map(|message| CommitRequest {
-                positions: HashMap::from_iter(message.committable()),
+                positions: FxHashMap::from_iter(message.committable()),
             }))
         }
 
@@ -535,7 +534,7 @@ mod tests {
         let res = processor.run_once();
         assert!(res.is_ok());
 
-        let expected = HashMap::from([(partition, 2)]);
+        let expected = FxHashMap::from_iter([(partition, 2)]);
 
         assert_eq!(processor.tell(), expected)
     }

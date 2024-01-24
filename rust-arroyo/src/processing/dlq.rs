@@ -1,5 +1,6 @@
+use fxhash::FxHashMap;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -26,7 +27,7 @@ pub trait DlqProducer<TPayload>: Send + Sync {
     fn build_initial_state(
         &self,
         limit: DlqLimit,
-        assignment: &HashMap<Partition, u64>,
+        assignment: &FxHashMap<Partition, u64>,
     ) -> DlqLimitState;
 }
 
@@ -44,9 +45,9 @@ impl<TPayload: Send + Sync + 'static> DlqProducer<TPayload> for NoopDlqProducer 
     fn build_initial_state(
         &self,
         limit: DlqLimit,
-        _assignment: &HashMap<Partition, u64>,
+        _assignment: &FxHashMap<Partition, u64>,
     ) -> DlqLimitState {
-        DlqLimitState::new(limit, HashMap::new())
+        DlqLimitState::new(limit, FxHashMap::default())
     }
 }
 
@@ -106,7 +107,7 @@ impl DlqProducer<KafkaPayload> for KafkaDlqProducer {
     fn build_initial_state(
         &self,
         limit: DlqLimit,
-        assignment: &HashMap<Partition, u64>,
+        assignment: &FxHashMap<Partition, u64>,
     ) -> DlqLimitState {
         // XXX: We assume the last offsets were invalid when starting the consumer
         DlqLimitState::new(
@@ -166,12 +167,12 @@ impl InvalidMessageStats {
 #[derive(Debug, Clone, Default)]
 pub struct DlqLimitState {
     limit: DlqLimit,
-    records: HashMap<Partition, InvalidMessageStats>,
+    records: FxHashMap<Partition, InvalidMessageStats>,
 }
 
 impl DlqLimitState {
     /// Creates a `DlqLimitState` with a given limit and initial set of records.
-    pub fn new(limit: DlqLimit, records: HashMap<Partition, InvalidMessageStats>) -> Self {
+    pub fn new(limit: DlqLimit, records: FxHashMap<Partition, InvalidMessageStats>) -> Self {
         Self { limit, records }
     }
 
@@ -299,7 +300,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
     }
 
     /// Clears the DLQ limits.
-    pub fn reset_dlq_limits(&mut self, assignment: &HashMap<Partition, u64>) {
+    pub fn reset_dlq_limits(&mut self, assignment: &FxHashMap<Partition, u64>) {
         let Some(inner) = self.inner.as_mut() else {
             return;
         };
@@ -352,7 +353,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
 
     // Blocks until all messages up to the committable have been produced so
     // they are safe to commit.
-    pub fn flush(&mut self, committable: &HashMap<Partition, u64>) {
+    pub fn flush(&mut self, committable: &FxHashMap<Partition, u64>) {
         let Some(inner) = self.inner.as_mut() else {
             return;
         };
@@ -547,7 +548,7 @@ mod tests {
         fn build_initial_state(
             &self,
             limit: DlqLimit,
-            assignment: &HashMap<Partition, u64>,
+            assignment: &FxHashMap<Partition, u64>,
         ) -> DlqLimitState {
             DlqLimitState::new(
                 limit,
@@ -576,7 +577,7 @@ mod tests {
             None,
         )));
 
-        wrapper.reset_dlq_limits(&HashMap::from([(partition, 0)]));
+        wrapper.reset_dlq_limits(&FxHashMap::from_iter([(partition, 0)]));
 
         for i in 0..10 {
             wrapper.produce(BrokerMessage {
@@ -587,7 +588,7 @@ mod tests {
             });
         }
 
-        wrapper.flush(&HashMap::from([(partition, 11)]));
+        wrapper.flush(&FxHashMap::from_iter([(partition, 11)]));
 
         assert_eq!(*producer.call_count.lock().unwrap(), 10);
     }
@@ -613,7 +614,7 @@ mod tests {
             None,
         )));
 
-        wrapper.reset_dlq_limits(&HashMap::from([(partition, 0)]));
+        wrapper.reset_dlq_limits(&FxHashMap::from_iter([(partition, 0)]));
 
         for i in 0..10 {
             wrapper.produce(BrokerMessage {
@@ -624,7 +625,7 @@ mod tests {
             });
         }
 
-        wrapper.flush(&HashMap::from([(partition, 11)]));
+        wrapper.flush(&FxHashMap::from_iter([(partition, 11)]));
     }
 
     #[test]
@@ -637,7 +638,7 @@ mod tests {
 
         let mut state = DlqLimitState::new(
             limit,
-            HashMap::from([(partition, InvalidMessageStats::invalid_at(3))]),
+            FxHashMap::from_iter([(partition, InvalidMessageStats::invalid_at(3))]),
         );
 
         // 1 valid message followed by 4 invalid
