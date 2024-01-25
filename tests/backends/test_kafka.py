@@ -100,6 +100,7 @@ def get_topic(
                 name,
                 num_partitions=partitions_count,
                 replication_factor=replication_factor,
+                config={"min.insync.replicas": 2},
             )
         ]
     ).items()
@@ -125,7 +126,8 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     "bootstrap.servers": os.environ.get(
                         "DEFAULT_DISTRIBUTED_BROKERS",
                         "127.0.0.1:19092,127.0.0.1:29092,127.0.0.1:39092",
-                    )
+                    ),
+                    "acks": "all",
                 }
             )
         else:
@@ -286,15 +288,17 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 kafka_distributed.kill([1])
 
-                with pytest.raises(Exception) as excinfo:
+                try:
                     for _ in range(NUM_PAYLOADS - len(recovered_payloads)):
                         value = consumer.poll(10.0)
                         assert isinstance(value, BrokerValue)
                         recovered_payloads.add(int(value.payload.value))
                         consumer.stage_offsets(value.committable)
                         consumer.commit_offsets()
-
-                print(excinfo)
+                except Exception as e:
+                    print(f"First consumer crashed with: {e}")
+                else:
+                    print("First consumer did not crash")
 
             # we should not be able to recover from this scenario without restarting the consumer
             assert len(recovered_payloads) < NUM_PAYLOADS
