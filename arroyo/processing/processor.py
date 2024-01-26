@@ -63,10 +63,6 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
     return decorator
 
 
-class InvalidStateError(RuntimeError):
-    pass
-
-
 ConsumerTiming = Literal[
     "arroyo.consumer.poll.time",
     "arroyo.consumer.processing.time",
@@ -210,23 +206,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             self.__metrics_buffer.incr_timing("arroyo.consumer.shutdown.time", value)
 
-        def _create_strategy(partitions: Mapping[Partition, int]) -> None:
-            start_create = time.time()
-
-            self.__processing_strategy = (
-                self.__processor_factory.create_with_partitions(
-                    self.__commit, partitions
-                )
-            )
-
-            self.__metrics_buffer.metrics.timing(
-                "arroyo.consumer.run.create_strategy", time.time() - start_create
-            )
-
-            logger.debug(
-                "Initialized processing strategy: %r", self.__processing_strategy
-            )
-
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
@@ -243,7 +222,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         "Partition assignment while processing strategy active"
                     )
                     _close_strategy()
-                _create_strategy(partitions)
 
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
@@ -255,24 +233,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             if partitions:
                 _close_strategy()
-
-                # Recreate the strategy if the consumer still has other partitions
-                # assigned and is not closed or errored
-                try:
-                    current_partitions = self.__consumer.tell()
-                    if len(current_partitions.keys() - set(partitions)):
-                        active_partitions = {
-                            partition: offset
-                            for partition, offset in current_partitions.items()
-                            if partition not in partitions
-                        }
-                        logger.info(
-                            "Recreating strategy since there are still active partitions: %r",
-                            active_partitions,
-                        )
-                        _create_strategy(active_partitions)
-                except RuntimeError:
-                    pass
 
             # Partition revocation can happen anytime during the consumer lifecycle and happen
             # multiple times. What we want to know is that the consumer is not stuck somewhere.
@@ -309,6 +269,19 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self.__consumer,
             )
             self.__commit_policy_state.did_commit(now, offsets)
+
+    def __create_strategy(self, partitions: Mapping[Partition, int]) -> None:
+        start_create = time.time()
+
+        self.__processing_strategy = self.__processor_factory.create_with_partitions(
+            self.__commit, partitions
+        )
+
+        self.__metrics_buffer.metrics.timing(
+            "arroyo.consumer.run.create_strategy", time.time() - start_create
+        )
+
+        logger.debug("Initialized processing strategy: %r", self.__processing_strategy)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."
@@ -387,6 +360,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
             except RecoverableError:
                 return
 
+        if self.__processing_strategy is None and self.__message is not None:
+            current_offsets = self.__consumer.tell()
+            self.__create_strategy(current_offsets)
+
         if self.__processing_strategy is not None:
             start_poll = time.time()
             try:
@@ -398,58 +375,59 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__metrics_buffer.incr_timing(
                 "arroyo.consumer.processing.time", time.time() - start_poll
             )
-            if self.__message is not None:
-                try:
-                    start_submit = time.time()
-                    message = (
-                        Message(self.__message) if self.__message is not None else None
+
+        if self.__message is not None:
+            # in a previous if-stmt, we have ensured that
+            # self.__processing_strategy is available if self.__message is not
+            # None
+            assert self.__processing_strategy is not None
+
+            try:
+                start_submit = time.time()
+                message = (
+                    Message(self.__message) if self.__message is not None else None
+                )
+                self.__processing_strategy.submit(message)
+
+                self.__metrics_buffer.incr_timing(
+                    "arroyo.consumer.processing.time",
+                    time.time() - start_submit,
+                )
+            except MessageRejected as e:
+                # If the processing strategy rejected our message, we need
+                # to pause the consumer and hold the message until it is
+                # accepted, at which point we can resume consuming.
+                # if not message_carried_over:
+                if self.__backpressure_timestamp is None:
+                    self.__backpressure_timestamp = time.time()
+
+                elif not self.__is_paused and (
+                    time.time() - self.__backpressure_timestamp > 1
+                ):
+                    logger.debug(
+                        "Caught %r while submitting %r, pausing consumer...",
+                        e,
+                        self.__message,
                     )
-                    self.__processing_strategy.submit(message)
-
-                    self.__metrics_buffer.incr_timing(
-                        "arroyo.consumer.processing.time",
-                        time.time() - start_submit,
-                    )
-                except MessageRejected as e:
-                    # If the processing strategy rejected our message, we need
-                    # to pause the consumer and hold the message until it is
-                    # accepted, at which point we can resume consuming.
-                    # if not message_carried_over:
-                    if self.__backpressure_timestamp is None:
-                        self.__backpressure_timestamp = time.time()
-
-                    elif not self.__is_paused and (
-                        time.time() - self.__backpressure_timestamp > 1
-                    ):
-                        logger.debug(
-                            "Caught %r while submitting %r, pausing consumer...",
-                            e,
-                            self.__message,
-                        )
-                        self.__consumer.pause([*self.__consumer.tell().keys()])
-                        self.__is_paused = True
-
-                    else:
-                        time.sleep(0.01)
-
-                except InvalidMessage as e:
-                    self._handle_invalid_message(e)
+                    self.__consumer.pause([*self.__consumer.tell().keys()])
+                    self.__is_paused = True
 
                 else:
-                    # Resume if we are currently in a paused state
-                    if self.__is_paused:
-                        self.__consumer.resume([*self.__consumer.tell().keys()])
-                        self.__is_paused = False
+                    time.sleep(0.01)
 
-                    # Clear backpressure timestamp if it is set
-                    self._clear_backpressure()
+            except InvalidMessage as e:
+                self._handle_invalid_message(e)
 
-                    self.__message = None
-        else:
-            if self.__message is not None:
-                raise InvalidStateError(
-                    "received message without active processing strategy"
-                )
+            else:
+                # Resume if we are currently in a paused state
+                if self.__is_paused:
+                    self.__consumer.resume([*self.__consumer.tell().keys()])
+                    self.__is_paused = False
+
+                # Clear backpressure timestamp if it is set
+                self._clear_backpressure()
+
+                self.__message = None
 
     def signal_shutdown(self) -> None:
         """
