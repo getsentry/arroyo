@@ -150,7 +150,9 @@ def test_stream_processor_lifecycle() -> None:
         (Timing, "arroyo.consumer.shutdown.time"),
         (Timing, "arroyo.consumer.callback.time"),
         (Timing, "arroyo.consumer.poll.time"),
+        (Increment, "arroyo.consumer.pause"),
         (Increment, "arroyo.consumer.run.count"),
+        (Increment, "arroyo.consumer.resume"),
     ]
 
 
