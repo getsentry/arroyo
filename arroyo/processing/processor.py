@@ -81,6 +81,8 @@ ConsumerTiming = Literal[
 ConsumerCounter = Literal[
     "arroyo.consumer.run.count",
     "arroyo.consumer.invalid_message.count",
+    "arroyo.consumer.pause",
+    "arroyo.consumer.resume",
 ]
 
 
@@ -421,6 +423,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     elif not self.__is_paused and (
                         time.time() - self.__backpressure_timestamp > 1
                     ):
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.pause", 1)
                         logger.debug(
                             "Caught %r while submitting %r, pausing consumer...",
                             e,
@@ -438,6 +441,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 else:
                     # Resume if we are currently in a paused state
                     if self.__is_paused:
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.resume", 1)
                         self.__consumer.resume([*self.__consumer.tell().keys()])
                         self.__is_paused = False
 
