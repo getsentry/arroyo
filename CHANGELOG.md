@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.16.1
+
+### Various fixes & improvements
+
+- ref(metrics): Add pause/resume counters [INC-626] (#338) by @untitaker
+- perf: inline now calling `coarsetime::Instant` (#336) by @anonrig
+
 ## 2.16.0
 
 ### Various fixes & improvements
