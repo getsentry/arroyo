@@ -1,13 +1,16 @@
-use crate::timer;
-use crate::utils::timing::Deadline;
 use core::fmt::Debug;
+
 use std::collections::BTreeMap;
 use std::mem;
 use std::time::Duration;
 
-#[derive(Debug)]
+use crate::utils::timing::Deadline;
+use crate::{counter, timer};
+
+#[derive(Clone, Debug)]
 pub struct MetricsBuffer {
     timers: BTreeMap<String, Duration>,
+    counters: BTreeMap<String, u64>,
     flush_deadline: Deadline,
 }
 
@@ -22,6 +25,7 @@ impl MetricsBuffer {
     pub fn new() -> Self {
         Self {
             timers: BTreeMap::new(),
+            counters: BTreeMap::new(),
             flush_deadline: Deadline::new(FLUSH_INTERVAL),
         }
     }
@@ -35,10 +39,24 @@ impl MetricsBuffer {
         self.throttled_record();
     }
 
+    pub fn incr_counter(&mut self, metric: &str, count: u64) {
+        if let Some(value) = self.counters.get_mut(metric) {
+            *value += count;
+        } else {
+            self.counters.insert(metric.to_string(), count);
+        }
+        self.throttled_record();
+    }
+
     pub fn flush(&mut self) {
         let timers = mem::take(&mut self.timers);
         for (metric, duration) in timers {
             timer!(&metric, duration);
+        }
+
+        let counters = mem::take(&mut self.counters);
+        for (metric, count) in counters {
+            counter!(&metric, count);
         }
 
         self.flush_deadline.restart();

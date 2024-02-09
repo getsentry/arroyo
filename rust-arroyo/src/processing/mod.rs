@@ -18,7 +18,7 @@ use crate::utils::timing::Deadline;
 use crate::{counter, timer};
 
 pub mod dlq;
-mod metrics_buffer;
+pub mod metrics_buffer;
 pub mod strategies;
 
 use strategies::{ProcessingStrategy, ProcessingStrategyFactory};
