@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.16.2
+
+### Various fixes & improvements
+
+- feat: Increase backpressure threshold to 5 seconds (#340) by @lynnagara
+
 ## 2.16.1
 
 ### Various fixes & improvements
