@@ -46,7 +46,7 @@ pub enum RunError {
     Strategy(#[source] Box<dyn std::error::Error>),
 }
 
-const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(1);
+const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ConsumerState<TPayload>(Arc<(AtomicBool, Mutex<ConsumerStateInner<TPayload>>)>);
@@ -362,12 +362,12 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     return Ok(());
                 };
 
-                // If we are in the backpressure state for more than 1 second,
+                // If we are in the backpressure state for more than BACKPRESSURE_THRESHOLD seconds,
                 // we pause the consumer and hold the message until it is
                 // accepted, at which point we can resume consuming.
                 if !consumer_is_paused && deadline.has_elapsed() {
                     tracing::warn!(
-                        "Consumer is in backpressure state for more than 1 second, pausing",
+                        "Consumer is in backpressure state for more than 5 seconds, pausing",
                     );
 
                     let partitions = self.consumer.tell().unwrap().into_keys().collect();
