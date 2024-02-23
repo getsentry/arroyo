@@ -34,6 +34,7 @@ from arroyo.utils.metrics import get_metrics
 logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
+BACKPRESSURE_THRESHOLD = 5.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -148,7 +149,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
         # The timestamp when backpressure state started
         self.__backpressure_timestamp: Optional[float] = None
-        # Consumer is paused after it is in backpressure state for > 1 second
+        # Consumer is paused after it is in backpressure state for > BACKPRESSURE_THRESHOLD seconds
         self.__is_paused = False
 
         self.__commit_policy_state = commit_policy.get_state_machine()
@@ -419,7 +420,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__backpressure_timestamp = time.time()
 
                     elif not self.__is_paused and (
-                        time.time() - self.__backpressure_timestamp > 1
+                        time.time() - self.__backpressure_timestamp > BACKPRESSURE_THRESHOLD
                     ):
                         logger.debug(
                             "Caught %r while submitting %r, pausing consumer...",
