@@ -4,6 +4,7 @@ use super::CommitOffsets;
 use super::Consumer as ArroyoConsumer;
 use super::ConsumerError;
 use crate::backends::kafka::types::KafkaPayload;
+use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use parking_lot::Mutex;
@@ -15,6 +16,7 @@ use rdkafka::error::KafkaError;
 use rdkafka::message::{BorrowedMessage, Message};
 use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use rdkafka::types::{RDKafkaErrorCode, RDKafkaRespErr};
+use rdkafka::Statistics;
 use sentry::Hub;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -166,6 +168,13 @@ impl<C: AssignmentCallbacks + Send + Sync> ClientContext for CustomContext<C> {
             let error: &dyn std::error::Error = &error;
             tracing::error!(error, "librdkafka: {error}: {reason}");
         })
+    }
+
+    fn stats(&self, stats: Statistics) {
+        gauge!(
+            "arroyo.consumer.librdkafka.total_queue_size",
+            stats.replyq as u64,
+        );
     }
 }
 
