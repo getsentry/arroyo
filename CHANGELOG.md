@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.16.4
+
+### Various fixes & improvements
+
+- ref: Metric definition (#341) by @lynnagara
+- feat: Ingest a metric for rdkafka queue size (#342) by @phacops
+
 ## 2.16.2
 
 ### Various fixes & improvements
