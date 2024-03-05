@@ -1,5 +1,5 @@
 use super::types::{BrokerMessage, Partition, TopicOrPartition};
-use std::collections::{HashMap, HashSet};
+use fxhash::{FxHashMap, FxHashSet};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -48,13 +48,13 @@ pub trait CommitOffsets {
     ///
     /// Returns a map of all offsets that were committed. This combines [`Consumer::stage_offsets`] and
     /// [`Consumer::commit_offsets`].
-    fn commit(self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError>;
+    fn commit(self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError>;
 }
 
 /// This is basically an observer pattern to receive the callbacks from
 /// the consumer when partitions are assigned/revoked.
 pub trait AssignmentCallbacks: Send + Sync {
-    fn on_assign(&self, partitions: HashMap<Partition, u64>);
+    fn on_assign(&self, partitions: FxHashMap<Partition, u64>);
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>);
 }
 
@@ -119,19 +119,19 @@ pub trait Consumer<TPayload, C>: Send {
     ///
     /// If any of the provided partitions are not in the assignment set, an
     /// exception will be raised and no partitions will be paused.
-    fn pause(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError>;
+    fn pause(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError>;
 
     /// Resume consuming from the provided partitions.
     ///
     /// If any of the provided partitions are not in the assignment set, an
     /// exception will be raised and no partitions will be resumed.
-    fn resume(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError>;
+    fn resume(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError>;
 
     /// Return the currently paused partitions.
-    fn paused(&self) -> Result<HashSet<Partition>, ConsumerError>;
+    fn paused(&self) -> Result<FxHashSet<Partition>, ConsumerError>;
 
     /// Return the working offsets for all currently assigned positions.
-    fn tell(&self) -> Result<HashMap<Partition, u64>, ConsumerError>;
+    fn tell(&self) -> Result<FxHashMap<Partition, u64>, ConsumerError>;
 
     /// Update the working offsets for the provided partitions.
     ///
@@ -147,10 +147,11 @@ pub trait Consumer<TPayload, C>: Send {
     ///
     /// If any provided partitions are not in the assignment set, an
     /// exception will be raised and no offsets will be modified.
-    fn seek(&self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError>;
+    fn seek(&self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError>;
 
     /// Commit offsets.
-    fn commit_offsets(&mut self, positions: HashMap<Partition, u64>) -> Result<(), ConsumerError>;
+    fn commit_offsets(&mut self, positions: FxHashMap<Partition, u64>)
+        -> Result<(), ConsumerError>;
 }
 
 pub trait Producer<TPayload>: Send + Sync {

@@ -1,5 +1,5 @@
 use crate::types::{Message, Partition};
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 use std::time::Duration;
 
 pub mod commit_offsets;
@@ -29,7 +29,7 @@ pub struct InvalidMessage {
 /// Signals that we need to commit offsets
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommitRequest {
-    pub positions: HashMap<Partition, u64>,
+    pub positions: FxHashMap<Partition, u64>,
 }
 
 impl CommitRequest {
@@ -166,7 +166,7 @@ pub trait ProcessingStrategyFactory<TPayload>: Send + Sync {
     ///
     /// Do not do any heavy work in this callback, even less than in `create`. This is guaranteed
     /// to be called every rebalance.
-    fn update_partitions(&self, _partitions: &HashMap<Partition, u64>) {}
+    fn update_partitions(&self, _partitions: &FxHashMap<Partition, u64>) {}
 }
 
 #[cfg(test)]
@@ -180,15 +180,15 @@ mod tests {
         let partition_2 = Partition::new(Topic::new("topic"), 1);
 
         let a = Some(CommitRequest {
-            positions: HashMap::from([(partition, 1)]),
+            positions: FxHashMap::from_iter([(partition, 1)]),
         });
 
         let b = Some(CommitRequest {
-            positions: HashMap::from([(partition, 2)]),
+            positions: FxHashMap::from_iter([(partition, 2)]),
         });
 
         let c = Some(CommitRequest {
-            positions: HashMap::from([(partition_2, 2)]),
+            positions: FxHashMap::from_iter([(partition_2, 2)]),
         });
 
         assert_eq!(merge_commit_request(a.clone(), b.clone()), b.clone());
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(
             merge_commit_request(a.clone(), c.clone()),
             Some(CommitRequest {
-                positions: HashMap::from([(partition, 1), (partition_2, 2)]),
+                positions: FxHashMap::from_iter([(partition, 1), (partition_2, 2)]),
             })
         );
 
