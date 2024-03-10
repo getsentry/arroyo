@@ -37,8 +37,8 @@ __all__ = ["RunTaskWithMultiprocessing"]
 TResult = TypeVar("TResult")
 TBatchValue = TypeVar("TBatchValue")
 
-DEFAULT_INPUT_BLOCK_SIZE = 16 * 1024 * 1024
-DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024 * 1024
+DEFAULT_INPUT_BLOCK_SIZE = 25 * 1024 * 1024
+DEFAULT_OUTPUT_BLOCK_SIZE = 25 * 1024 * 1024
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 
