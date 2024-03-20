@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.16.5
+
+### Various fixes & improvements
+
+- build(deps): bump black from 22.3.0 to 24.3.0 (#343) by @dependabot
+- feat: confluent-kafka-python 2.3.0 (#344) by @lynnagara
+- meta: Update codeowners (#345) by @lynnagara
+
 ## 2.16.4
 
 ### Various fixes & improvements
