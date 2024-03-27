@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.17.0
+
+### Various fixes & improvements
+
+- ref(reduce): Allow to reduce to non-cloneable values (#346) by @untitaker
+
 ## 2.16.5
 
 ### Various fixes & improvements
