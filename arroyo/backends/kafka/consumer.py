@@ -147,6 +147,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def __init__(
         self,
         configuration: Mapping[str, Any],
+        on_offset_out_of_range: str = 'error',
     ) -> None:
         commit_retry_policy = BasicRetryPolicy(
             3,
