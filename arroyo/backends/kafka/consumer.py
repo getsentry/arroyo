@@ -120,6 +120,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     ``commit`` should be called in the partition revocation callback.
 
     The behavior of ``auto.offset.reset`` also differs slightly from the
+
+    The ``on_offset_out_of_range`` option allows configuring the behavior when an offset out of range error occurs. It accepts the following values:
+    - 'error': (default) Raises an OffsetOutOfRange exception.
+    - 'earliest': Automatically resets the offset to the earliest available offset.
+    - 'latest': Automatically resets the offset to the latest available offset.
+
+    This option provides flexibility in handling scenarios where the committed offset is no longer available, allowing for either strict error handling or automatic offset adjustment.
     Confluent consumer as well: offsets are only reset during initial
     assignment or subsequent rebalancing operations. Any other circumstances
     that would otherwise lead to preemptive offset reset (e.g. the consumer
@@ -147,6 +154,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def __init__(
         self,
         configuration: Mapping[str, Any],
+        on_offset_out_of_range: str = 'error',
     ) -> None:
         commit_retry_policy = BasicRetryPolicy(
             3,
@@ -411,7 +419,14 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.OFFSET_OUT_OF_RANGE,
                 KafkaError._AUTO_OFFSET_RESET,
             ):
-                raise OffsetOutOfRange(str(error))
+                if self.on_offset_out_of_range == 'earliest':
+                    partition = self.__resolve_partition_offset_earliest(ConfluentTopicPartition(message.topic(), message.partition()))
+                    self.seek({Partition(Topic(partition.topic), partition.partition): partition.offset})
+                elif self.on_offset_out_of_range == 'latest':
+                    partition = self.__resolve_partition_offset_latest(ConfluentTopicPartition(message.topic(), message.partition()))
+                    self.seek({Partition(Topic(partition.topic), partition.partition): partition.offset})
+                else:
+                    raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
 
