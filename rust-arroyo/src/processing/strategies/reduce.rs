@@ -53,7 +53,7 @@ impl<T, TResult> BatchState<T, TResult> {
 pub struct Reduce<T, TResult> {
     next_step: Box<dyn ProcessingStrategy<TResult>>,
     accumulator: Arc<dyn Fn(TResult, T) -> TResult + Send + Sync>,
-    initial_value: TResult,
+    initial_value: Arc<dyn Fn() -> TResult + Send + Sync>,
     max_batch_size: usize,
     max_batch_time: Duration,
     batch_state: BatchState<T, TResult>,
@@ -63,7 +63,7 @@ pub struct Reduce<T, TResult> {
     flush_empty_batches: bool,
 }
 
-impl<T: Send + Sync, TResult: Clone + Send + Sync> ProcessingStrategy<T> for Reduce<T, TResult> {
+impl<T: Send + Sync, TResult: Send + Sync> ProcessingStrategy<T> for Reduce<T, TResult> {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         let commit_request = self.next_step.poll()?;
         self.commit_request_carried_over =
@@ -119,11 +119,11 @@ impl<T: Send + Sync, TResult: Clone + Send + Sync> ProcessingStrategy<T> for Red
     }
 }
 
-impl<T, TResult: Clone> Reduce<T, TResult> {
+impl<T, TResult> Reduce<T, TResult> {
     pub fn new<N>(
         next_step: N,
         accumulator: Arc<dyn Fn(TResult, T) -> TResult + Send + Sync>,
-        initial_value: TResult,
+        initial_value: Arc<dyn Fn() -> TResult + Send + Sync>,
         max_batch_size: usize,
         max_batch_time: Duration,
         compute_batch_size: fn(&T) -> usize,
@@ -132,7 +132,7 @@ impl<T, TResult: Clone> Reduce<T, TResult> {
         N: ProcessingStrategy<TResult> + 'static,
     {
         let batch_state = BatchState::new(
-            initial_value.clone(),
+            (initial_value)(),
             accumulator.clone(),
             max_batch_time,
             compute_batch_size,
@@ -189,7 +189,7 @@ impl<T, TResult: Clone> Reduce<T, TResult> {
         let batch_state = mem::replace(
             &mut self.batch_state,
             BatchState::new(
-                self.initial_value.clone(),
+                (self.initial_value)(),
                 self.accumulator.clone(),
                 self.max_batch_time,
                 self.compute_batch_size,
@@ -269,7 +269,7 @@ mod tests {
         let mut strategy = Reduce::new(
             next_step,
             accumulator,
-            initial_value,
+            Arc::new(move || initial_value.clone()),
             max_batch_size,
             max_batch_time,
             compute_batch_size,
@@ -326,7 +326,7 @@ mod tests {
         let mut strategy = Reduce::new(
             next_step,
             accumulator,
-            initial_value,
+            Arc::new(move || initial_value.clone()),
             max_batch_size,
             max_batch_time,
             compute_batch_size,
@@ -383,7 +383,7 @@ mod tests {
         let mut strategy = Reduce::new(
             next_step,
             accumulator,
-            initial_value,
+            Arc::new(move || initial_value.clone()),
             max_batch_size,
             max_batch_time,
             compute_batch_size,
@@ -413,6 +413,7 @@ mod tests {
         assert!(submitted_messages_clone.lock().unwrap().is_empty());
     }
 
+    #[test]
     fn test_reduce_with_zero_batch_size_flush() {
         let submitted_messages = Arc::new(Mutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();
@@ -436,7 +437,7 @@ mod tests {
         let mut strategy = Reduce::new(
             next_step,
             accumulator,
-            initial_value,
+            Arc::new(move || initial_value.clone()),
             max_batch_size,
             max_batch_time,
             compute_batch_size,
