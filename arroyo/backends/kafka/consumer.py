@@ -120,6 +120,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     ``commit`` should be called in the partition revocation callback.
 
     The behavior of ``auto.offset.reset`` also differs slightly from the
+
+    The ``on_offset_out_of_range`` option allows configuring the behavior when an offset out of range error occurs. It accepts the following values:
+    - 'error': (default) Raises an OffsetOutOfRange exception.
+    - 'earliest': Automatically resets the offset to the earliest available offset.
+    - 'latest': Automatically resets the offset to the latest available offset.
+
+    This option provides flexibility in handling scenarios where the committed offset is no longer available, allowing for either strict error handling or automatic offset adjustment.
     Confluent consumer as well: offsets are only reset during initial
     assignment or subsequent rebalancing operations. Any other circumstances
     that would otherwise lead to preemptive offset reset (e.g. the consumer
