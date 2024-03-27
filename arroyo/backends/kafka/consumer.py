@@ -412,7 +412,14 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.OFFSET_OUT_OF_RANGE,
                 KafkaError._AUTO_OFFSET_RESET,
             ):
-                raise OffsetOutOfRange(str(error))
+                if self.on_offset_out_of_range == 'earliest':
+                    partition = self.__resolve_partition_offset_earliest(ConfluentTopicPartition(message.topic(), message.partition()))
+                    self.seek({Partition(Topic(partition.topic), partition.partition): partition.offset})
+                elif self.on_offset_out_of_range == 'latest':
+                    partition = self.__resolve_partition_offset_latest(ConfluentTopicPartition(message.topic(), message.partition()))
+                    self.seek({Partition(Topic(partition.topic), partition.partition): partition.offset})
+                else:
+                    raise OffsetOutOfRange(str(error))
             else:
                 raise ConsumerError(str(error))
 
