@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use super::InitialOffset;
 
-const STATS_COLLECTION_FREQ_MS: String = "1000";
+const STATS_COLLECTION_FREQ_MS: u32 = 1000;
 
 #[derive(Debug, Clone)]
 pub struct OffsetResetConfig {
@@ -58,7 +58,7 @@ impl KafkaConfig {
 
         config.config_map.insert(
             "statistics.interval.ms".to_string(),
-            STATS_COLLECTION_FREQ_MS,
+            STATS_COLLECTION_FREQ_MS.to_string(),
         );
 
         // HACK: If the max poll interval is less than 45 seconds, set the session timeout
