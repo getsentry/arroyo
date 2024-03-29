@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.17.1
+
+### Various fixes & improvements
+
+- fix: Enable stats collection (#348) by @phacops
+
 ## 2.17.0
 
 ### Various fixes & improvements
