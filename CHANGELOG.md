@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.17.2
+
+### Various fixes & improvements
+
+- feat: make default auto.offset.reset earliest (#349) by @lynnagara
+
 ## 2.17.1
 
 ### Various fixes & improvements
