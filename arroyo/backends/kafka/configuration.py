@@ -61,7 +61,7 @@ def build_kafka_consumer_configuration(
 ) -> KafkaBrokerConfig:
 
     if auto_offset_reset is None:
-        auto_offset_reset = "error"
+        auto_offset_reset = "earliest"
 
     if queued_max_messages_kbytes is None:
         queued_max_messages_kbytes = DEFAULT_QUEUED_MAX_MESSAGE_KBYTES

@@ -43,9 +43,9 @@ enum KafkaConsumerState {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum InitialOffset {
+    #[default]
     Earliest,
     Latest,
-    #[default]
     Error,
 }
 
