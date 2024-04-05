@@ -1,7 +1,9 @@
 use crate::types::TopicOrPartition;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
+use rdkafka::message::Headers as HeaderTrat;
 
+use std::borrow::Borrow;
 use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct Headers {
@@ -21,6 +23,14 @@ impl Headers {
             value: value.as_ref(),
         });
         Self { headers }
+    }
+
+    pub fn find(self, key: &str) -> Option<Vec<u8>> {
+        if let Some(header) = self.headers.iter().find(|header| header.key == key) {
+            header.value.map(|v| v.to_vec())
+        } else {
+            None
+        }
     }
 }
 
@@ -142,5 +152,17 @@ mod tests {
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, Some(&b"key".to_vec()));
         assert_eq!(base_record.payload, Some(&b"message".to_vec()));
+    }
+
+    #[test]
+    fn test_headers() {
+        let mut headers = self::Headers::new();
+        headers = headers.insert("key1", Some(b"value1".to_vec()));
+        headers = headers.insert("key2", Some(b"value2".to_vec()));
+        headers = headers.insert("key3", Some(b"value3".to_vec()));
+
+        assert_eq!(headers.clone().find("key1"), Some(b"value1".to_vec()));
+        assert_eq!(headers.clone().find("key2"), Some(b"value2".to_vec()));
+        assert_eq!(headers.clone().find("key10"), None);
     }
 }
