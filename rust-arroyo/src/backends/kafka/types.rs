@@ -3,7 +3,6 @@ use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
 use rdkafka::message::Headers as HeaderTrat;
 
-use std::borrow::Borrow;
 use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct Headers {
