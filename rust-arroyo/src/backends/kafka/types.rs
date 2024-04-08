@@ -24,12 +24,8 @@ impl Headers {
         Self { headers }
     }
 
-    pub fn find(self, key: &str) -> Option<Vec<u8>> {
-        if let Some(header) = self.headers.iter().find(|header| header.key == key) {
-            header.value.map(|v| v.to_vec())
-        } else {
-            None
-        }
+    pub fn get(self, key: &str) -> Option<&[u8]> {
+        self.headers.iter().find(|header| header.key == key).and_then(|header| header.value.as_ref())
     }
 }
 
