@@ -1,7 +1,7 @@
 use crate::types::TopicOrPartition;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
-use rdkafka::message::Headers as HeaderTrat;
+use rdkafka::message::Headers as _;
 
 use std::sync::Arc;
 #[derive(Clone, Debug)]
