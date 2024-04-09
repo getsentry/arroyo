@@ -159,8 +159,8 @@ mod tests {
         headers = headers.insert("key2", Some(b"value2".to_vec()));
         headers = headers.insert("key3", Some(b"value3".to_vec()));
 
-        assert_eq!(headers.get("key1"), Some(b"value1".to_vec()).as_deref());
-        assert_eq!(headers.get("key2"), Some(b"value2".to_vec()).as_deref());
+        assert_eq!(headers.get("key1"), Some(b"value1").map(|v| v.as_ref()));
+        assert_eq!(headers.get("key2"), Some(b"value2").map(|v| v.as_ref()));
         assert_eq!(headers.get("key10"), None);
     }
 }
