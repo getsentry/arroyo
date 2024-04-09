@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.17.3
+
+### Various fixes & improvements
+
+- feat(header): Implement find method on headers (#350) by @nikhars
+
 ## 2.17.2
 
 ### Various fixes & improvements
