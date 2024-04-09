@@ -246,12 +246,7 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
                 // it would be better to log it only when it changes. We log for debugging purposes.
                 unsafe {
                     let member_id = rd_kafka_memberid(base_consumer.client().native_ptr());
-                    let member_id_slice = std::ffi::CStr::from_ptr(member_id);
-                    let buf = std::ffi::CStr::from_ptr(member_id).to_bytes();
-                    let buf_str = String::from_utf8(buf.to_vec()).ok();
-
                     tracing::info!("Kafka consumer member id: {:?}", std::ffi::CStr::from_ptr(member_id).to_str().unwrap());
-                    println!("CustomContext: Kafka consumer member id str: {:?} -- {:?}", member_id_slice.to_str().unwrap(), buf_str);
                 };
 
 
