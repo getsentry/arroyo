@@ -1,4 +1,5 @@
 use crate::types::TopicOrPartition;
+use rdkafka::message::Headers as _;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
 
@@ -21,6 +22,13 @@ impl Headers {
             value: value.as_ref(),
         });
         Self { headers }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&[u8]> {
+        self.headers
+            .iter()
+            .find(|header| header.key == key)
+            .and_then(|header| header.value)
     }
 }
 
@@ -142,5 +150,17 @@ mod tests {
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, Some(&b"key".to_vec()));
         assert_eq!(base_record.payload, Some(&b"message".to_vec()));
+    }
+
+    #[test]
+    fn test_headers() {
+        let mut headers = self::Headers::new();
+        headers = headers.insert("key1", Some(b"value1".to_vec()));
+        headers = headers.insert("key2", Some(b"value2".to_vec()));
+        headers = headers.insert("key3", Some(b"value3".to_vec()));
+
+        assert_eq!(headers.get("key1"), Some(b"value1").map(|v| v.as_ref()));
+        assert_eq!(headers.get("key2"), Some(b"value2").map(|v| v.as_ref()));
+        assert_eq!(headers.get("key10"), None);
     }
 }
