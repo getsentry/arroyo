@@ -8,6 +8,7 @@ use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use parking_lot::Mutex;
+use rdkafka::bindings::rd_kafka_memberid;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::base_consumer::BaseConsumer;
@@ -29,6 +30,7 @@ pub mod config;
 mod errors;
 pub mod producer;
 pub mod types;
+
 
 #[derive(Eq, Hash, PartialEq)]
 enum KafkaConsumerState {
@@ -239,6 +241,19 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
                 let mut offset_map: HashMap<Partition, u64> =
                     HashMap::with_capacity(committed_offsets.count());
                 let mut tpl = TopicPartitionList::with_capacity(committed_offsets.count());
+
+                // TODO: this will log member id every time we get an assignment, which is not ideal
+                // it would be better to log it only when it changes. We log for debugging purposes.
+                unsafe {
+                    let member_id = rd_kafka_memberid(base_consumer.client().native_ptr());
+                    let member_id_slice = std::ffi::CStr::from_ptr(member_id);
+                    let buf = std::ffi::CStr::from_ptr(member_id).to_bytes();
+                    let buf_str = String::from_utf8(buf.to_vec()).ok();
+
+                    tracing::info!("Kafka consumer member id: {:?}", std::ffi::CStr::from_ptr(member_id).to_str().unwrap());
+                    println!("CustomContext: Kafka consumer member id str: {:?} -- {:?}", member_id_slice.to_str().unwrap(), buf_str);
+                };
+
 
                 for partition in committed_offsets.elements() {
                     let raw_offset = partition.offset().to_raw().unwrap();
@@ -505,6 +520,7 @@ mod tests {
     impl AssignmentCallbacks for EmptyCallbacks {
         fn on_assign(&self, partitions: HashMap<Partition, u64>) {
             println!("assignment event: {:?}", partitions);
+
         }
         fn on_revoke<C>(&self, _: C, partitions: Vec<Partition>) {
             println!("revocation event: {:?}", partitions);
