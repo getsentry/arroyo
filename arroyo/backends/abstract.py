@@ -165,6 +165,15 @@ class Consumer(Generic[TStrategyPayload], ABC):
     def closed(self) -> bool:
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def member_id(self) -> str:
+        """
+        Return the member ID of the consumer as supplied by the broker.
+        This is useful for debugging purposes.
+        """
+        raise NotImplementedError
+
 
 class Producer(Generic[TStrategyPayload], ABC):
     @abstractmethod

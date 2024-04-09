@@ -233,6 +233,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            logger.info("Member id: %r", self.__consumer.member_id)
             self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
@@ -422,7 +423,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__backpressure_timestamp = time.time()
 
                     elif not self.__is_paused and (
-                        time.time() - self.__backpressure_timestamp > BACKPRESSURE_THRESHOLD
+                        time.time() - self.__backpressure_timestamp
+                        > BACKPRESSURE_THRESHOLD
                     ):
                         self.__metrics_buffer.incr_counter("arroyo.consumer.pause", 1)
                         logger.debug(

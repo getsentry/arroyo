@@ -628,6 +628,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     def closed(self) -> bool:
         return self.__state is KafkaConsumerState.CLOSED
 
+    @property
+    def member_id(self) -> str:
+        member_id: str = self.__consumer.memberid()
+        return member_id
+
 
 class KafkaProducer(Producer[KafkaPayload]):
     def __init__(self, configuration: Mapping[str, Any]) -> None:
