@@ -31,7 +31,6 @@ mod errors;
 pub mod producer;
 pub mod types;
 
-
 #[derive(Eq, Hash, PartialEq)]
 enum KafkaConsumerState {
     Consuming,
@@ -246,9 +245,11 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
                 // it would be better to log it only when it changes. We log for debugging purposes.
                 unsafe {
                     let member_id = rd_kafka_memberid(base_consumer.client().native_ptr());
-                    tracing::info!("Kafka consumer member id: {:?}", std::ffi::CStr::from_ptr(member_id).to_str().unwrap());
+                    tracing::info!(
+                        "Kafka consumer member id: {:?}",
+                        std::ffi::CStr::from_ptr(member_id).to_str().unwrap()
+                    );
                 };
-
 
                 for partition in committed_offsets.elements() {
                     let raw_offset = partition.offset().to_raw().unwrap();
@@ -515,7 +516,6 @@ mod tests {
     impl AssignmentCallbacks for EmptyCallbacks {
         fn on_assign(&self, partitions: HashMap<Partition, u64>) {
             println!("assignment event: {:?}", partitions);
-
         }
         fn on_revoke<C>(&self, _: C, partitions: Vec<Partition>) {
             println!("revocation event: {:?}", partitions);
