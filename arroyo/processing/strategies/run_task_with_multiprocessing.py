@@ -572,7 +572,7 @@ class RunTaskWithMultiprocessing(
 
         self.__closed = False
 
-        self.__last_batch_time = None
+        self.__last_batch_time = 0.0
 
         def handle_sigchld(signum: int, frame: Any) -> None:
             # Terminates the consumer if any child process of the
@@ -611,7 +611,7 @@ class RunTaskWithMultiprocessing(
         )
         self.__batch_builder = None
 
-        if self.__last_batch_time is None:
+        if self.__last_batch_time == 0.0:
             self.__last_batch_time = time.time()
         else:
             self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch.build_and_submit_time", time.time() - self.__last_batch_time)
