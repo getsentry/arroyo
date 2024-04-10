@@ -572,6 +572,8 @@ class RunTaskWithMultiprocessing(
 
         self.__closed = False
 
+        self.__last_batch_time = None
+
         def handle_sigchld(signum: int, frame: Any) -> None:
             # Terminates the consumer if any child process of the
             # consumer is terminated.
@@ -585,6 +587,7 @@ class RunTaskWithMultiprocessing(
 
     def __submit_batch(self, input_block_too_small: bool) -> None:
         assert self.__batch_builder is not None
+
         batch = self.__batch_builder.build()
         logger.debug("Submitting %r to %r...", batch, self.__pool)
         self.__processes.append(
@@ -607,6 +610,11 @@ class RunTaskWithMultiprocessing(
             batch.get_content_size(),
         )
         self.__batch_builder = None
+
+        if self.__last_batch_time is None:
+            self.__last_batch_time = time.time()
+        else:
+            self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch.build_and_submit_time", time.time() - self.__last_batch_time)
 
     def __forward_invalid_offsets(self) -> None:
         if len(self.__invalid_messages):

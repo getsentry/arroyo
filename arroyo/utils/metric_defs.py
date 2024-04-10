@@ -98,4 +98,6 @@ MetricName = Literal[
     "arroyo.processing.strategies.healthcheck.touch",
     # Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
+    # The amount of time it takes for the multiprocessing batch to be built and submitted to subprocesses
+    "arroyo.strategies.run_task_with_multiprocessing.batch.build_and_submit_time"
 ]
