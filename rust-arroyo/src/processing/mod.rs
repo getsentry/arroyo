@@ -105,6 +105,7 @@ pub struct ProcessorHandle {
 
 impl ProcessorHandle {
     pub fn signal_shutdown(&mut self) {
+        tracing::info!("Shutdown requested");
         self.shutdown_requested.store(true, Ordering::Relaxed);
     }
 }
@@ -145,6 +146,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         let mut state = self.0.locked_state();
         if let Some(s) = state.strategy.as_mut() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                tracing::info!("Closing and joining strategy");
                 s.close();
                 s.join(None)
             }));
@@ -410,6 +412,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             if let Err(e) = self.run_once() {
                 let mut trait_callbacks = self.consumer_state.locked_state();
 
+                tracing::info!("Caught error, terminating strategy");
                 if let Some(strategy) = trait_callbacks.strategy.as_mut() {
                     strategy.terminate();
                 }
@@ -418,6 +421,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 return Err(e);
             }
         }
+        tracing::info!("Shutdown processor");
         Ok(())
     }
 

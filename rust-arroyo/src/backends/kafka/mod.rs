@@ -8,6 +8,7 @@ use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use parking_lot::Mutex;
+use rdkafka::bindings::rd_kafka_memberid;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::base_consumer::BaseConsumer;
@@ -239,6 +240,16 @@ impl<C: AssignmentCallbacks> ConsumerContext for CustomContext<C> {
                 let mut offset_map: HashMap<Partition, u64> =
                     HashMap::with_capacity(committed_offsets.count());
                 let mut tpl = TopicPartitionList::with_capacity(committed_offsets.count());
+
+                // TODO: this will log member id every time we get an assignment, which is not ideal
+                // it would be better to log it only when it changes. We log for debugging purposes.
+                unsafe {
+                    let member_id = rd_kafka_memberid(base_consumer.client().native_ptr());
+                    tracing::info!(
+                        "Kafka consumer member id: {:?}",
+                        std::ffi::CStr::from_ptr(member_id).to_str().unwrap()
+                    );
+                };
 
                 for partition in committed_offsets.elements() {
                     let raw_offset = partition.offset().to_raw().unwrap();
