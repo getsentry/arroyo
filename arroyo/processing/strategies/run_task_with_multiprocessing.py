@@ -614,7 +614,7 @@ class RunTaskWithMultiprocessing(
         if self.__last_batch_time == 0.0:
             self.__last_batch_time = time.time()
         else:
-            self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch.build_and_submit_time", time.time() - self.__last_batch_time)
+            self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch_build_and_submit_time", time.time() - self.__last_batch_time)
             self.__last_batch_time = time.time()
 
     def __forward_invalid_offsets(self) -> None:

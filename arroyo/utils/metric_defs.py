@@ -99,5 +99,5 @@ MetricName = Literal[
     # Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
     # The amount of time it takes for the multiprocessing batch to be built and submitted to subprocesses
-    "arroyo.strategies.run_task_with_multiprocessing.batch.build_and_submit_time"
+    "arroyo.strategies.run_task_with_multiprocessing.batch_build_and_submit_time"
 ]
