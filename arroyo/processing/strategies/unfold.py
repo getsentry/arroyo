@@ -29,12 +29,14 @@ class Unfold(
         self,
         generator: Callable[[TInput], Collection[TOutput]],
         next_step: ProcessingStrategy[Union[FilteredPayload, TOutput]],
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         self.__generator = generator
         self.__next_step = next_step
         self.__closed = False
         # If we get MessageRejected from the next step, we put the pending messages here
         self.__pending: Deque[Message[TOutput]] = deque()
+        self.__abandon_messages_on_shutdown = abandon_messages_on_shutdown
 
     def submit(self, message: Message[Union[FilteredPayload, TInput]]) -> None:
         assert not self.__closed
@@ -94,6 +96,10 @@ class Unfold(
 
     def join(self, timeout: Optional[float] = None) -> None:
         deadline = time.time() + timeout if timeout is not None else None
+
+        if self.__abandon_messages_on_shutdown:
+            deadline = time.time()
+
         while deadline is None or time.time() < deadline:
             if self.__pending:
                 self.__flush()

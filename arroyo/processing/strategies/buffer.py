@@ -87,6 +87,7 @@ class Buffer(
         self,
         buffer: BufferProtocol[TPayload, TResult],
         next_step: ProcessingStrategy[TResult],
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         self.__buffer = buffer
         self.__next_step = next_step
@@ -101,6 +102,7 @@ class Buffer(
         self.__last_timestamp: Optional[datetime] = None
         self.__offsets: MutableMapping[Partition, int] = {}
         self.__init_time = time.time()
+        self.__abandon_messages_on_shutdown = abandon_messages_on_shutdown
 
     def __flush(self, force: bool) -> None:
         # You might want to ask the buffer if its empty or not rather than assuming. It may
@@ -182,6 +184,9 @@ class Buffer(
         whether the batch is ready or not.
         """
         deadline = time.time() + timeout if timeout is not None else None
+        if self.__abandon_messages_on_shutdown:
+            deadline = time.time()
+
         while deadline is None or time.time() < deadline:
             try:
                 self.__flush(force=True)

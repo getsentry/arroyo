@@ -41,6 +41,7 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         max_batch_size: int,
         max_batch_time: float,
         next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         def accumulator(
             result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
@@ -56,6 +57,7 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             accumulator,
             lambda: [],
             next_step,
+            abandon_messages_on_shutdown=abandon_messages_on_shutdown,
         )
 
     def submit(
@@ -109,13 +111,14 @@ class UnbatchStep(
     def __init__(
         self,
         next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         def generator(
             values: ValuesBatch[TStrategyPayload],
         ) -> MutableSequence[TStrategyPayload]:
             return [value.payload for value in values]
 
-        self.__unfold_step = Unfold(generator, next_step)
+        self.__unfold_step = Unfold(generator, next_step, abandon_messages_on_shutdown=abandon_messages_on_shutdown)
 
     def submit(
         self, message: Message[Union[FilteredPayload, ValuesBatch[TStrategyPayload]]]

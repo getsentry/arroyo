@@ -507,11 +507,13 @@ class RunTaskWithMultiprocessing(
         output_block_size: Optional[int] = None,
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
         self.__max_batch_size = max_batch_size
         self.__max_batch_time = max_batch_time
+        self.__abandon_messages_on_shutdown = abandon_messages_on_shutdown
 
         self.__resize_input_blocks = input_block_size is None
         self.__resize_output_blocks = output_block_size is None
@@ -861,6 +863,9 @@ class RunTaskWithMultiprocessing(
     def join(self, timeout: Optional[float] = None) -> None:
         start_join = time.time()
         deadline = time.time() + timeout if timeout is not None else None
+        if self.__abandon_messages_on_shutdown:
+            deadline = time.time()
+
         self.__forward_invalid_offsets()
 
         logger.debug("Waiting for %s batches...", len(self.__processes))

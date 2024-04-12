@@ -83,6 +83,7 @@ class Reduce(
         accumulator: Accumulator[TResult, TPayload],
         initial_value: Callable[[], TResult],
         next_step: ProcessingStrategy[TResult],
+        abandon_messages_on_shutdown: bool = False,
     ) -> None:
         self.__buffer_step = Buffer(
             buffer=ReduceBuffer(
@@ -92,6 +93,7 @@ class Reduce(
                 initial_value=initial_value,
             ),
             next_step=next_step,
+            abandon_messages_on_shutdown=abandon_messages_on_shutdown,
         )
 
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:

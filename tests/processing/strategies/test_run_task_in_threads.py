@@ -9,11 +9,12 @@ from arroyo.types import BrokerValue, Message, Topic, Partition
 
 @pytest.mark.parametrize("poll_after_msg", (True, False))
 @pytest.mark.parametrize("poll_before_join", (True, False))
-def test_run_task_in_threads(poll_after_msg: bool, poll_before_join: bool) -> None:
+@pytest.mark.parametrize("abandon_messages_on_shutdown", (True, False))
+def test_run_task_in_threads(poll_after_msg: bool, poll_before_join: bool, abandon_messages_on_shutdown: bool) -> None:
     mock_func = Mock()
     next_step = Mock()
 
-    strategy = RunTaskInThreads(mock_func, 2, 4, next_step)
+    strategy = RunTaskInThreads(mock_func, 2, 4, next_step, abandon_messsages_on_shutdown=abandon_messages_on_shutdown)
     partition = Partition(Topic("topic"), 0)
 
     strategy.submit(Message(BrokerValue(b"hello", partition, 0, datetime.now())))
@@ -41,6 +42,12 @@ def test_run_task_in_threads(poll_after_msg: bool, poll_before_join: bool) -> No
     strategy.join()
     strategy.close()
 
-    assert mock_func.call_count == 2
-    assert next_step.poll.call_count == 2
-    assert next_step.submit.call_count == 2
+    if abandon_messages_on_shutdown is True:
+        # Nothing is ever submitted since poll never gets called
+        if not poll_before_join and not poll_after_msg:
+            assert next_step.poll.call_count == 0
+            assert next_step.submit.call_count == 0
+    else:
+        assert mock_func.call_count == 2
+        assert next_step.poll.call_count == 2
+        assert next_step.submit.call_count == 2
