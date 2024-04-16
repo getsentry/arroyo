@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.17.4
+
+### Various fixes & improvements
+
+- rust: add more rust logging (#351) by @dbanda
+- fixes #353: return message.payload (#354) by @mwarkentin
+
 ## 2.17.3
 
 ### Various fixes & improvements
