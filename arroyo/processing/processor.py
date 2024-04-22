@@ -235,7 +235,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("New partitions assigned: %r", partitions)
             logger.info("Member id: %r", self.__consumer.member_id)
             self.__metrics_buffer.metrics.increment(
-                "arroyo.consumer.partitions_assigned.count", len(partitions)
+                "arroyo.consumer.partitions_assigned.count", len(partitions), tags={"consumer_member_id": self.__consumer.member_id}
             )
 
             self.__buffered_messages.reset()
@@ -254,7 +254,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             logger.info("Partitions to revoke: %r", partitions)
 
             self.__metrics_buffer.metrics.increment(
-                "arroyo.consumer.partitions_revoked.count", len(partitions)
+                "arroyo.consumer.partitions_revoked.count", len(partitions), tags={"consumer_member_id": self.__consumer.member_id}
             )
 
             if partitions:
