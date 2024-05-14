@@ -204,10 +204,6 @@ where
         Ok(())
     }
 
-    fn close(&mut self) {
-        self.next_step.close();
-    }
-
     fn terminate(&mut self) {
         for handle in &self.handles {
             handle.abort();
@@ -292,7 +288,6 @@ mod tests {
             self.0.lock().unwrap().submit += 1;
             Ok(())
         }
-        fn close(&mut self) {}
         fn terminate(&mut self) {}
         fn join(
             &mut self,

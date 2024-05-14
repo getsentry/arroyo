@@ -80,10 +80,6 @@ impl<TPayload, TTransformed: Send + Sync> ProcessingStrategy<TPayload>
         Ok(())
     }
 
-    fn close(&mut self) {
-        self.next_step.close()
-    }
-
     fn terminate(&mut self) {
         self.next_step.terminate()
     }
@@ -117,7 +113,6 @@ mod tests {
             fn submit(&mut self, _message: Message<String>) -> Result<(), SubmitError<String>> {
                 Ok(())
             }
-            fn close(&mut self) {}
             fn terminate(&mut self) {}
             fn join(
                 &mut self,

@@ -45,7 +45,6 @@ impl<T: Send> ProcessingStrategy<T> for TestStrategy<T> {
         Ok(())
     }
 
-    fn close(&mut self) {}
     fn terminate(&mut self) {}
     fn join(&mut self, _timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
         Ok(None)

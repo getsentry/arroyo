@@ -84,10 +84,6 @@ impl<T: Send + Sync, TResult: Clone + Send + Sync> ProcessingStrategy<T> for Red
         Ok(())
     }
 
-    fn close(&mut self) {
-        self.next_step.close();
-    }
-
     fn terminate(&mut self) {
         self.next_step.terminate();
     }
@@ -236,8 +232,6 @@ mod tests {
             Ok(())
         }
 
-        fn close(&mut self) {}
-
         fn terminate(&mut self) {}
 
         fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
@@ -292,7 +286,6 @@ mod tests {
         // and 1 message is left before next size limit.
         assert_eq!(strategy.batch_state.message_count, 1);
 
-        strategy.close();
         let _ = strategy.join(None);
 
         // 2 batches were created
@@ -349,7 +342,6 @@ mod tests {
         // means 1 batch was cleared and 5 items are in the current batch.
         assert_eq!(strategy.batch_state.message_count, 5);
 
-        strategy.close();
         let _ = strategy.join(None);
 
         // 2 batches were created
@@ -406,13 +398,13 @@ mod tests {
         // until timeout (which will not happen as part of this test)
         assert_eq!(strategy.batch_state.message_count, 0);
 
-        strategy.close();
         let _ = strategy.join(None);
 
         // no batches were created
         assert!(submitted_messages_clone.lock().unwrap().is_empty());
     }
 
+    #[test]
     fn test_reduce_with_zero_batch_size_flush() {
         let submitted_messages = Arc::new(Mutex::new(Vec::new()));
         let submitted_messages_clone = submitted_messages.clone();
@@ -460,7 +452,6 @@ mod tests {
         // until timeout (which will not happen as part of this test)
         assert_eq!(strategy.batch_state.message_count, 0);
 
-        strategy.close();
         let _ = strategy.join(None);
 
         // "empty" batch was created -- flushed even though the batch size callback claims it is of

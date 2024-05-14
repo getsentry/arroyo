@@ -145,7 +145,6 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         let mut state = self.0.locked_state();
         if let Some(s) = state.strategy.as_mut() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                s.close();
                 s.join(None)
             }));
 
@@ -463,8 +462,6 @@ mod tests {
             Ok(())
         }
 
-        fn close(&mut self) {}
-
         fn terminate(&mut self) {}
 
         fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
@@ -561,12 +558,6 @@ mod tests {
                 }
 
                 Ok(())
-            }
-
-            fn close(&mut self) {
-                if self.panic_on == "close" {
-                    panic!("panic in close");
-                }
             }
 
             fn terminate(&mut self) {}

@@ -43,7 +43,6 @@ impl ProcessingStrategy<KafkaPayload> for Noop {
     fn submit(&mut self, _message: Message<KafkaPayload>) -> Result<(), SubmitError<KafkaPayload>> {
         Ok(())
     }
-    fn close(&mut self) {}
     fn terminate(&mut self) {}
     fn join(&mut self, _timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
         Ok(None)
