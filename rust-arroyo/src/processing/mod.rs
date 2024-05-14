@@ -46,7 +46,7 @@ pub enum RunError {
     Strategy(#[source] Box<dyn std::error::Error>),
 }
 
-const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(1);
+const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ConsumerState<TPayload>(Arc<(AtomicBool, Mutex<ConsumerStateInner<TPayload>>)>);
@@ -105,6 +105,7 @@ pub struct ProcessorHandle {
 
 impl ProcessorHandle {
     pub fn signal_shutdown(&mut self) {
+        tracing::info!("Shutdown requested");
         self.shutdown_requested.store(true, Ordering::Relaxed);
     }
 }
@@ -145,6 +146,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         let mut state = self.0.locked_state();
         if let Some(s) = state.strategy.as_mut() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                tracing::info!("Joining strategy");
                 s.join(None)
             }));
 
@@ -361,12 +363,12 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     return Ok(());
                 };
 
-                // If we are in the backpressure state for more than 1 second,
+                // If we are in the backpressure state for more than BACKPRESSURE_THRESHOLD seconds,
                 // we pause the consumer and hold the message until it is
                 // accepted, at which point we can resume consuming.
                 if !consumer_is_paused && deadline.has_elapsed() {
                     tracing::warn!(
-                        "Consumer is in backpressure state for more than 1 second, pausing",
+                        "Consumer is in backpressure state for more than 5 seconds, pausing",
                     );
 
                     let partitions = self.consumer.tell().unwrap().into_keys().collect();
@@ -409,6 +411,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             if let Err(e) = self.run_once() {
                 let mut trait_callbacks = self.consumer_state.locked_state();
 
+                tracing::info!("Caught error, terminating strategy");
                 if let Some(strategy) = trait_callbacks.strategy.as_mut() {
                     strategy.terminate();
                 }
@@ -417,6 +420,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 return Err(e);
             }
         }
+        tracing::info!("Shutdown processor");
         Ok(())
     }
 

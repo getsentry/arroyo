@@ -1,5 +1,57 @@
 # Changelog and versioning
 
+## 2.17.4
+
+### Various fixes & improvements
+
+- rust: add more rust logging (#351) by @dbanda
+- fixes #353: return message.payload (#354) by @mwarkentin
+
+## 2.17.3
+
+### Various fixes & improvements
+
+- feat(header): Implement find method on headers (#350) by @nikhars
+
+## 2.17.2
+
+### Various fixes & improvements
+
+- feat: make default auto.offset.reset earliest (#349) by @lynnagara
+
+## 2.17.1
+
+### Various fixes & improvements
+
+- fix: Enable stats collection (#348) by @phacops
+
+## 2.17.0
+
+### Various fixes & improvements
+
+- ref(reduce): Allow to reduce to non-cloneable values (#346) by @untitaker
+
+## 2.16.5
+
+### Various fixes & improvements
+
+- build(deps): bump black from 22.3.0 to 24.3.0 (#343) by @dependabot
+- feat: confluent-kafka-python 2.3.0 (#344) by @lynnagara
+- meta: Update codeowners (#345) by @lynnagara
+
+## 2.16.4
+
+### Various fixes & improvements
+
+- ref: Metric definition (#341) by @lynnagara
+- feat: Ingest a metric for rdkafka queue size (#342) by @phacops
+
+## 2.16.2
+
+### Various fixes & improvements
+
+- feat: Increase backpressure threshold to 5 seconds (#340) by @lynnagara
+
 ## 2.16.1
 
 ### Various fixes & improvements

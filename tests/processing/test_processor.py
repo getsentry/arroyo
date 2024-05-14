@@ -86,8 +86,10 @@ def test_stream_processor_lifecycle() -> None:
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
-        time.sleep(1)
-        processor._run_once()  # Should pause now
+
+        with mock.patch("time.time", return_value=time.time() + 5):
+            # time.sleep(5)
+            processor._run_once()  # Should pause now
 
     # Once the message is accepted by the processing strategy, the consumer
     # should be resumed.

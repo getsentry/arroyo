@@ -166,7 +166,7 @@ Here we are using the `RunTask` strategy which runs a custom function over each 
 
     def handle_message(message: Message[KafkaPayload]) -> Message[KafkaPayload]:
         print(f"MSG: {message.payload}")
-        return message
+        return message.payload
 
     class ConsumerStrategyFactory(ProcessingStrategyFactory[KafkaPayload]):
         """
