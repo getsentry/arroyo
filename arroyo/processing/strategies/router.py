@@ -19,8 +19,8 @@ class PartitionWatermark:
         self.__uncommitted[route].append(offset)
 
     def advance_watermark(self, route: str, offset: int) -> None:
-        assert self.__uncommitted[route], "There are no watermarks to advance"
-        while self.__uncommitted[route][0] <= offset:
+        assert len(self.__uncommitted[route]) > 0, "There are no watermarks to advance"
+        while self.__uncommitted[route] and self.__uncommitted[route][0] <= offset:
             uncommitted = self.__uncommitted[route].popleft()
             self.__committed[route].append(uncommitted)
 
@@ -44,19 +44,21 @@ class PartitionWatermark:
 
         return high_watermark
 
-    def purge(self, offset: int) -> None:
+    def purge(self) -> None:
         for _, queue in self.__committed.items():
-            last_dropped = None
-            for committed in queue:
-                if (
-                    self.__lowest_uncommitted is None
-                    or committed < self.__lowest_uncommitted
-                ):
-                    last_dropped = queue.popleft()
-                else:
-                    if last_dropped:
-                        queue.appendleft(last_dropped)
-                        continue
+            while queue and (
+                self.__lowest_uncommitted is None
+                or queue[0] < self.__lowest_uncommitted
+            ):
+                queue.popleft()
+
+    @property
+    def committed_offsets(self) -> int:
+        return sum(len(queue) for queue in self.__committed.values())
+
+    @property
+    def uncommitted_offsets(self) -> int:
+        return sum(len(queue) for queue in self.__uncommitted.values())
 
 
 class CommitWatermarkTracker:
@@ -89,7 +91,7 @@ class CommitWatermarkTracker:
             watermark_offset = watermark.get_watermark()
             if watermark_offset is not None:
                 high_watermark[partition] = watermark_offset
-            watermark.purge(offset)
+            watermark.purge()
 
         ret = {}
         for partition, offset in high_watermark.items():
