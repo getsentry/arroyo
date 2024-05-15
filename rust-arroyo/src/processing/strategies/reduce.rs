@@ -90,20 +90,25 @@ impl<T: Send + Sync, TResult: Send + Sync> ProcessingStrategy<T> for Reduce<T, T
 
     fn join(&mut self, timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
         let deadline = timeout.map(Deadline::new);
-        if self.message_carried_over.is_some() {
-            while self.message_carried_over.is_some() {
-                let next_commit = self.next_step.poll()?;
-                self.commit_request_carried_over =
-                    merge_commit_request(self.commit_request_carried_over.take(), next_commit);
-                self.flush(true)?;
 
-                if deadline.map_or(false, |d| d.has_elapsed()) {
-                    tracing::warn!("Timeout reached while waiting for tasks to finish");
-                    break;
-                }
+        loop {
+            if deadline.map_or(false, |d| d.has_elapsed()) {
+                tracing::warn!(
+                    "Timeout {:?} reached while waiting for tasks to finish",
+                    timeout
+                );
+                break;
             }
-        } else {
+
+            let next_commit = self.next_step.poll()?;
+            self.commit_request_carried_over =
+                merge_commit_request(self.commit_request_carried_over.take(), next_commit);
+
             self.flush(true)?;
+
+            if self.message_carried_over.is_none() {
+                break;
+            }
         }
 
         let next_commit = self.next_step.join(deadline.map(|d| d.remaining()))?;
