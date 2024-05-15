@@ -103,16 +103,6 @@ pub trait ProcessingStrategy<TPayload>: Send + Sync {
     /// ``MessageRejected`` exception.
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>>;
 
-    /// Close this instance. No more messages should be accepted by the
-    /// instance after this method has been called.
-    ///
-    /// This method should not block. Once this strategy instance has
-    /// finished processing (or discarded) all messages that were submitted
-    /// prior to this method being called, the strategy should commit its
-    /// partition offsets and release any resources that will no longer be
-    /// used (threads, processes, sockets, files, etc.)
-    fn close(&mut self);
-
     /// Close the processing strategy immediately, abandoning any work in
     /// progress. No more messages should be accepted by the instance after
     /// this method has been called.
@@ -137,10 +127,6 @@ impl<TPayload, S: ProcessingStrategy<TPayload> + ?Sized> ProcessingStrategy<TPay
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
         (**self).submit(message)
-    }
-
-    fn close(&mut self) {
-        (**self).close()
     }
 
     fn terminate(&mut self) {

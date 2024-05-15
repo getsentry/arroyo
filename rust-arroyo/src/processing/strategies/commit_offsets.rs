@@ -67,8 +67,6 @@ impl<T> ProcessingStrategy<T> for CommitOffsets {
         Ok(())
     }
 
-    fn close(&mut self) {}
-
     fn terminate(&mut self) {}
 
     fn join(

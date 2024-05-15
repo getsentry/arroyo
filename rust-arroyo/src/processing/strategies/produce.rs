@@ -74,10 +74,6 @@ impl ProcessingStrategy<KafkaPayload> for Produce {
         self.inner.submit(message)
     }
 
-    fn close(&mut self) {
-        self.inner.close();
-    }
-
     fn terminate(&mut self) {
         self.inner.terminate();
     }
@@ -134,7 +130,6 @@ mod tests {
             self.0.lock().submit += 1;
             Ok(())
         }
-        fn close(&mut self) {}
         fn terminate(&mut self) {}
         fn join(
             &mut self,
@@ -168,7 +163,6 @@ mod tests {
             ) -> Result<(), SubmitError<KafkaPayload>> {
                 Ok(())
             }
-            fn close(&mut self) {}
             fn terminate(&mut self) {}
             fn join(
                 &mut self,
@@ -198,7 +192,6 @@ mod tests {
         };
 
         strategy.submit(message).unwrap();
-        strategy.close();
         let _ = strategy.join(None);
     }
 
