@@ -1,10 +1,23 @@
+from dataclasses import dataclass
+from typing import Mapping, MutableMapping, MutableSequence, Optional, Sequence, Union
+
 import pytest
 
+from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.router import (
     CommitWatermarkTracker,
     PartitionWatermark,
+    RouterStrategy,
 )
-from arroyo.types import Partition, Topic
+from arroyo.types import Commit as ArroyoCommit
+from arroyo.types import (
+    FilteredPayload,
+    Message,
+    Partition,
+    Topic,
+    TStrategyPayload,
+    Value,
+)
 
 
 def test_empty_watermark() -> None:
@@ -116,7 +129,6 @@ def test_commit_tracker() -> None:
     p2 = Partition(topic, 1)
     tracker = CommitWatermarkTracker(
         routes={"route1", "route2"},
-        partitions={p1, p2},
     )
 
     tracker.add_message("route1", p1, 10)
@@ -137,3 +149,311 @@ def test_commit_tracker() -> None:
     tracker.add_message("route1", p2, 21)
 
     assert tracker.add_commit("route2", {p1: 20, p2: 11}) == {p1: 25, p2: 20}
+
+
+@dataclass
+class Event:
+    pass
+
+
+@dataclass
+class Processed(Event):
+    route: str
+    offsets: Mapping[Partition, int]
+
+
+@dataclass
+class Commit(Event):
+    offsets: Mapping[Partition, int]
+    force: bool
+
+
+@dataclass
+class Join(Event):
+    route: str
+
+
+@dataclass
+class Close(Event):
+    route: str
+
+
+@dataclass
+class Terminate(Event):
+    route: str
+
+
+@dataclass
+class Poll(Event):
+    route: str
+
+
+class EventRecorder:
+    def __init__(self) -> None:
+        self.__events: MutableSequence[Event] = []
+
+    def add(self, event: Event) -> None:
+        self.__events.append(event)
+
+    def assert_sequence(self, events: Sequence[Event]) -> None:
+        assert events == self.__events
+
+
+class TestStrategy(ProcessingStrategy[TStrategyPayload]):
+    def __init__(
+        self,
+        commit: ArroyoCommit,
+        commit_interval: int,
+        recorder: EventRecorder,
+        route: str,
+        reject_events: bool = False,
+    ) -> None:
+        self.__commit = commit
+        self.__interval = commit_interval
+        self.__recorder = recorder
+        self.__route = route
+        self.__op = 0
+        self.__reject_events = reject_events
+        self.__last_offsets: MutableMapping[Partition, int] = {}
+
+    def poll(self) -> None:
+        if self.__op % self.__interval == 0:
+            self.__commit(self.__last_offsets)
+            self.__last_offsets = {}
+        self.__recorder.add(Poll(self.__route))
+
+    def submit(
+        self, message: Message[Union[FilteredPayload, TStrategyPayload]]
+    ) -> None:
+        if self.__reject_events:
+            raise MessageRejected
+        self.__op += 1
+        self.__recorder.add(Processed(self.__route, message.committable))
+        for partition, offset in message.committable.items():
+            if (
+                partition not in self.__last_offsets
+                or self.__last_offsets[partition] < offset
+            ):
+                self.__last_offsets[partition] = offset
+
+    def close(self) -> None:
+        self.__recorder.add(Close(self.__route))
+
+    def terminate(self) -> None:
+        self.__recorder.add(Terminate(self.__route))
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        self.__recorder.add(Join(self.__route))
+        self.__commit(self.__last_offsets, force=True)
+
+
+def selector(message: Message[Union[FilteredPayload, TStrategyPayload]]) -> str:
+    return str(message.payload)
+
+
+def test_empty_strategy() -> None:
+    recorder = EventRecorder()
+
+    def commit_func(offsets: Mapping[Partition, int], force: bool = False) -> None:
+        pass
+
+    strategy: ProcessingStrategy[Union[FilteredPayload, str]] = RouterStrategy(
+        {}, selector, commit_func
+    )
+
+    topic = Topic("topic")
+    p1 = Partition(topic, 0)
+
+    with pytest.raises(AssertionError):
+        strategy.submit(Message(Value("route1", {p1: 1})))
+
+    def build1(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 3, recorder, "route1")
+
+    strategy = RouterStrategy({"route1": build1}, selector, commit_func)
+
+    strategy.close()
+    strategy.terminate()
+
+    with pytest.raises(AssertionError):
+        strategy.submit(Message(Value("route1", {p1: 1})))
+
+    recorder.assert_sequence(
+        [
+            Close("route1"),
+            Terminate("route1"),
+        ]
+    )
+
+
+def test_sequence_one_partition() -> None:
+    recorder = EventRecorder()
+
+    def build1(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 3, recorder, "route1")
+
+    def build2(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route2")
+
+    def commit_func(offsets: Mapping[Partition, int], force: bool = False) -> None:
+        recorder.add(Commit(offsets, force))
+
+    strategy: ProcessingStrategy[Union[FilteredPayload, str]] = RouterStrategy(
+        {"route1": build1, "route2": build2}, selector, commit_func
+    )
+
+    topic = Topic("topic")
+    p1 = Partition(topic, 0)
+
+    strategy.submit(Message(Value("route1", {p1: 1})))
+    strategy.poll()
+    strategy.submit(Message(Value("route1", {p1: 2})))
+    strategy.poll()
+    strategy.submit(Message(Value("route2", {p1: 3})))
+    strategy.poll()
+    strategy.submit(Message(Value("route1", {p1: 5})))
+    strategy.poll()
+
+    strategy.submit(Message(Value("route2", {p1: 10})))
+    strategy.poll()
+
+    strategy.submit(Message(Value("route1", {p1: 11})))
+    strategy.submit(Message(Value("route1", {p1: 12})))
+    strategy.poll()
+    strategy.submit(Message(Value("route2", {p1: 14})))
+    strategy.close()
+    strategy.join()
+
+    recorder.assert_sequence(
+        [
+            Processed("route1", {p1: 1}),
+            Poll("route1"),
+            Poll("route2"),
+            Processed("route1", {p1: 2}),
+            Poll("route1"),
+            Poll("route2"),
+            Processed("route2", {p1: 3}),
+            # Do not commit here as I am waiting for route1 to commit
+            Poll("route1"),
+            Poll("route2"),
+            Processed("route1", {p1: 5}),
+            # Reached a commit point for route1 (3 messages) now I
+            # commit everything
+            Commit({p1: 5}, force=False),
+            Poll("route1"),
+            Poll("route2"),
+            Processed("route2", {p1: 10}),
+            Poll("route1"),
+            # Route 2 commits every message, there is nothing waiting
+            # from route 1 so commit.
+            Commit({p1: 10}, force=False),
+            Poll("route2"),
+            Processed("route1", {p1: 11}),
+            Processed("route1", {p1: 12}),
+            Poll("route1"),
+            Poll("route2"),
+            Processed("route2", {p1: 14}),
+            # Commit with force on Join
+            Close("route1"),
+            Close("route2"),
+            Join("route1"),
+            Commit({p1: 12}, force=True),
+            Join("route2"),
+            Commit({p1: 14}, force=True),
+        ]
+    )
+
+
+def test_multi_partition() -> None:
+    recorder = EventRecorder()
+
+    def build1(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route1")
+
+    def build2(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route2")
+
+    def build3(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route3")
+
+    def commit_func(offsets: Mapping[Partition, int], force: bool = False) -> None:
+        recorder.add(Commit(offsets, force))
+
+    strategy: ProcessingStrategy[Union[FilteredPayload, str]] = RouterStrategy(
+        {"route1": build1, "route2": build2, "route3": build3}, selector, commit_func
+    )
+
+    topic = Topic("topic")
+    p1 = Partition(topic, 0)
+    p2 = Partition(topic, 1)
+    p3 = Partition(topic, 2)
+
+    def publish_all_routes(partition: Partition) -> None:
+        strategy.submit(Message(Value("route1", {partition: 1})))
+        strategy.submit(Message(Value("route2", {partition: 2})))
+        strategy.submit(Message(Value("route3", {partition: 3})))
+
+    publish_all_routes(p1)
+    publish_all_routes(p2)
+    publish_all_routes(p3)
+
+    strategy.join()
+
+    recorder.assert_sequence(
+        [
+            Processed("route1", {p1: 1}),
+            Processed("route2", {p1: 2}),
+            Processed("route3", {p1: 3}),
+            Processed("route1", {p2: 1}),
+            Processed("route2", {p2: 2}),
+            Processed("route3", {p2: 3}),
+            Processed("route1", {p3: 1}),
+            Processed("route2", {p3: 2}),
+            Processed("route3", {p3: 3}),
+            # Nobody committed so far, so each route will commit
+            # its offset. If we ran the joins in reverse order we
+            # would only commit once with offset 3. That is because
+            # route 3 would try to commit first and we would wait
+            # till the other routes have committed.
+            Join("route1"),
+            Commit({p1: 1, p2: 1, p3: 1}, force=True),
+            Join("route2"),
+            Commit({p1: 2, p2: 2, p3: 2}, force=True),
+            Join("route3"),
+            Commit({p1: 3, p2: 3, p3: 3}, force=True),
+        ]
+    )
+
+
+def test_rejecting_messages() -> None:
+    recorder = EventRecorder()
+
+    def build1(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route1")
+
+    def build2(commit: ArroyoCommit) -> ProcessingStrategy[TStrategyPayload]:
+        return TestStrategy(commit, 1, recorder, "route2", reject_events=True)
+
+    def commit_func(offsets: Mapping[Partition, int], force: bool = False) -> None:
+        recorder.add(Commit(offsets, force))
+
+    strategy: ProcessingStrategy[Union[FilteredPayload, str]] = RouterStrategy(
+        {"route1": build1, "route2": build2}, selector, commit_func
+    )
+
+    topic = Topic("topic")
+    p1 = Partition(topic, 0)
+
+    strategy.submit(Message(Value("route1", {p1: 1})))
+    with pytest.raises(MessageRejected):
+        strategy.submit(Message(Value("route2", {p1: 2})))
+    strategy.join()
+
+    recorder.assert_sequence(
+        [
+            Processed("route1", {p1: 1}),
+            Join("route1"),
+            Commit({p1: 1}, force=True),
+            Join("route2"),
+        ]
+    )
