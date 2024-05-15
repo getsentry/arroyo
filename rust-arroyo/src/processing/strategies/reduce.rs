@@ -97,7 +97,10 @@ impl<T: Send + Sync, TResult: Send + Sync> ProcessingStrategy<T> for Reduce<T, T
 
         loop {
             if deadline.map_or(false, |d| d.has_elapsed()) {
-                tracing::warn!("Timeout {:?} reached while waiting for tasks to finish", timeout);
+                tracing::warn!(
+                    "Timeout {:?} reached while waiting for tasks to finish",
+                    timeout
+                );
                 break;
             }
 
