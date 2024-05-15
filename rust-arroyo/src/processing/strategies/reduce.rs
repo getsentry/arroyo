@@ -107,7 +107,7 @@ impl<T: Send + Sync, TResult: Send + Sync> ProcessingStrategy<T> for Reduce<T, T
 
             self.flush(true)?;
 
-            if !self.message_carried_over.is_some() {
+            if self.message_carried_over.is_none() {
                 break;
             }
         }
