@@ -186,11 +186,31 @@ class CommitWatermarkTracker:
 
 
 class RouteBuilder(Protocol):
+    """
+    Builds the strategy that is used on a route by the `RouterStrategy`.
+
+    The `RouterStrategy` has to intercept the commit calls in order to
+    sort them and commit at the right time.
+    `RouterStrategy` intercepts the commit calls by wrapping the `commit`
+    function call received from the `StreamProcessor`. This means that
+    each of the destination route needs to be provided the wrapper and
+    cannot be instantiated with the original `commit` function.
+
+    Requiring users of `RouterStrategy` to provide a builder instead of
+    the strategy objects makes it hard to mismanage the `commit` function
+    and accidentally instantiate the destination strategies with the wrong
+    `commit` function.
+    """
+
     def __call__(self, commit: Commit) -> ProcessingStrategy[TStrategyPayload]:
         pass
 
 
 class RouteSelector(Protocol):
+    """
+    Given a message it decides which route the message should take.
+    """
+
     def __call__(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> str:
@@ -198,6 +218,27 @@ class RouteSelector(Protocol):
 
 
 class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
+    """
+    This strategy routes messages between a number of strategies depending on
+    any property of the message itself. It then keeps track of the commit
+    highest watermark to ensure we only commit offsets that have been committed
+    by the destination strategies.
+
+    As messages are routed to multiple independent strategies each of which
+    can have its own commit policies, it is not given that commits would be
+    issued in order by the destination strategies.
+
+    This strategy solves the problem by intercepting all commits callback and
+    ensure to reorder them.
+
+    The destination strategy for a message is chosen through a `RouteSelector`
+    function provided when instantiating this class.
+
+    In order for this strategy to intercept callbacks to the commit function
+    we need to let this class instantiate the destination strategies and pass
+    them the `commit` callback.
+    """
+
     def __init__(
         self,
         routes: Mapping[str, RouteBuilder],
@@ -240,6 +281,10 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
 
         route = self.__selector(message)
         assert route in self.__routes, f"Invalid route {route}"
+        # We have to add the message to the watermark before calling
+        # `submit` on the destination strategy because, while unlikely,
+        # it is possible that submit itself will commit the message,
+        # thus the message has to be already in the watermark.
         for partition, offset in message.committable.items():
             self.__watermark_tracker.add_message(route, partition, offset)
 
@@ -247,6 +292,9 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
             self.__routes[route].submit(message)
         except Exception:
             for partition, offset in message.committable.items():
+                # When we receive a `MessageRejected` exception upon submit
+                # the message is not supposed to have been committed, so
+                # we need to remove it from the watermark.
                 self.__watermark_tracker.remove_last(route, partition)
             raise
 
@@ -265,7 +313,7 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
 
     def join(self, timeout: Optional[float] = None) -> None:
         for route in self.__routes.values():
-            # TODO: Should maybe reduce the timeout at each route
+            # TODO: Should reduce the timeout at each route
             route.join(timeout)
 
         uncommitted = self.__watermark_tracker.uncommitted_offsets
