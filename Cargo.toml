@@ -11,6 +11,7 @@ path = "rust-arroyo/src/lib.rs"
 [dependencies]
 chrono = "0.4.26"
 coarsetime = "0.1.33"
+fxhash = "0.2.1"
 once_cell = "1.18.0"
 rand = "0.8.5"
 rdkafka = { version = "0.36.1", features = ["cmake-build", "tracing"] }

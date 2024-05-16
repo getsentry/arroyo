@@ -2,15 +2,15 @@ use crate::backends::storages::{ConsumeError, MessageStorage, TopicDoesNotExist,
 use crate::types::{BrokerMessage, Partition, Topic};
 use crate::utils::clock::Clock;
 use chrono::DateTime;
-use std::collections::{HashMap, HashSet};
+use fxhash::{FxHashMap, FxHashSet};
 use thiserror::Error;
 use uuid::Uuid;
 
 pub struct LocalBroker<TPayload> {
     storage: Box<dyn MessageStorage<TPayload> + Send + Sync>,
     clock: Box<dyn Clock + Send + Sync>,
-    offsets: HashMap<String, HashMap<Partition, u64>>,
-    subscriptions: HashMap<String, HashMap<Uuid, Vec<Topic>>>,
+    offsets: FxHashMap<String, FxHashMap<Partition, u64>>,
+    subscriptions: FxHashMap<String, FxHashMap<Uuid, Vec<Topic>>>,
 }
 
 #[derive(Error, Debug, Clone)]
@@ -40,8 +40,8 @@ impl<TPayload> LocalBroker<TPayload> {
         Self {
             storage,
             clock,
-            offsets: HashMap::new(),
-            subscriptions: HashMap::new(),
+            offsets: FxHashMap::default(),
+            subscriptions: FxHashMap::default(),
         }
     }
 
@@ -68,7 +68,7 @@ impl<TPayload> LocalBroker<TPayload> {
         consumer_id: Uuid,
         consumer_group: String,
         topics: Vec<Topic>,
-    ) -> Result<HashMap<Partition, u64>, BrokerError> {
+    ) -> Result<FxHashMap<Partition, u64>, BrokerError> {
         // Handle rebalancing request which is not supported
         let group_subscriptions = self.subscriptions.get(&consumer_group);
         if let Some(group_s) = group_subscriptions {
@@ -87,15 +87,16 @@ impl<TPayload> LocalBroker<TPayload> {
             }
         }
 
-        let mut assignments = HashMap::new();
-        let mut assigned_topics = HashSet::new();
+        let mut assignments = FxHashMap::default();
+        let mut assigned_topics = FxHashSet::default();
 
         for topic in topics.iter() {
             if !assigned_topics.contains(topic) {
                 assigned_topics.insert(topic);
                 let partition_count = self.storage.partition_count(topic)?;
                 if !self.offsets.contains_key(&consumer_group) {
-                    self.offsets.insert(consumer_group.clone(), HashMap::new());
+                    self.offsets
+                        .insert(consumer_group.clone(), FxHashMap::default());
                 }
                 for n in 0..partition_count {
                     let p = Partition::new(*topic, n);
@@ -111,7 +112,7 @@ impl<TPayload> LocalBroker<TPayload> {
         let group_subscriptions = self.subscriptions.get_mut(&consumer_group);
         match group_subscriptions {
             None => {
-                let mut new_group_subscriptions = HashMap::new();
+                let mut new_group_subscriptions = FxHashMap::default();
                 new_group_subscriptions.insert(consumer_id, topics);
                 self.subscriptions
                     .insert(consumer_group.clone(), new_group_subscriptions);
@@ -152,7 +153,7 @@ impl<TPayload> LocalBroker<TPayload> {
         self.storage.consume(partition, offset)
     }
 
-    pub fn commit(&mut self, consumer_group: &str, offsets: HashMap<Partition, u64>) {
+    pub fn commit(&mut self, consumer_group: &str, offsets: FxHashMap<Partition, u64>) {
         self.offsets.insert(consumer_group.to_string(), offsets);
     }
 
@@ -168,7 +169,7 @@ mod tests {
     use crate::backends::storages::memory::MemoryMessageStorage;
     use crate::types::{Partition, Topic};
     use crate::utils::clock::SystemClock;
-    use std::collections::HashMap;
+    use fxhash::FxHashMap;
     use uuid::Uuid;
 
     #[test]
@@ -229,7 +230,7 @@ mod tests {
         let r_assignments =
             broker.subscribe(Uuid::nil(), "group".to_string(), vec![topic1, topic2]);
         assert!(r_assignments.is_ok());
-        let expected = HashMap::from([
+        let expected = FxHashMap::from_iter([
             (Partition::new(topic1, 0), 0),
             (Partition::new(topic1, 1), 0),
             (Partition::new(topic2, 0), 0),

@@ -1,5 +1,6 @@
 extern crate rust_arroyo;
 
+use fxhash::FxHashMap;
 use rust_arroyo::backends::kafka::config::KafkaConfig;
 use rust_arroyo::backends::kafka::InitialOffset;
 use rust_arroyo::backends::kafka::KafkaConsumer;
@@ -7,11 +8,10 @@ use rust_arroyo::backends::AssignmentCallbacks;
 use rust_arroyo::backends::CommitOffsets;
 use rust_arroyo::backends::Consumer;
 use rust_arroyo::types::{Partition, Topic};
-use std::collections::HashMap;
 
 struct EmptyCallbacks {}
 impl AssignmentCallbacks for EmptyCallbacks {
-    fn on_assign(&self, _: HashMap<Partition, u64>) {}
+    fn on_assign(&self, _: FxHashMap<Partition, u64>) {}
     fn on_revoke<C: CommitOffsets>(&self, _: C, _: Vec<Partition>) {}
 }
 

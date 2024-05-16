@@ -1,8 +1,8 @@
 use super::{ConsumeError, MessageStorage, TopicDoesNotExist, TopicExists};
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, Utc};
+use fxhash::FxHashMap;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 
 /// Stores a list of messages for each partition of a topic.
@@ -51,13 +51,13 @@ impl<TPayload> TopicMessages<TPayload> {
 
 /// An implementation of [`MessageStorage`] that holds messages in memory.
 pub struct MemoryMessageStorage<TPayload> {
-    topics: HashMap<Topic, TopicMessages<TPayload>>,
+    topics: FxHashMap<Topic, TopicMessages<TPayload>>,
 }
 
 impl<TPayload> Default for MemoryMessageStorage<TPayload> {
     fn default() -> Self {
-        MemoryMessageStorage {
-            topics: HashMap::new(),
+        Self {
+            topics: FxHashMap::default(),
         }
     }
 }

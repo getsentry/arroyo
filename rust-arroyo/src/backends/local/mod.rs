@@ -3,10 +3,10 @@ pub mod broker;
 use super::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError, Producer, ProducerError};
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 use broker::LocalBroker;
+use fxhash::{FxHashMap, FxHashSet};
 use parking_lot::Mutex;
 use rand::prelude::*;
-use std::collections::HashSet;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -15,14 +15,14 @@ use uuid::Uuid;
 pub struct RebalanceNotSupported;
 
 enum Callback {
-    Assign(HashMap<Partition, u64>),
+    Assign(FxHashMap<Partition, u64>),
 }
 
 struct SubscriptionState<C> {
     topics: Vec<Topic>,
     callbacks: Option<C>,
-    offsets: HashMap<Partition, u64>,
-    last_eof_at: HashMap<Partition, u64>,
+    offsets: FxHashMap<Partition, u64>,
+    last_eof_at: FxHashMap<Partition, u64>,
 }
 
 struct OffsetCommitter<'a, TPayload> {
@@ -31,7 +31,7 @@ struct OffsetCommitter<'a, TPayload> {
 }
 
 impl<'a, TPayload> CommitOffsets for OffsetCommitter<'a, TPayload> {
-    fn commit(self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn commit(self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         self.broker.commit(self.group, offsets);
         Ok(())
     }
@@ -42,7 +42,7 @@ pub struct LocalConsumer<TPayload, C: AssignmentCallbacks> {
     group: String,
     broker: Arc<Mutex<LocalBroker<TPayload>>>,
     pending_callback: VecDeque<Callback>,
-    paused: HashSet<Partition>,
+    paused: FxHashSet<Partition>,
     // The offset that a the last ``EndOfPartition`` exception that was
     // raised at. To maintain consistency with the Confluent consumer, this
     // is only sent once per (partition, offset) pair.
@@ -65,12 +65,12 @@ impl<TPayload, C: AssignmentCallbacks> LocalConsumer<TPayload, C> {
             group,
             broker,
             pending_callback: VecDeque::new(),
-            paused: HashSet::new(),
+            paused: FxHashSet::default(),
             subscription_state: SubscriptionState {
                 topics: topics.to_vec(),
                 callbacks: Some(callbacks),
-                offsets: HashMap::new(),
-                last_eof_at: HashMap::new(),
+                offsets: FxHashMap::default(),
+                last_eof_at: FxHashMap::default(),
             },
             enable_end_of_partition,
             commit_offset_calls: 0,
@@ -147,7 +147,7 @@ impl<TPayload: 'static, C: AssignmentCallbacks> Consumer<TPayload, C>
         }))
     }
 
-    fn pause(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError> {
+    fn pause(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError> {
         if !self.is_subscribed(partitions.iter()) {
             return Err(ConsumerError::EndOfPartition);
         }
@@ -156,7 +156,7 @@ impl<TPayload: 'static, C: AssignmentCallbacks> Consumer<TPayload, C>
         Ok(())
     }
 
-    fn resume(&mut self, partitions: HashSet<Partition>) -> Result<(), ConsumerError> {
+    fn resume(&mut self, partitions: FxHashSet<Partition>) -> Result<(), ConsumerError> {
         if !self.is_subscribed(partitions.iter()) {
             return Err(ConsumerError::UnassignedPartition);
         }
@@ -167,19 +167,19 @@ impl<TPayload: 'static, C: AssignmentCallbacks> Consumer<TPayload, C>
         Ok(())
     }
 
-    fn paused(&self) -> Result<HashSet<Partition>, ConsumerError> {
+    fn paused(&self) -> Result<FxHashSet<Partition>, ConsumerError> {
         Ok(self.paused.clone())
     }
 
-    fn tell(&self) -> Result<HashMap<Partition, u64>, ConsumerError> {
+    fn tell(&self) -> Result<FxHashMap<Partition, u64>, ConsumerError> {
         Ok(self.subscription_state.offsets.clone())
     }
 
-    fn seek(&self, _: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn seek(&self, _: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         unimplemented!("Seek is not implemented");
     }
 
-    fn commit_offsets(&mut self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
+    fn commit_offsets(&mut self, offsets: FxHashMap<Partition, u64>) -> Result<(), ConsumerError> {
         if !self.is_subscribed(offsets.keys()) {
             return Err(ConsumerError::UnassignedPartition);
         }
@@ -260,15 +260,15 @@ mod tests {
     use crate::backends::{CommitOffsets, Consumer};
     use crate::types::{Partition, Topic};
     use crate::utils::clock::SystemClock;
+    use fxhash::{FxHashMap, FxHashSet};
     use parking_lot::Mutex;
-    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
     use uuid::Uuid;
 
     struct EmptyCallbacks {}
     impl AssignmentCallbacks for EmptyCallbacks {
-        fn on_assign(&self, _: HashMap<Partition, u64>) {}
+        fn on_assign(&self, _: FxHashMap<Partition, u64>) {}
         fn on_revoke<C: CommitOffsets>(&self, _: C, _: Vec<Partition>) {}
     }
 
@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(consumer.pending_callback.len(), 1);
 
         let _ = consumer.poll(Some(Duration::from_millis(100)));
-        let expected = HashMap::from([
+        let expected = FxHashMap::from_iter([
             (Partition::new(topic1, 0), 0),
             (Partition::new(topic1, 1), 0),
             (Partition::new(topic2, 0), 0),
@@ -322,12 +322,12 @@ mod tests {
 
         struct TheseCallbacks {}
         impl AssignmentCallbacks for TheseCallbacks {
-            fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+            fn on_assign(&self, partitions: FxHashMap<Partition, u64>) {
                 let topic1 = Topic::new("test1");
                 let topic2 = Topic::new("test2");
                 assert_eq!(
                     partitions,
-                    HashMap::from([
+                    FxHashMap::from_iter([
                         (
                             Partition {
                                 topic: topic1,
@@ -399,11 +399,11 @@ mod tests {
 
         struct TheseCallbacks {}
         impl AssignmentCallbacks for TheseCallbacks {
-            fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+            fn on_assign(&self, partitions: FxHashMap<Partition, u64>) {
                 let topic2 = Topic::new("test2");
                 assert_eq!(
                     partitions,
-                    HashMap::from([(
+                    FxHashMap::from_iter([(
                         Partition {
                             topic: topic2,
                             index: 0
@@ -455,10 +455,13 @@ mod tests {
         );
 
         assert_eq!(consumer.poll(None).unwrap(), None);
-        let _ = consumer.pause(HashSet::from([partition]));
-        assert_eq!(consumer.paused().unwrap(), HashSet::from([partition]));
+        let _ = consumer.pause(FxHashSet::from_iter([partition]));
+        assert_eq!(
+            consumer.paused().unwrap(),
+            FxHashSet::from_iter([partition])
+        );
 
-        let _ = consumer.resume(HashSet::from([partition]));
+        let _ = consumer.resume(FxHashSet::from_iter([partition]));
         assert_eq!(consumer.poll(None).unwrap(), None);
     }
 
@@ -475,13 +478,13 @@ mod tests {
             EmptyCallbacks {},
         );
         let _ = consumer.poll(None);
-        let positions = HashMap::from([(Partition::new(topic2, 0), 100)]);
+        let positions = FxHashMap::from_iter([(Partition::new(topic2, 0), 100)]);
 
         let offsets = consumer.commit_offsets(positions.clone());
         assert!(offsets.is_ok());
 
         // Stage invalid positions
-        let invalid_positions = HashMap::from([(Partition::new(topic2, 1), 100)]);
+        let invalid_positions = FxHashMap::from_iter([(Partition::new(topic2, 1), 100)]);
 
         let commit_result = consumer.commit_offsets(invalid_positions);
         assert!(commit_result.is_err());

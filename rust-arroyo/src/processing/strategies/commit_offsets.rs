@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use chrono::{DateTime, Duration, Utc};
+use fxhash::FxHashMap;
 
 use crate::processing::strategies::{CommitRequest, ProcessingStrategy, SubmitError};
 use crate::timer;
@@ -9,7 +8,7 @@ use crate::types::{Message, Partition};
 use super::StrategyError;
 
 pub struct CommitOffsets {
-    partitions: HashMap<Partition, u64>,
+    partitions: FxHashMap<Partition, u64>,
     last_commit_time: DateTime<Utc>,
     last_record_time: DateTime<Utc>,
     commit_frequency: Duration,
