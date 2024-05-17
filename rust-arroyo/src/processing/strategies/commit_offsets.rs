@@ -119,7 +119,7 @@ mod tests {
             }),
         };
 
-        let mut noop = CommitOffsets::new(chrono::Duration::seconds(1));
+        let mut noop = CommitOffsets::new(Duration::from_secs(1));
 
         let mut commit_req1 = CommitRequest {
             positions: Default::default(),
