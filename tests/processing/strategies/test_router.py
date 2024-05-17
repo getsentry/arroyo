@@ -36,6 +36,15 @@ def test_empty_watermark() -> None:
     assert watermark.uncommitted_offsets == 0
 
 
+def test_invalid_offset() -> None:
+    watermark = PartitionWatermark({"route1"})
+    watermark.add_message("route1", 10)
+    watermark.add_message("route1", 15)
+
+    with pytest.raises(AssertionError):
+        watermark.advance_watermark("route1", 13)
+
+
 def test_single_route() -> None:
     watermark = PartitionWatermark({"route1"})
 
@@ -138,7 +147,7 @@ def test_basic_deletion() -> None:
     watermark.rewind("route1")
     assert watermark.uncommitted_offsets == 2
 
-    watermark.advance_watermark("route1", 16)
+    watermark.advance_watermark("route1", 15)
     with pytest.raises(AssertionError):
         watermark.rewind("route1")
 

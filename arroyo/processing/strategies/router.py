@@ -58,6 +58,8 @@ class PartitionWatermark:
         Adds one uncommitted offset to one route.
         """
         self.__uncommitted[route].append(offset)
+        if self.__lowest_uncommitted is None:
+            self.__update_lowest_uncommitted()
 
     def rewind(self, route: str) -> None:
         """
@@ -65,7 +67,7 @@ class PartitionWatermark:
         """
         assert self.__uncommitted[route], "There are no uncommitted offsets to remove"
         val = self.__uncommitted[route].pop()
-        if val == self.__lowest_uncommitted:
+        if self.__lowest_uncommitted and val <= self.__lowest_uncommitted:
             self.__update_lowest_uncommitted()
 
     def advance_watermark(self, route: str, offset: int) -> None:
@@ -78,10 +80,13 @@ class PartitionWatermark:
         offsets up to x on route y.
         """
         assert len(self.__uncommitted[route]) > 0, "There are no watermarks to advance"
+        found = False
         while self.__uncommitted[route] and self.__uncommitted[route][0] <= offset:
             uncommitted = self.__uncommitted[route].popleft()
             self.__committed[route].append(uncommitted)
+            found = uncommitted == offset
 
+        assert found, f"Requested offset {offset} was not in the uncommitted queue."
         self.__update_lowest_uncommitted()
 
     def get_high_watermark(self) -> Optional[int]:
