@@ -12,7 +12,7 @@ use crate::processing::strategies::{
 };
 use crate::types::Message;
 use crate::utils::timing::Deadline;
-use crate::{gauge, timer, counter};
+use crate::{counter, gauge, timer};
 
 use super::StrategyError;
 
