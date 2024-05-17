@@ -135,12 +135,12 @@ def test_basic_deletion() -> None:
     assert watermark.uncommitted_offsets == 3
     assert watermark.committed_offsets == 0
 
-    watermark.remove_last("route1")
+    watermark.rewind("route1")
     assert watermark.uncommitted_offsets == 2
 
     watermark.advance_watermark("route1", 16)
     with pytest.raises(AssertionError):
-        watermark.remove_last("route1")
+        watermark.rewind("route1")
 
 
 def test_delete_allow_commit() -> None:
@@ -151,7 +151,7 @@ def test_delete_allow_commit() -> None:
 
     watermark.advance_watermark("route1", 25)
     assert watermark.get_watermark() == 10
-    watermark.remove_last("route2")
+    watermark.rewind("route2")
     assert watermark.get_watermark() == 25
 
 

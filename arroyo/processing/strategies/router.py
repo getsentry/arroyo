@@ -59,7 +59,7 @@ class PartitionWatermark:
         """
         self.__uncommitted[route].append(offset)
 
-    def remove_last(self, route: str) -> None:
+    def rewind(self, route: str) -> None:
         """
         Remove the last message we added
         """
@@ -145,8 +145,8 @@ class CommitWatermarkTracker:
             self.__watermarks[partition] = PartitionWatermark(self.__route_names)
         self.__watermarks[partition].add_message(route, offset)
 
-    def remove_last(self, route: str, partition: Partition) -> None:
-        self.__watermarks[partition].remove_last(route)
+    def rewind(self, route: str, partition: Partition) -> None:
+        self.__watermarks[partition].rewind(route)
 
     def add_commit(
         self, route: str, offsets: Mapping[Partition, int]
@@ -293,7 +293,7 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
                 # When we receive a `MessageRejected` exception upon submit
                 # the message is not supposed to have been committed, so
                 # we need to remove it from the watermark.
-                self.__watermark_tracker.remove_last(route, partition)
+                self.__watermark_tracker.rewind(route, partition)
             raise
 
     def close(self) -> None:
