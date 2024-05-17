@@ -12,7 +12,7 @@ use crate::processing::strategies::{
 };
 use crate::types::Message;
 use crate::utils::timing::Deadline;
-use crate::{gauge, timer};
+use crate::{counter, gauge, timer};
 
 use super::StrategyError;
 
@@ -142,6 +142,7 @@ where
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
+                    counter!("arroyo.strategies.run_task_in_threads.got_backpressure", 1, "strategy_name" => self.metric_strategy_name);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
@@ -190,6 +191,7 @@ where
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
         if self.message_carried_over.is_some() {
+            counter!("arroyo.strategies.run_task_in_threads.giving_backpressure", 1, "strategy_name" => self.metric_strategy_name);
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
