@@ -97,6 +97,8 @@ mod tests {
     #[test]
     fn test_commit_offsets() {
         tracing_subscriber::fmt().with_test_writer().init();
+        let updater = coarsetime::Updater::new(10).start().unwrap();
+
         let partition1 = Partition::new(Topic::new("noop-commit"), 0);
         let partition2 = Partition::new(Topic::new("noop-commit"), 1);
         let timestamp = DateTime::from(SystemTime::now());
