@@ -84,7 +84,7 @@ class PartitionWatermark:
 
         self.__update_lowest_uncommitted()
 
-    def get_watermark(self) -> Optional[int]:
+    def get_high_watermark(self) -> Optional[int]:
         """
         Returns the highest committed offset across routes.
 
@@ -93,7 +93,6 @@ class PartitionWatermark:
         """
         high_watermark = None
         for _, queue in self.__committed.items():
-            # TODO: Avoid scanning the whole queue each time
             for committed in queue:
                 if (
                     self.__lowest_uncommitted is None
@@ -111,7 +110,7 @@ class PartitionWatermark:
         the lowest uncommitted offset.
 
         This is destructive. After calling this method, the result of
-        `get_watermark` becomes None.
+        `get_high_watermark` becomes None.
         """
         for _, queue in self.__committed.items():
             while queue and (
@@ -129,16 +128,23 @@ class PartitionWatermark:
         return sum(len(queue) for queue in self.__uncommitted.values())
 
 
-class CommitWatermarkTracker:
+class TopicCommitWatermark:
     """
     Keeps track of the watermark of multiple partitions and decides
     when and what to commit.
+
+    In an environment where messages are not processed in order or
+    where commits are issued out of order, we need to reorder the
+    commits before issuing them to Kafka to ensure the "at least
+    once" semantics.
+
+    This class manages the commits order. It still expects that commits
+    for a single partition will happen in order.
     """
 
     def __init__(self, routes: Set[str]) -> None:
         self.__route_names = routes
         self.__watermarks: MutableMapping[Partition, PartitionWatermark] = {}
-        self.__committed_offsets: MutableMapping[Partition, int] = {}
 
     def add_message(self, route: str, partition: Partition, offset: int) -> None:
         if partition not in self.__watermarks:
@@ -146,14 +152,20 @@ class CommitWatermarkTracker:
         self.__watermarks[partition].add_message(route, offset)
 
     def rewind(self, route: str, partition: Partition) -> None:
+        """
+        Remove the latest uncommitted message for a partition.
+        """
         self.__watermarks[partition].rewind(route)
 
-    def add_commit(
+    def commit(
         self, route: str, offsets: Mapping[Partition, int]
     ) -> Mapping[Partition, int]:
         """
-        Figures out what needs tio be committed when a strategy calls the
-        commit callback
+        Record a commit and decides whether it is time to issue a commit
+        to the StreamProcessor.
+
+        A commit is issued if, for each partition, all commits lower than
+        the offset provided have been committed.
         """
         high_watermark: MutableMapping[Partition, int] = {}
         for partition, offset in offsets.items():
@@ -163,18 +175,12 @@ class CommitWatermarkTracker:
 
             watermark = self.__watermarks[partition]
             watermark.advance_watermark(route, offset)
-            watermark_offset = watermark.get_watermark()
+            watermark_offset = watermark.get_high_watermark()
             if watermark_offset is not None:
                 high_watermark[partition] = watermark_offset
             watermark.purge()
 
-        ret = {}
-        for partition, offset in high_watermark.items():
-            if self.__committed_offsets.get(partition, 0) < offset:
-                self.__committed_offsets[partition] = offset
-                ret[partition] = offset
-
-        return ret
+        return high_watermark
 
     @property
     def uncommitted_offsets(self) -> int:
@@ -244,13 +250,13 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
         commit: Commit,
     ) -> None:
         self.__root_commit = commit
-        self.__watermark_tracker = CommitWatermarkTracker(set(routes.keys()))
+        self.__watermark_tracker = TopicCommitWatermark(set(routes.keys()))
         self.__force_commit = False
 
         def commit_func(
             route: str, offsets: Mapping[Partition, int], force: bool = False
         ) -> None:
-            offsets_to_commit = self.__watermark_tracker.add_commit(route, offsets)
+            offsets_to_commit = self.__watermark_tracker.commit(route, offsets)
             if offsets_to_commit:
                 self.__root_commit(offsets_to_commit, force or self.__force_commit)
                 self.__force_commit = False
