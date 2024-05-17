@@ -54,6 +54,7 @@ class PartitionWatermark:
         """
         Remove the last message we added
         """
+        assert self.__uncommitted[route], "There are no uncommitted offsets to remove"
         val = self.__uncommitted[route].pop()
         if val == self.__lowest_uncommitted:
             self.__lowest_uncommitted = None

@@ -123,6 +123,38 @@ def test_switching_routes() -> None:
     assert watermark.get_watermark() == 34
 
 
+def test_basic_deletion() -> None:
+    watermark = PartitionWatermark({"route1", "route2"})
+
+    assert watermark.get_watermark() is None
+
+    watermark.add_message("route1", 10)
+    watermark.add_message("route1", 15)
+    watermark.add_message("route1", 16)
+
+    assert watermark.uncommitted_offsets == 3
+    assert watermark.committed_offsets == 0
+
+    watermark.remove_last("route1")
+    assert watermark.uncommitted_offsets == 2
+
+    watermark.advance_watermark("route1", 16)
+    with pytest.raises(AssertionError):
+        watermark.remove_last("route1")
+
+
+def test_delete_allow_commit() -> None:
+    watermark = PartitionWatermark({"route1", "route2"})
+    watermark.add_message("route1", 10)
+    watermark.add_message("route2", 20)
+    watermark.add_message("route1", 25)
+
+    watermark.advance_watermark("route1", 25)
+    assert watermark.get_watermark() == 10
+    watermark.remove_last("route2")
+    assert watermark.get_watermark() == 25
+
+
 def test_commit_tracker() -> None:
     topic = Topic("mytopic")
     p1 = Partition(topic, 0)
