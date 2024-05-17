@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
 use thiserror::Error;
@@ -124,14 +124,17 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
             partitions.len() as i64
         );
 
-        let start = Instant::now();
+        let start = coarsetime::Instant::recent();
 
         let mut state = self.0.locked_state();
         state.processing_factory.update_partitions(&partitions);
         state.strategy = Some(state.processing_factory.create());
         state.dlq_policy.reset_dlq_limits(&partitions);
 
-        timer!("arroyo.consumer.create_strategy.time", start.elapsed());
+        timer!(
+            "arroyo.consumer.create_strategy.time",
+            start.elapsed_since_recent()
+        );
     }
 
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>) {
@@ -141,7 +144,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
             partitions.len() as i64,
         );
 
-        let start = Instant::now();
+        let start = coarsetime::Instant::recent();
 
         let mut state = self.0.locked_state();
         if let Some(s) = state.strategy.as_mut() {
@@ -173,7 +176,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         self.0.set_paused(false);
         state.clear_backpressure();
 
-        timer!("arroyo.consumer.join.time", start.elapsed());
+        timer!("arroyo.consumer.join.time", start.elapsed_since_recent());
 
         tracing::info!("Partition revocation complete.");
 
@@ -192,6 +195,7 @@ pub struct StreamProcessor<TPayload: Clone> {
     processor_handle: ProcessorHandle,
     buffered_messages: BufferedMessages<TPayload>,
     metrics_buffer: metrics_buffer::MetricsBuffer,
+    _time_updater: coarsetime::Updater,
 }
 
 impl StreamProcessor<KafkaPayload> {
@@ -230,6 +234,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             },
             buffered_messages: BufferedMessages::new(max_buffered_messages_per_partition),
             metrics_buffer: metrics_buffer::MetricsBuffer::new(),
+            _time_updater: coarsetime::Updater::new(10).start().unwrap(),
         }
     }
 
@@ -254,12 +259,14 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         } else if self.message.is_none() {
             // Otherwise, we need to try fetch a new message from the consumer,
             // even if there is no active assignment and/or processing strategy.
-            let poll_start = Instant::now();
+            let poll_start = coarsetime::Instant::recent();
             //TODO: Support errors properly
             match self.consumer.poll(Some(Duration::from_secs(1))) {
                 Ok(msg) => {
-                    self.metrics_buffer
-                        .incr_timing("arroyo.consumer.poll.time", poll_start.elapsed());
+                    self.metrics_buffer.incr_timing(
+                        "arroyo.consumer.poll.time",
+                        poll_start.elapsed_since_recent().into(),
+                    );
 
                     if let Some(broker_msg) = msg {
                         self.message = Some(Message {
@@ -289,7 +296,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 Some(_) => return Err(RunError::InvalidState),
             }
         };
-        let processing_start = Instant::now();
+        let processing_start = coarsetime::Instant::recent();
 
         match strategy.poll() {
             Ok(None) => {}
@@ -321,7 +328,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         let Some(msg_s) = self.message.take() else {
             self.metrics_buffer.incr_timing(
                 "arroyo.consumer.processing.time",
-                processing_start.elapsed(),
+                processing_start.elapsed_since_recent().into(),
             );
             return Ok(());
         };
@@ -329,7 +336,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         let ret = strategy.submit(msg_s);
         self.metrics_buffer.incr_timing(
             "arroyo.consumer.processing.time",
-            processing_start.elapsed(),
+            processing_start.elapsed_since_recent().into(),
         );
 
         match ret {

@@ -66,7 +66,7 @@ impl Display for MetricValue {
 }
 
 macro_rules! into_metric_value {
-    ($($from:ident),+ => $variant:ident) => {
+    ($($from:path),+ => $variant:ident) => {
         $(
             impl From<$from> for MetricValue {
                 #[inline(always)]
@@ -82,6 +82,7 @@ into_metric_value!(i8, i16, i32, i64 => I64);
 into_metric_value!(u8, u16, u32, u64 => U64);
 into_metric_value!(f32, f64 => F64);
 into_metric_value!(Duration => Duration);
+into_metric_value!(coarsetime::Duration => Duration);
 
 /// An alias for a list of Metric tags.
 pub type MetricTags<'a> = &'a [(Option<&'a dyn Display>, &'a dyn Display)];
