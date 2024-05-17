@@ -44,6 +44,15 @@ class PartitionWatermark:
 
         self.__lowest_uncommitted: Optional[int] = None
 
+    def __update_lowest_uncommitted(self) -> None:
+        self.__lowest_uncommitted = None
+        for _, queue in self.__uncommitted.items():
+            if queue and (
+                self.__lowest_uncommitted is None
+                or self.__lowest_uncommitted > queue[0]
+            ):
+                self.__lowest_uncommitted = queue[0]
+
     def add_message(self, route: str, offset: int) -> None:
         """
         Adds one uncommitted offset to one route.
@@ -57,13 +66,7 @@ class PartitionWatermark:
         assert self.__uncommitted[route], "There are no uncommitted offsets to remove"
         val = self.__uncommitted[route].pop()
         if val == self.__lowest_uncommitted:
-            self.__lowest_uncommitted = None
-            for _, queue in self.__uncommitted.items():
-                if queue and (
-                    self.__lowest_uncommitted is None
-                    or self.__lowest_uncommitted > queue[0]
-                ):
-                    self.__lowest_uncommitted = queue[0]
+            self.__update_lowest_uncommitted()
 
     def advance_watermark(self, route: str, offset: int) -> None:
         """
@@ -79,13 +82,7 @@ class PartitionWatermark:
             uncommitted = self.__uncommitted[route].popleft()
             self.__committed[route].append(uncommitted)
 
-        self.__lowest_uncommitted = None
-        for _, queue in self.__uncommitted.items():
-            if queue and (
-                self.__lowest_uncommitted is None
-                or self.__lowest_uncommitted > queue[0]
-            ):
-                self.__lowest_uncommitted = queue[0]
+        self.__update_lowest_uncommitted()
 
     def get_watermark(self) -> Optional[int]:
         """
