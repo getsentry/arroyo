@@ -148,10 +148,8 @@ def test_delete_allow_commit() -> None:
 
     watermark.advance_watermark("route1", 25)
     assert watermark.high_watermark == 10
-    watermark.rewind("route2")
-    # I removed the only offset in route2 thus
-    # unlocking route1
-    assert watermark.high_watermark == 25
+    with pytest.raises(AssertionError):
+        watermark.rewind("route2")
 
 
 def test_commit_tracker() -> None:

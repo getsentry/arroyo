@@ -42,45 +42,29 @@ class PartitionWatermark:
             route: deque() for route in routes
         }
 
-        self.__lowest_uncommitted: Optional[int] = None
         self.__highest_committed: Optional[int] = None
-
-    def __update_lowest_uncommitted(self) -> None:
-        self.__lowest_uncommitted = None
-        for _, queue in self.__uncommitted.items():
-            if queue and (
-                self.__lowest_uncommitted is None
-                or self.__lowest_uncommitted > queue[0]
-            ):
-                self.__lowest_uncommitted = queue[0]
 
     def add_message(self, route: str, offset: int) -> None:
         """
         Adds one uncommitted offset to one route.
         """
         self.__uncommitted[route].append(offset)
-        if self.__lowest_uncommitted is None:
-            self.__update_lowest_uncommitted()
 
     def rewind(self, route: str) -> None:
         """
         Remove the last message we added
         """
         assert self.__uncommitted[route], "There are no uncommitted offsets to remove"
-        val = self.__uncommitted[route].pop()
-        if self.__lowest_uncommitted and val <= self.__lowest_uncommitted:
-            self.__update_lowest_uncommitted()
-
+        highest_committed = None
         for _, queue in self.__committed.items():
-            for committed in queue:
-                if (
-                    self.__lowest_uncommitted is None
-                    or committed < self.__lowest_uncommitted
-                ) and (
-                    self.__highest_committed is None
-                    or committed > self.__highest_committed
-                ):
-                    self.__highest_committed = committed
+            if queue and (highest_committed is None or queue[-1] > highest_committed):
+                highest_committed = queue[-1]
+        assert (
+            highest_committed is None
+            or self.__uncommitted[route][-1] > highest_committed
+        ), "Cannot rewind an offset when highest offsets have been committed"
+
+        self.__uncommitted[route].pop()
 
     def advance_watermark(self, route: str, offset: int) -> Optional[int]:
         """
@@ -91,29 +75,35 @@ class PartitionWatermark:
         behavior). Committing offset x on route y means committing all
         offsets up to x on route y.
         """
+        queue = self.__uncommitted[route]
         found = False
-        while self.__uncommitted[route] and self.__uncommitted[route][0] <= offset:
-            uncommitted = self.__uncommitted[route].popleft()
-            self.__committed[route].append(uncommitted)
-            found = uncommitted == offset
-
+        while queue and queue[0] <= offset:
+            committed = queue.popleft()
+            if committed == offset:
+                found = True
+            self.__committed[route].append(committed)
         assert found, f"Requested offset {offset} was not in the uncommitted queue."
-        self.__update_lowest_uncommitted()
 
-        # Purge the old values
-        for route, queue in self.__committed.items():
+        # The high watermark at this point is the highest offset in the
+        # self__committed map that is also lower than the lowest uncommitted
+        # offset. So we need the lowest uncommitted offset first.
+        lowest_uncommitted = None
+        for _, queue in self.__uncommitted.items():
+            if queue and (lowest_uncommitted is None or lowest_uncommitted > queue[0]):
+                lowest_uncommitted = queue[0]
+
+        highest_committed = None
+        for _, queue in self.__committed.items():
             while queue and (
-                self.__lowest_uncommitted is None
-                or queue[0] < self.__lowest_uncommitted
+                lowest_uncommitted is None or queue[0] < lowest_uncommitted
             ):
-                removed = queue.popleft()
-                if (
-                    self.__highest_committed is None
-                    or removed > self.__highest_committed
-                ):
-                    self.__highest_committed = removed
+                to_drop = queue.popleft()
+                if highest_committed is None or to_drop > highest_committed:
+                    highest_committed = to_drop
 
-        return self.__highest_committed
+        if highest_committed is not None:
+            self.__highest_committed = highest_committed
+        return highest_committed
 
     @property
     def high_watermark(self) -> Optional[int]:
