@@ -43,6 +43,7 @@ class PartitionWatermark:
         }
 
         self.__lowest_uncommitted: Optional[int] = None
+        self.__highest_committed: Optional[int] = None
 
     def __update_lowest_uncommitted(self) -> None:
         self.__lowest_uncommitted = None
@@ -70,7 +71,18 @@ class PartitionWatermark:
         if self.__lowest_uncommitted and val <= self.__lowest_uncommitted:
             self.__update_lowest_uncommitted()
 
-    def advance_watermark(self, route: str, offset: int) -> None:
+        for _, queue in self.__committed.items():
+            for committed in queue:
+                if (
+                    self.__lowest_uncommitted is None
+                    or committed < self.__lowest_uncommitted
+                ) and (
+                    self.__highest_committed is None
+                    or committed > self.__highest_committed
+                ):
+                    self.__highest_committed = committed
+
+    def advance_watermark(self, route: str, offset: int) -> Optional[int]:
         """
         Records a commit of an offset on a route thus advancing the
         watermark.
@@ -79,7 +91,6 @@ class PartitionWatermark:
         behavior). Committing offset x on route y means committing all
         offsets up to x on route y.
         """
-        assert len(self.__uncommitted[route]) > 0, "There are no watermarks to advance"
         found = False
         while self.__uncommitted[route] and self.__uncommitted[route][0] <= offset:
             uncommitted = self.__uncommitted[route].popleft()
@@ -89,40 +100,30 @@ class PartitionWatermark:
         assert found, f"Requested offset {offset} was not in the uncommitted queue."
         self.__update_lowest_uncommitted()
 
-    def get_high_watermark(self) -> Optional[int]:
+        # Purge the old values
+        for route, queue in self.__committed.items():
+            while queue and (
+                self.__lowest_uncommitted is None
+                or queue[0] < self.__lowest_uncommitted
+            ):
+                removed = queue.popleft()
+                if (
+                    self.__highest_committed is None
+                    or removed > self.__highest_committed
+                ):
+                    self.__highest_committed = removed
+
+        return self.__highest_committed
+
+    @property
+    def high_watermark(self) -> Optional[int]:
         """
         Returns the highest committed offset across routes.
 
         Formally: The returned offset is the highest observed offset that
         is lower than any observed uncommitted offset.
         """
-        high_watermark = None
-        for _, queue in self.__committed.items():
-            for committed in queue:
-                if (
-                    self.__lowest_uncommitted is None
-                    or committed < self.__lowest_uncommitted
-                ) and (high_watermark is None or committed > high_watermark):
-                    high_watermark = committed
-
-        return high_watermark
-
-    def purge(self) -> None:
-        """
-        Drops all the offsets that are committed and we do not need anymore.
-
-        Formally: it drops all the committed offsets that are lower than
-        the lowest uncommitted offset.
-
-        This is destructive. After calling this method, the result of
-        `get_high_watermark` becomes None.
-        """
-        for _, queue in self.__committed.items():
-            while queue and (
-                self.__lowest_uncommitted is None
-                or queue[0] < self.__lowest_uncommitted
-            ):
-                queue.popleft()
+        return self.__highest_committed
 
     @property
     def committed_offsets(self) -> int:
@@ -179,11 +180,12 @@ class TopicCommitWatermark:
             ), f"Partition {partition} is unknown. I have never received a message for it"
 
             watermark = self.__watermarks[partition]
-            watermark.advance_watermark(route, offset)
-            watermark_offset = watermark.get_high_watermark()
+            watermark_offset = watermark.advance_watermark(route, offset)
+
+        for partition, watermark in self.__watermarks.items():
+            watermark_offset = watermark.high_watermark
             if watermark_offset is not None:
                 high_watermark[partition] = watermark_offset
-            watermark.purge()
 
         return high_watermark
 
@@ -258,10 +260,21 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
         self.__watermark_tracker = TopicCommitWatermark(set(routes.keys()))
         self.__force_commit = False
 
+        self.__last_committed: MutableMapping[Partition, int] = {}
+
         def commit_func(
             route: str, offsets: Mapping[Partition, int], force: bool = False
         ) -> None:
-            offsets_to_commit = self.__watermark_tracker.commit(route, offsets)
+            current_offsets = self.__watermark_tracker.commit(route, offsets)
+            offsets_to_commit: MutableMapping[Partition, int] = {}
+            for partition, offset in current_offsets.items():
+                if (
+                    partition not in self.__last_committed
+                    or self.__last_committed[partition] < offset
+                ):
+                    self.__last_committed[partition] = offset
+                    offsets_to_commit[partition] = offset
+
             if offsets_to_commit:
                 self.__root_commit(offsets_to_commit, force or self.__force_commit)
                 self.__force_commit = False
