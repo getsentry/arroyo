@@ -55,7 +55,7 @@ def test_produce() -> None:
     strategy.join()
 
 
-def test_produces_forwards_poll() -> None:
+def test_produce_forwards_poll() -> None:
     result_topic = Topic("result-topic")
 
     next_step = mock.Mock()
