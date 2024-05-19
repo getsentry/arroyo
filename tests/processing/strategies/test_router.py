@@ -42,6 +42,9 @@ def test_invalid_offset() -> None:
 
 
 def test_single_route() -> None:
+    """
+    Validates watermark is increased correctly with one route only.
+    """
     watermark = PartitionWatermark({"route1"})
 
     watermark.add_message("route1", 10)
@@ -74,6 +77,10 @@ def test_single_route() -> None:
 
 
 def test_switching_routes() -> None:
+    """
+    Test the right watrmark is computed with two routes that
+    commit out of order.
+    """
     watermark = PartitionWatermark({"route1", "route2"})
 
     watermark.add_message("route1", 10)
@@ -140,7 +147,7 @@ def test_basic_deletion() -> None:
         watermark.rewind("route1")
 
 
-def test_delete_allow_commit() -> None:
+def test_invalid_deletion() -> None:
     watermark = PartitionWatermark({"route1", "route2"})
     watermark.add_message("route1", 10)
     watermark.add_message("route2", 20)
@@ -229,6 +236,11 @@ class EventRecorder:
 
 
 class TestStrategy(ProcessingStrategy[TStrategyPayload]):
+    """
+    Strategy to me used in tests. its only jobs are to record events
+    and commit.
+    """
+
     def __init__(
         self,
         commit: ArroyoCommit,
@@ -277,6 +289,9 @@ class TestStrategy(ProcessingStrategy[TStrategyPayload]):
 
 
 def selector(message: Message[Union[FilteredPayload, TStrategyPayload]]) -> str:
+    """
+    Picks a route based on the message content.
+    """
     return str(message.payload)
 
 
