@@ -61,7 +61,7 @@ def test_produce_forwards_poll() -> None:
     next_step = mock.Mock()
     producer = mock.Mock()
 
-    strategy = Produce(producer, result_topic, next_step, 2)
+    strategy: Produce[str] = Produce(producer, result_topic, next_step, 2)
 
     strategy.poll()
 
