@@ -11,27 +11,29 @@ logger = logging.getLogger(__name__)
 
 class PartitionWatermark:
     """
-    Keeps track of the highest committable offset for a partition when commits
-    may not be seen in order.
-
-    Commits may not be seen in order if messages are processed by independent
-    strategies each of which can commit at different times and following
-    different policies.
+    Keeps track of the highest committable offset when messages are processed
+    by a discrete set of independent strategies (routes here) which can
+    issue commit according to different strategies, thus out of order.
 
     Example:
-    we are routing most messages to one strategy that commits in batches every
-    1000 messages. A smaller part of those messages are routed to a second
-    strategy that commits every offsets it sees.
 
-    The two strategies do not know about each other, so the commits may be
-    observed out of order.
-    We cannot issue commits to Kafka out of order so we need to reorder them.
+    ```
+    Offsets produced:
+    Route 1:  ---- 10 --- 15 --- 20 --------------------
+    Route 2:  ------------------------- 25 --- 30 --- 35
+    ```
 
-    This class keep the order by keeping track of the highest offset such that
-    all the lower offsets have been committed.
+    Route1 offsets are processed by a different strategy independently from
+    Route2 offsets. This makes it is totally possible that the strategy that
+    processes route 2 would commit offset 25, 30, 35 before route 1 commits 20.
 
-    This class keeps a concept of route, which represents the strategies above.
-    Commit for a route are still expected to be in order.
+    This class keeps track that the highest committable offset is not going
+    to be 35 until route one issued the commit for offset 20.
+
+    This class has to keep track of all offsets above the highest committable
+    at a given point in time in order as, depending on the order of the
+    received commits, the watermark can land on any of the offsets. We cannot
+    keep only the highest offset per route.
     """
 
     def __init__(self, routes: Set[str]):
@@ -47,12 +49,19 @@ class PartitionWatermark:
     def add_message(self, route: str, offset: int) -> None:
         """
         Adds one uncommitted offset to one route.
+
+        An uncommitted offset is added when the message is consumed, it is
+        being processed but before the offset is committed.
         """
         self.__uncommitted[route].append(offset)
 
     def rewind(self, route: str) -> None:
         """
-        Remove the last message we added
+        Remove the last message we added.
+
+        This message has to be uncommitted. It is a valid scenario when
+        we try to process a message but backpressure makes us take it
+        back
         """
         assert self.__uncommitted[route], "There are no uncommitted offsets to remove"
         highest_committed = None
@@ -74,6 +83,22 @@ class PartitionWatermark:
         Not all offsets need to be committed (standard kafka commit
         behavior). Committing offset x on route y means committing all
         offsets up to x on route y.
+
+        The worst case time complexity is `O(n)` with n being the number
+        of uncommitted messages + those waiting for a commit.
+        Though the amortized complexity should be constant.
+
+        The only sources of `n` iterations in this algorithm are to scan
+        offsets till the one we want to commit or scan offsets till the
+        lowest uncommitted.
+
+        The first can only be greater than one only if we commit rarely.
+        And we do not commit this method is not called at all.
+
+        We can do the same reasoning for the second one as well as we purge
+        committed messages each time we advance the watermark so the only
+        reason to have `n` messages to scan is if we did not scan
+        them the `n - 1` previous calls.
         """
         queue = self.__uncommitted[route]
         found = False
@@ -136,6 +161,8 @@ class TopicCommitWatermark:
 
     This class manages the commits order. It still expects that commits
     for a single partition will happen in order.
+
+    See `PartitionWatermark` for more details and examples.
     """
 
     def __init__(self, routes: Set[str]) -> None:
@@ -143,6 +170,12 @@ class TopicCommitWatermark:
         self.__watermarks: MutableMapping[Partition, PartitionWatermark] = {}
 
     def add_message(self, route: str, partition: Partition, offset: int) -> None:
+        """
+        Add a number of offsets to the watermarks.
+
+        Partitions may not be known when this class is instantiated so we
+        add them on the fly to the watermarks map.
+        """
         if partition not in self.__watermarks:
             self.__watermarks[partition] = PartitionWatermark(self.__route_names)
         self.__watermarks[partition].add_message(route, offset)
@@ -162,6 +195,13 @@ class TopicCommitWatermark:
 
         A commit is issued if, for each partition, all commits lower than
         the offset provided have been committed.
+
+        This class returns the highest committed offsets per partition.
+        The highest committed offset is the highest offset such that no
+        lower offset has not been committed.
+
+        The return value is the map of offsets we are allowed to commit to
+        Kafka.
         """
         high_watermark: MutableMapping[Partition, int] = {}
         for partition, offset in offsets.items():
@@ -225,8 +265,8 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
     highest watermark to ensure we only commit offsets that have been committed
     by the destination strategies.
 
-    As messages are routed to multiple independent strategies each of which
-    can have its own commit policies, it is not given that commits would be
+    Messages are routed to multiple independent strategies each of which
+    can have its own commit policies. It is not given that commits would be
     issued in order by the destination strategies.
 
     This strategy solves the problem by intercepting all commits callback and
@@ -270,7 +310,7 @@ class RouterStrategy(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]
                 self.__force_commit = False
             else:
                 if force:
-                    self.__force_commit
+                    self.__force_commit = True
 
         self.__selector = selector
         self.__routes: Mapping[
