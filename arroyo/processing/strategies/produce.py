@@ -59,6 +59,10 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__closed = False
 
     def poll(self) -> None:
+        if not self.__queue:
+            self.__next_step.poll()
+            return
+
         while self.__queue:
             original_message, future = self.__queue[0]
 
