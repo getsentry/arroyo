@@ -84,7 +84,6 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             self.__next_step.poll()
             self.__next_step.submit(message)
 
-
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> None:
