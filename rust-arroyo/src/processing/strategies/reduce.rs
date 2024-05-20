@@ -392,7 +392,6 @@ mod tests {
         // and 1 message is left before next size limit.
         assert_eq!(strategy.batch_state.message_count, 1);
 
-        strategy.close();
         let _ = strategy.join(None);
 
         // 2 batches were created
