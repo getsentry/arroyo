@@ -22,8 +22,8 @@ def test_unfold() -> None:
     strategy.submit(message)
 
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, committable={}, timestamp=now))),
-        call(Message(Value(1, committable={partition: 1}, timestamp=now))),
+        call(Message(0)),
+        call(Message(1)),
     ]
 
     strategy.close()
@@ -45,7 +45,7 @@ def test_message_rejected() -> None:
 
     # Message doesn't actually go through since it was rejected
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, committable={}, timestamp=now))),
+        call(Message(0)),
     ]
 
     # clear the side effect, both messages should be submitted now
@@ -54,8 +54,8 @@ def test_message_rejected() -> None:
     strategy.poll()
 
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, committable={}, timestamp=now))),
-        call(Message(Value(1, committable={partition: 1}, timestamp=now))),
+        call(Message(0)),
+        call(Message(1)),
     ]
 
     strategy.close()
