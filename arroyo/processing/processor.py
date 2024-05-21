@@ -143,9 +143,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[
-            ProcessingStrategy[TStrategyPayload]
-        ] = None
+        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
+            None
+        )
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
@@ -405,10 +405,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
             if self.__message is not None:
                 try:
                     start_submit = time.time()
-                    message = (
-                        Message(self.__message) if self.__message is not None else None
-                    )
-                    self.__processing_strategy.submit(message)
+
+                    self.__processing_strategy.submit(Message(self.__message))
 
                     self.__metrics_buffer.incr_timing(
                         "arroyo.consumer.processing.time",
