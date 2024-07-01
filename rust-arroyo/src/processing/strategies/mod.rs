@@ -8,6 +8,7 @@ pub mod produce;
 pub mod reduce;
 pub mod run_task;
 pub mod run_task_in_threads;
+pub mod run_task_with_message;
 
 #[derive(Debug, Clone)]
 pub enum SubmitError<T> {
