@@ -101,30 +101,16 @@ impl<TPayload, TTransformed: Send + Sync> ProcessingStrategy<TPayload>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{BrokerMessage, InnerMessage, Message, Partition, Topic};
+    use crate::{
+        processing::strategies::noop::Noop,
+        types::{BrokerMessage, InnerMessage, Message, Partition, Topic},
+    };
     use chrono::Utc;
 
     #[test]
     fn test_run_task() {
         fn identity(value: Message<String>) -> Result<Message<String>, InvalidMessage> {
             Ok(value)
-        }
-
-        struct Noop {}
-        impl ProcessingStrategy<String> for Noop {
-            fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-                Ok(None)
-            }
-            fn submit(&mut self, _message: Message<String>) -> Result<(), SubmitError<String>> {
-                Ok(())
-            }
-            fn terminate(&mut self) {}
-            fn join(
-                &mut self,
-                _timeout: Option<Duration>,
-            ) -> Result<Option<CommitRequest>, StrategyError> {
-                Ok(None)
-            }
         }
 
         let mut strategy = RunTask::new(identity, Noop {});

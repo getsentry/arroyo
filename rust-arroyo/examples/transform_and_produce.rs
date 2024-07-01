@@ -9,17 +9,15 @@ use rust_arroyo::backends::kafka::config::KafkaConfig;
 use rust_arroyo::backends::kafka::producer::KafkaProducer;
 use rust_arroyo::backends::kafka::types::KafkaPayload;
 use rust_arroyo::backends::kafka::InitialOffset;
+use rust_arroyo::processing::strategies::noop::Noop;
 use rust_arroyo::processing::strategies::produce::Produce;
 use rust_arroyo::processing::strategies::run_task::RunTask;
 use rust_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use rust_arroyo::processing::strategies::{
-    CommitRequest, InvalidMessage, ProcessingStrategy, ProcessingStrategyFactory, StrategyError,
-    SubmitError,
+    InvalidMessage, ProcessingStrategy, ProcessingStrategyFactory,
 };
 use rust_arroyo::processing::StreamProcessor;
 use rust_arroyo::types::{Message, Topic, TopicOrPartition};
-
-use std::time::Duration;
 
 fn reverse_string(message: Message<KafkaPayload>) -> Result<Message<KafkaPayload>, InvalidMessage> {
     let value = message.payload();
@@ -35,19 +33,6 @@ fn reverse_string(message: Message<KafkaPayload>) -> Result<Message<KafkaPayload
         Some(result_str.to_bytes().to_vec()),
     );
     Ok(message.replace(result))
-}
-struct Noop {}
-impl ProcessingStrategy<KafkaPayload> for Noop {
-    fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        Ok(None)
-    }
-    fn submit(&mut self, _message: Message<KafkaPayload>) -> Result<(), SubmitError<KafkaPayload>> {
-        Ok(())
-    }
-    fn terminate(&mut self) {}
-    fn join(&mut self, _timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
-        Ok(None)
-    }
 }
 
 #[tokio::main]
