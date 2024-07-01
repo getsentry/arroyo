@@ -1,4 +1,4 @@
-use crate::types::{Message, Partition};
+use crate::types::{BrokerMessage, Message, Partition};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -25,6 +25,15 @@ pub struct MessageRejected<T> {
 pub struct InvalidMessage {
     pub partition: Partition,
     pub offset: u64,
+}
+
+impl<TPayload> From<&BrokerMessage<TPayload>> for InvalidMessage {
+    fn from(value: &BrokerMessage<TPayload>) -> Self {
+        Self {
+            partition: value.partition,
+            offset: value.offset,
+        }
+    }
 }
 
 /// Signals that we need to commit offsets
