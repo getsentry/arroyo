@@ -5,9 +5,13 @@ use crate::processing::strategies::{
 use crate::types::Message;
 use std::time::Duration;
 
+type Function<TPayload, TTransformed> = dyn Fn(Message<TPayload>) -> Result<Message<TTransformed>, InvalidMessage>
+    + Send
+    + Sync
+    + 'static;
+
 pub struct RunTask<TPayload, TTransformed> {
-    pub function:
-        Box<dyn Fn(TPayload) -> Result<TTransformed, InvalidMessage> + Send + Sync + 'static>,
+    pub function: Box<Function<TPayload, TTransformed>>,
     pub next_step: Box<dyn ProcessingStrategy<TTransformed>>,
     pub message_carried_over: Option<Message<TTransformed>>,
     pub commit_request_carried_over: Option<CommitRequest>,
@@ -17,7 +21,10 @@ impl<TPayload, TTransformed> RunTask<TPayload, TTransformed> {
     pub fn new<N, F>(function: F, next_step: N) -> Self
     where
         N: ProcessingStrategy<TTransformed> + 'static,
-        F: Fn(TPayload) -> Result<TTransformed, InvalidMessage> + Send + Sync + 'static,
+        F: Fn(Message<TPayload>) -> Result<Message<TTransformed>, InvalidMessage>
+            + Send
+            + Sync
+            + 'static,
     {
         Self {
             function: Box::new(function),
@@ -62,9 +69,7 @@ impl<TPayload, TTransformed: Send + Sync> ProcessingStrategy<TPayload>
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        let next_message = message
-            .try_map(&self.function)
-            .map_err(SubmitError::InvalidMessage)?;
+        let next_message = (self.function)(message).map_err(SubmitError::InvalidMessage)?;
 
         match self.next_step.submit(next_message) {
             Err(SubmitError::MessageRejected(MessageRejected {
@@ -101,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_run_task() {
-        fn identity(value: String) -> Result<String, InvalidMessage> {
+        fn identity(value: Message<String>) -> Result<Message<String>, InvalidMessage> {
             Ok(value)
         }
 

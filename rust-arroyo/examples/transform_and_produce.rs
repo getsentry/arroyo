@@ -21,7 +21,8 @@ use rust_arroyo::types::{Message, Topic, TopicOrPartition};
 
 use std::time::Duration;
 
-fn reverse_string(value: KafkaPayload) -> Result<KafkaPayload, InvalidMessage> {
+fn reverse_string(message: Message<KafkaPayload>) -> Result<Message<KafkaPayload>, InvalidMessage> {
+    let value = message.payload();
     let payload = value.payload().unwrap();
     let str_payload = std::str::from_utf8(payload).unwrap();
     let result_str = str_payload.chars().rev().collect::<String>();
@@ -33,7 +34,7 @@ fn reverse_string(value: KafkaPayload) -> Result<KafkaPayload, InvalidMessage> {
         value.headers().cloned(),
         Some(result_str.to_bytes().to_vec()),
     );
-    Ok(result)
+    Ok(message.replace(result))
 }
 struct Noop {}
 impl ProcessingStrategy<KafkaPayload> for Noop {
