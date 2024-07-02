@@ -888,3 +888,4 @@ class RunTaskWithMultiprocessing(
         self.__next_step.join(
             timeout=max(deadline - time.time(), 0) if deadline is not None else None
         )
+        self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.join_time", time.time() - start_join)
