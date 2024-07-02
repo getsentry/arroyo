@@ -11,6 +11,7 @@ from arroyo.backends.kafka import KafkaPayload
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies import MessageRejected
 from arroyo.processing.strategies.run_task_with_multiprocessing import (
+    DEFAULT_INPUT_BLOCK_SIZE,
     MessageBatch,
     MultiprocessingPool,
     RunTaskWithMultiprocessing,
@@ -552,7 +553,7 @@ def test_input_block_resizing_max_size() -> None:
         pool=pool,
         input_block_size=None,
         output_block_size=INPUT_SIZE // 2,
-        max_input_block_size=16000,
+        max_input_block_size=DEFAULT_INPUT_BLOCK_SIZE,
     )
 
     with pytest.raises(MessageRejected):
@@ -621,7 +622,7 @@ def test_output_block_resizing_max_size() -> None:
         pool=pool,
         input_block_size=INPUT_SIZE,
         output_block_size=None,
-        max_output_block_size=16000,
+        max_output_block_size=DEFAULT_INPUT_BLOCK_SIZE,
     )
 
     for _ in range(NUM_MESSAGES):
