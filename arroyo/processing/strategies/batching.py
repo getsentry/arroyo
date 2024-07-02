@@ -48,14 +48,14 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             result.append(value)
             return result
 
-        self.__reduce_step: Reduce[
-            TStrategyPayload, ValuesBatch[TStrategyPayload]
-        ] = Reduce(
-            max_batch_size,
-            max_batch_time,
-            accumulator,
-            lambda: [],
-            next_step,
+        self.__reduce_step: Reduce[TStrategyPayload, ValuesBatch[TStrategyPayload]] = (
+            Reduce(
+                max_batch_size,
+                max_batch_time,
+                accumulator,
+                lambda: [],
+                next_step,
+            )
         )
 
     def submit(
@@ -113,7 +113,7 @@ class UnbatchStep(
         def generator(
             values: ValuesBatch[TStrategyPayload],
         ) -> MutableSequence[TStrategyPayload]:
-            return [value.payload for value in values]
+            return [value for value in values]
 
         self.__unfold_step = Unfold(generator, next_step)
 

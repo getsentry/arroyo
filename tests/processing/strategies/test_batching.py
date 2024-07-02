@@ -261,16 +261,14 @@ def test_unbatch_step() -> None:
         ),
     )
 
-    partition = Partition(Topic("test"), 1)
-
     next_step = Mock()
     unbatch_step = UnbatchStep[str](next_step)
     unbatch_step.submit(msg)
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -289,9 +287,9 @@ def test_unbatch_step() -> None:
     unbatch_step.poll()
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -302,9 +300,9 @@ def test_unbatch_step() -> None:
 
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -317,6 +315,7 @@ def test_batch_unbatch() -> None:
     def transformer(
         batch: Message[ValuesBatch[str]],
     ) -> ValuesBatch[str]:
+
         return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 
     final_step = Mock()
@@ -324,7 +323,7 @@ def test_batch_unbatch() -> None:
         function=transformer, next_step=UnbatchStep(final_step)
     )
 
-    pipeline = BatchStep[str](max_batch_size=3, max_batch_time=10, next_step=next_step)
+    pipeline = BatchStep[str](max_batch_size=3, max_batch_time=100, next_step=next_step)
 
     input_msgs = [
         message(1, 1, "Message 1"),
@@ -336,12 +335,10 @@ def test_batch_unbatch() -> None:
         final_step.submit.assert_not_called()
         pipeline.poll()
 
-    partition = Partition(Topic("test"), 1)
-
     final_step.submit.assert_has_calls(
         [
-            call(Message(Value("Transformed", {}, NOW))),
-            call(Message(Value("Transformed", {}, NOW))),
-            call(Message(Value("Transformed", {partition: 4}, NOW))),
+            call(message(1, 1, "Transformed")),
+            call(message(1, 2, "Transformed")),
+            call(message(1, 3, "Transformed")),
         ]
     )
