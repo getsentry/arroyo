@@ -2,11 +2,20 @@ import contextlib
 import itertools
 import os
 import pickle
+import subprocess
 import time
 import uuid
 from contextlib import closing
 from pickle import PickleBuffer
-from typing import Any, Iterator, Mapping, MutableSequence, Optional
+from typing import (
+    Any,
+    Generator,
+    Iterator,
+    Mapping,
+    MutableSequence,
+    Optional,
+    Sequence,
+)
 from unittest import mock
 
 import pytest
@@ -14,7 +23,10 @@ from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
-from arroyo.backends.kafka.configuration import build_kafka_configuration
+from arroyo.backends.kafka.configuration import (
+    KafkaBrokerConfig,
+    build_kafka_configuration,
+)
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import IMMEDIATE, Commit
 from arroyo.errors import ConsumerError, EndOfPartition
@@ -23,6 +35,29 @@ from arroyo.types import BrokerValue, Partition, Topic
 from tests.backends.mixins import StreamsTestMixin
 
 commit_codec = CommitCodec()
+
+
+class KafkaDistributed:
+    soiled = False
+
+    def kill(self, brokers: Sequence[int]) -> None:
+        subprocess.check_call(
+            ["docker", "kill"] + [f"arroyo-kafka-{i}-1" for i in brokers]
+        )
+        self.soiled = True
+
+
+@pytest.fixture
+def kafka_distributed() -> Generator[KafkaDistributed, None, None]:
+    subprocess.check_call(["docker-compose", "up", "-d"])
+
+    handle = KafkaDistributed()
+
+    yield handle
+
+    if handle.soiled:
+        subprocess.check_call(["docker-compose", "down"])
+        subprocess.check_call(["docker-compose", "rm"])
 
 
 def test_payload_equality() -> None:
@@ -52,36 +87,72 @@ def test_payload_pickle_out_of_band() -> None:
 
 @contextlib.contextmanager
 def get_topic(
-    configuration: Mapping[str, Any], partitions_count: int
+    configuration: Mapping[str, Any],
+    partitions_count: int,
+    skip_teardown: bool = False,
+    replication_factor: int = 1,
 ) -> Iterator[Topic]:
     name = f"test-{uuid.uuid1().hex}"
     client = AdminClient(configuration)
     [[key, future]] = client.create_topics(
-        [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
+        [
+            NewTopic(
+                name,
+                num_partitions=partitions_count,
+                replication_factor=replication_factor,
+                config={"min.insync.replicas": 2},
+            )
+        ]
     ).items()
     assert key == name
     assert future.result() is None
     try:
         yield Topic(name)
     finally:
-        [[key, future]] = client.delete_topics([name]).items()
-        assert key == name
-        assert future.result() is None
+        if not skip_teardown:
+            [[key, future]] = client.delete_topics([name]).items()
+            assert key == name
+            assert future.result() is None
 
 
 class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
+    distributed = False
 
-    configuration = build_kafka_configuration(
-        {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
-    )
+    @property
+    def configuration(self) -> KafkaBrokerConfig:
+        if self.distributed:
+            return build_kafka_configuration(
+                {
+                    "bootstrap.servers": os.environ.get(
+                        "DEFAULT_DISTRIBUTED_BROKERS",
+                        "127.0.0.1:19092,127.0.0.1:29092,127.0.0.1:39092",
+                    ),
+                    "acks": "all",
+                }
+            )
+        else:
+            return build_kafka_configuration(
+                {
+                    "bootstrap.servers": os.environ.get(
+                        "DEFAULT_BROKERS", "127.0.0.1:9092"
+                    )
+                }
+            )
 
     @contextlib.contextmanager
-    def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
-        with get_topic(self.configuration, partitions) as topic:
-            try:
-                yield topic
-            finally:
-                pass
+    def get_topic(
+        self,
+        partitions: int = 1,
+        skip_teardown: bool = False,
+        replication_factor: int = 1,
+    ) -> Iterator[Topic]:
+        with get_topic(
+            self.configuration,
+            partitions,
+            skip_teardown=skip_teardown,
+            replication_factor=replication_factor,
+        ) as topic:
+            yield topic
 
     def get_consumer(
         self,
@@ -192,6 +263,59 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 with pytest.raises(RuntimeError):
                     processor.run()
+
+    def test_kafka_broker_died(self, kafka_distributed: KafkaDistributed) -> None:
+        self.distributed = True
+
+        NUM_PAYLOADS = 100
+        recovered_payloads = set()
+
+        with self.get_topic(
+            partitions=32, skip_teardown=True, replication_factor=3
+        ) as topic:
+            with closing(self.get_producer()) as producer:
+                payloads = self.get_payloads()
+                for _ in range(NUM_PAYLOADS):
+                    producer.produce(topic, next(payloads)).result(5.0)
+
+            with closing(self.get_consumer(auto_offset_reset="earliest")) as consumer:
+                consumer.subscribe([topic])
+
+                value = consumer.poll(10.0)
+                assert isinstance(value, BrokerValue)
+                recovered_payloads.add(int(value.payload.value))
+                consumer.stage_offsets(value.committable)
+
+                kafka_distributed.kill([1])
+
+                try:
+                    for _ in range(NUM_PAYLOADS - len(recovered_payloads)):
+                        value = consumer.poll(10.0)
+                        assert isinstance(value, BrokerValue)
+                        recovered_payloads.add(int(value.payload.value))
+                        consumer.stage_offsets(value.committable)
+                        consumer.commit_offsets()
+                except Exception as e:
+                    print(f"First consumer crashed with: {e}")
+                else:
+                    print("First consumer did not crash")
+
+            # we should not be able to recover from this scenario without restarting the consumer
+            assert len(recovered_payloads) < NUM_PAYLOADS
+
+            with closing(self.get_consumer(auto_offset_reset="earliest")) as consumer:
+                consumer.subscribe([topic])
+
+                with pytest.raises(EndOfPartition):
+                    while True:
+                        value = consumer.poll(10.0)
+                        assert isinstance(value, BrokerValue)
+                        recovered_payloads.add(int(value.payload.value))
+                        consumer.stage_offsets(value.committable)
+                        consumer.commit_offsets()
+
+            # after restart, we should have recovered all payloads
+            assert len(recovered_payloads) == NUM_PAYLOADS
 
 
 def test_commit_codec() -> None:
