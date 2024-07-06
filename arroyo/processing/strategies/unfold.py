@@ -1,9 +1,9 @@
 import time
 from collections import deque
-from typing import Callable, Collection, Deque, Generic, Optional, TypeVar, Union, cast
+from typing import Callable, Iterable, Deque, Generic, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import FilteredPayload, Message, Value
+from arroyo.types import FilteredPayload, Message
 
 TInput = TypeVar("TInput")
 TOutput = TypeVar("TOutput")
@@ -27,7 +27,7 @@ class Unfold(
 
     def __init__(
         self,
-        generator: Callable[[TInput], Collection[TOutput]],
+        generator: Callable[[TInput], Iterable[TOutput]],
         next_step: ProcessingStrategy[Union[FilteredPayload, TOutput]],
     ) -> None:
         self.__generator = generator
@@ -52,9 +52,7 @@ class Unfold(
         store_remaining_messages = False
 
         for value in iterable:
-            next_message = Message(
-                value=cast(Value[TOutput], value),
-            )
+            next_message = Message(value=value)
 
             if store_remaining_messages == False:
                 try:
