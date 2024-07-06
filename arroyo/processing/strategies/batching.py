@@ -112,8 +112,8 @@ class UnbatchStep(
     ) -> None:
         def generator(
             values: ValuesBatch[TStrategyPayload],
-        ) -> MutableSequence[TStrategyPayload]:
-            return [value for value in values]
+        ) -> ValuesBatch[TStrategyPayload]:
+            return values
 
         self.__unfold_step = Unfold(generator, next_step)
 
