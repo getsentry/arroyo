@@ -10,3 +10,5 @@
 .idea/
 target/
 /Cargo.lock
+
+arroyo/utils/metricDefs.json
