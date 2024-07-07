@@ -41,7 +41,10 @@ def parse_metric_name(metric_name_raw: str) -> str:
 
 def parse_description_comment(comment: str) -> Tuple[str, str]:
     type_, description = (
-        comment.replace("# ", "").lstrip(",\n").rstrip("\n").split(": ", maxsplit=1)
+        re.sub(r"(#\s|#)", "", comment)
+        .lstrip(",\n")
+        .rstrip("\n")
+        .split(": ", maxsplit=1)
     )
     return type_, description
 
