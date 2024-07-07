@@ -40,6 +40,8 @@ def parse_metric_name(metric_name_raw: str) -> str:
 
 
 def parse_description_comment(comment: str) -> Tuple[str, str]:
+    # a metric description is a single or multi-line comment where the metric type precedes
+    # on the first line e.g. <MetricType>: <Description>
     type_, description = (
         re.sub(r"(#\s|#)", "", comment)
         .lstrip(",\n")
