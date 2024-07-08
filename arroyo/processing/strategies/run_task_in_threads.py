@@ -40,6 +40,7 @@ class RunTaskInThreads(
         concurrency: int,
         max_pending_futures: int,
         next_step: ProcessingStrategy[Union[FilteredPayload, TResult]],
+        abandon_messsages_on_shutdown: bool = False,
     ) -> None:
         self.__executor = ThreadPoolExecutor(max_workers=concurrency)
         self.__function = processing_function
@@ -53,6 +54,7 @@ class RunTaskInThreads(
         self.__next_step = next_step
         self.__closed = False
         self.__invalid_messages = InvalidMessageState()
+        self.__abandon_messages_on_shutdown = abandon_messsages_on_shutdown
 
     def __forward_invalid_offsets(self) -> None:
         if len(self.__invalid_messages):
@@ -124,6 +126,10 @@ class RunTaskInThreads(
         start = time.time()
         self.__forward_invalid_offsets()
         while self.__queue:
+            if self.__abandon_messages_on_shutdown:
+                logger.warning(f"Exiting with {len(self.__queue)} futures in queue")
+                break
+
             remaining = timeout - (time.time() - start) if timeout is not None else None
             if remaining is not None and remaining <= 0:
                 logger.warning(f"Timed out with {len(self.__queue)} futures in queue")
