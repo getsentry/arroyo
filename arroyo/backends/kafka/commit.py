@@ -79,10 +79,13 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
         if not isinstance(val, bytes):
             raise TypeError("payload value must be a bytes object")
 
-        headers = {k: v for (k, v) in value.headers}
-        orig_message_ts = datetime.strptime(
-            headers["orig_message_ts"].decode("utf-8"), DATETIME_FORMAT
-        )
+        for k, v in value.headers:
+            if k == "orig_message_ts":
+                v_s = v.decode() if isinstance(v, bytes) else v
+                orig_message_ts = datetime.strptime(v_s, DATETIME_FORMAT)
+                break
+        else:
+            raise ValueError('missing `orig_message_ts` header')
 
         topic_name, partition_index, group = key.decode("utf-8").split(":", 3)
         offset = int(val.decode("utf-8"))
