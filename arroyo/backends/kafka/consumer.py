@@ -60,7 +60,7 @@ class InvalidState(RuntimeError):
         self.__state = state
 
 
-Headers = MutableSequence[Tuple[str, bytes]]
+Headers = MutableSequence[Tuple[str, Union[bytes, str]]]
 
 
 class KafkaPayload(NamedTuple):
