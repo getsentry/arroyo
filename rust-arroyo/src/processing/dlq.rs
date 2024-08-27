@@ -417,7 +417,7 @@ impl<TPayload> BufferedMessages<TPayload> {
         buffered.push_back(message);
 
         gauge!(
-            "Number of elements in buffer deque without reallocating",
+            "Number of elements that can be held in buffer deque without reallocating",
             buffered.capacity()
         );
     }
@@ -429,13 +429,22 @@ impl<TPayload> BufferedMessages<TPayload> {
         while let Some(message) = messages.front() {
             match message.offset.cmp(&offset) {
                 Ordering::Equal => {
-                    return messages.pop_front();
+                    let first = messages.pop_front();
+                    gauge!(
+                        "Number of elements that can be held in buffer deque without reallocating",
+                        messages.capacity()
+                    );
+                    return first;
                 }
                 Ordering::Greater => {
                     return None;
                 }
                 Ordering::Less => {
                     messages.pop_front();
+                    gauge!(
+                        "Number of elements that can be held in buffer deque without reallocating",
+                        messages.capacity()
+                    );
                 }
             };
         }
