@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use crate::backends::kafka::producer::KafkaProducer;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
+use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
 // This is a per-partition max
@@ -414,6 +415,11 @@ impl<TPayload> BufferedMessages<TPayload> {
         }
 
         buffered.push_back(message);
+
+        gauge!(
+            "Number of elements in buffer deque without reallocating",
+            buffered.capacity()
+        );
     }
 
     /// Return the message at the given offset or None if it is not found in the buffer.
