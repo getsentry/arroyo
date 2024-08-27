@@ -418,7 +418,7 @@ impl<TPayload> BufferedMessages<TPayload> {
 
         gauge!(
             "Number of elements that can be held in buffer deque without reallocating",
-            buffered.capacity()
+            buffered.capacity() as u64
         );
     }
 
@@ -432,7 +432,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                     let first = messages.pop_front();
                     gauge!(
                         "Number of elements that can be held in buffer deque without reallocating",
-                        messages.capacity()
+                        messages.capacity() as u64
                     );
                     return first;
                 }
@@ -443,7 +443,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                     messages.pop_front();
                     gauge!(
                         "Number of elements that can be held in buffer deque without reallocating",
-                        messages.capacity()
+                        messages.capacity() as u64
                     );
                 }
             };
