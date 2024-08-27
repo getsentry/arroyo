@@ -416,8 +416,9 @@ impl<TPayload> BufferedMessages<TPayload> {
 
         buffered.push_back(message);
 
+        // Number of elements that can be held in buffer deque without reallocating
         gauge!(
-            "Number of elements that can be held in buffer deque without reallocating",
+            "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64
         );
     }
@@ -431,7 +432,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                 Ordering::Equal => {
                     let first = messages.pop_front();
                     gauge!(
-                        "Number of elements that can be held in buffer deque without reallocating",
+                        "arroyo.consumer.dlq_buffer.capacity",
                         messages.capacity() as u64
                     );
                     return first;
@@ -442,7 +443,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                 Ordering::Less => {
                     messages.pop_front();
                     gauge!(
-                        "Number of elements that can be held in buffer deque without reallocating",
+                        "arroyo.consumer.dlq_buffer.capacity",
                         messages.capacity() as u64
                     );
                 }
