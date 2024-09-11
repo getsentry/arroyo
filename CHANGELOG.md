@@ -1,5 +1,25 @@
 # Changelog and versioning
 
+## 2.17.5
+
+### Various fixes & improvements
+
+- chore: Fix release builds (#385) by @untitaker
+- Add a basic metric for tracking the capacity in VecDeque buffer (#383) by @ayirr7
+- feat: enhance metrics defs (#378) by @mj0nez
+- feat: Add From<BrokerMessage<_>> impl for InvalidMessage (#377) by @evanpurkhiser
+- feat: Add Noop processing strategy (#376) by @evanpurkhiser
+- Update RunTask to receive a Message<TPayload> (#375) by @evanpurkhiser
+- hotfix, fix master ci (66f1efc3) by @untitaker
+- fix: add guard to Produce.poll to ensure next_step is called regardless of produce queue (#370) by @mj0nez
+- ref: Add pre-commit hook for rustfmt (#364) by @untitaker
+- update accumulator sig to return Result<TResult> instead of TResult (#359) by @john-z-yang
+- ref: Use coarsetime consistently (#366) by @untitaker
+- ref(rust): Backpressure metrics for threadpools (#367) by @untitaker
+- ref(reduce): Refactor for timeout=0 (#363) by @untitaker
+- ref(rust): Remove strategy.close (#361) by @untitaker
+- ref(rust): Add join-time metric for threadpools (#362) by @untitaker
+
 ## 2.17.4
 
 ### Various fixes & improvements
