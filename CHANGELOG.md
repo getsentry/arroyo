@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.17.6
+
+### Various fixes & improvements
+
+- Remove non-existent @getsentry/processing from CODEOWNERS (#386) by @onkar
+
 ## 2.17.5
 
 ### Various fixes & improvements
