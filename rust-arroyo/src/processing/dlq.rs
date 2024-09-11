@@ -425,13 +425,10 @@ impl<TPayload> BufferedMessages<TPayload> {
         buffered.push_back(message);
 
         // Number of elements that can be held in buffer deque without reallocating
-        if metric_prob <= 0.01 {
-            // Number of partitions in the buffer map
-            gauge!(
-                "arroyo.consumer.dlq_buffer.assigned_partitions",
-                self.buffered_messages.len() as u64,
-            );
-        }
+        gauge!(
+            "arroyo.consumer.dlq_buffer.capacity",
+            buffered.capacity() as u64
+        );
     }
 
     /// Return the message at the given offset or None if it is not found in the buffer.
