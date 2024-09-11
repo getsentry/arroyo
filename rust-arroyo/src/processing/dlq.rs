@@ -401,20 +401,15 @@ impl<TPayload> BufferedMessages<TPayload> {
     ///
     /// If the configured `max_per_partition` is `0`, this is a no-op.
     pub fn append(&mut self, message: BrokerMessage<TPayload>) {
-        let mut rng = rand::thread_rng();
-        let metric_prob: f64 = rng.gen();
-
         if self.max_per_partition == Some(0) {
             return;
         }
 
-        if metric_prob <= 0.01 {
-            // Number of partitions in the buffer map
-            gauge!(
-                "arroyo.consumer.dlq_buffer.assigned_partitions",
-                self.buffered_messages.len() as u64,
-            );
-        }
+        // Number of partitions in the buffer map
+        gauge!(
+            "arroyo.consumer.dlq_buffer.assigned_partitions",
+            self.buffered_messages.len() as u64,
+        );
 
         let buffered = self.buffered_messages.entry(message.partition).or_default();
         if let Some(max) = self.max_per_partition {
@@ -442,16 +437,11 @@ impl<TPayload> BufferedMessages<TPayload> {
     /// Return the message at the given offset or None if it is not found in the buffer.
     /// Messages up to the offset for the given partition are removed.
     pub fn pop(&mut self, partition: &Partition, offset: u64) -> Option<BrokerMessage<TPayload>> {
-        let mut rng = rand::thread_rng();
-        let metric_prob: f64 = rng.gen();
-
         // Number of partitions in the buffer map
-        if metric_prob <= 0.01 {
-            gauge!(
-                "arroyo.consumer.dlq_buffer.assigned_partitions",
-                self.buffered_messages.len() as u64,
-            );
-        }
+        gauge!(
+            "arroyo.consumer.dlq_buffer.assigned_partitions",
+            self.buffered_messages.len() as u64,
+        );
 
         let messages = self.buffered_messages.get_mut(partition)?;
         while let Some(message) = messages.front() {
@@ -459,12 +449,11 @@ impl<TPayload> BufferedMessages<TPayload> {
                 Ordering::Equal => {
                     let first = messages.pop_front();
 
-                    if metric_prob <= 0.01 {
-                        gauge!(
-                            "arroyo.consumer.dlq_buffer.capacity",
-                            messages.capacity() as u64
-                        );
-                    }
+                    gauge!(
+                        "arroyo.consumer.dlq_buffer.capacity",
+                        messages.capacity() as u64
+                    );
+
                     return first;
                 }
                 Ordering::Greater => {
@@ -473,12 +462,10 @@ impl<TPayload> BufferedMessages<TPayload> {
                 Ordering::Less => {
                     messages.pop_front();
 
-                    if metric_prob <= 0.01 {
-                        gauge!(
-                            "arroyo.consumer.dlq_buffer.capacity",
-                            messages.capacity() as u64
-                        );
-                    }
+                    gauge!(
+                        "arroyo.consumer.dlq_buffer.capacity",
+                        messages.capacity() as u64
+                    );
                 }
             };
         }
