@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.18.0
+
+### Various fixes & improvements
+
+- fix: Allow sending committable from Unfold (#371) by @mj0nez
+- all-repos: update actions/upload-artifact to v4 (#381) by @joshuarli
+
 ## 2.17.6
 
 ### Various fixes & improvements
