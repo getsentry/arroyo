@@ -1,6 +1,6 @@
 use crate::processing::strategies::{
-    merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
-    StrategyError, SubmitError,
+    merge_commit_request, CommitRequest, MessageRejected, ProcessingStrategy, StrategyError,
+    SubmitError,
 };
 use crate::types::Message;
 use std::time::Duration;
@@ -26,7 +26,7 @@ impl<TTransformed, F, N> RunTask<TTransformed, F, N> {
 impl<TPayload, TTransformed, F, N> ProcessingStrategy<TPayload> for RunTask<TTransformed, F, N>
 where
     TTransformed: Send + Sync,
-    F: FnMut(Message<TPayload>) -> Result<Message<TTransformed>, InvalidMessage>
+    F: FnMut(Message<TPayload>) -> Result<Message<TTransformed>, SubmitError<TPayload>>
         + Send
         + Sync
         + 'static,
@@ -63,7 +63,7 @@ where
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        let next_message = (self.function)(message).map_err(SubmitError::InvalidMessage)?;
+        let next_message = (self.function)(message)?;
 
         match self.next_step.submit(next_message) {
             Err(SubmitError::MessageRejected(MessageRejected {
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_run_task() {
-        fn identity(value: Message<String>) -> Result<Message<String>, InvalidMessage> {
+        fn identity(value: Message<String>) -> Result<Message<String>, SubmitError<String>> {
             Ok(value)
         }
 
