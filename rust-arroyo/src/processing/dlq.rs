@@ -32,7 +32,7 @@ pub trait DlqProducer<TPayload>: Send + Sync {
 }
 
 // Drops all invalid messages. Produce returns an immediately resolved future.
-struct NoopDlqProducer {}
+pub struct NoopDlqProducer;
 
 impl<TPayload: Send + Sync + 'static> DlqProducer<TPayload> for NoopDlqProducer {
     fn produce(
