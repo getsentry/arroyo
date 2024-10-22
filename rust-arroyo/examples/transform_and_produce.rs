@@ -14,12 +14,14 @@ use rust_arroyo::processing::strategies::produce::Produce;
 use rust_arroyo::processing::strategies::run_task::RunTask;
 use rust_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
 use rust_arroyo::processing::strategies::{
-    InvalidMessage, ProcessingStrategy, ProcessingStrategyFactory,
+    ProcessingStrategy, ProcessingStrategyFactory, SubmitError,
 };
 use rust_arroyo::processing::StreamProcessor;
 use rust_arroyo::types::{Message, Topic, TopicOrPartition};
 
-fn reverse_string(message: Message<KafkaPayload>) -> Result<Message<KafkaPayload>, InvalidMessage> {
+fn reverse_string(
+    message: Message<KafkaPayload>,
+) -> Result<Message<KafkaPayload>, SubmitError<KafkaPayload>> {
     let value = message.payload();
     let payload = value.payload().unwrap();
     let str_payload = std::str::from_utf8(payload).unwrap();

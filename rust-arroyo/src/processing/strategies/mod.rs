@@ -16,6 +16,12 @@ pub enum SubmitError<T> {
     InvalidMessage(InvalidMessage),
 }
 
+impl<T> From<MessageRejected<T>> for SubmitError<T> {
+    fn from(other: MessageRejected<T>) -> Self {
+        SubmitError::MessageRejected(other)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MessageRejected<T> {
     pub message: Message<T>,

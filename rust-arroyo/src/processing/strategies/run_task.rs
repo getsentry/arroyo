@@ -1,42 +1,36 @@
 use crate::processing::strategies::{
-    merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
-    StrategyError, SubmitError,
+    merge_commit_request, CommitRequest, MessageRejected, ProcessingStrategy, StrategyError,
+    SubmitError,
 };
 use crate::types::Message;
 use std::time::Duration;
 
-type Function<TPayload, TTransformed> = dyn Fn(Message<TPayload>) -> Result<Message<TTransformed>, InvalidMessage>
-    + Send
-    + Sync
-    + 'static;
-
-pub struct RunTask<TPayload, TTransformed> {
-    pub function: Box<Function<TPayload, TTransformed>>,
-    pub next_step: Box<dyn ProcessingStrategy<TTransformed>>,
+pub struct RunTask<TTransformed, F, N> {
+    pub function: F,
+    pub next_step: N,
     pub message_carried_over: Option<Message<TTransformed>>,
     pub commit_request_carried_over: Option<CommitRequest>,
 }
 
-impl<TPayload, TTransformed> RunTask<TPayload, TTransformed> {
-    pub fn new<N, F>(function: F, next_step: N) -> Self
-    where
-        N: ProcessingStrategy<TTransformed> + 'static,
-        F: Fn(Message<TPayload>) -> Result<Message<TTransformed>, InvalidMessage>
-            + Send
-            + Sync
-            + 'static,
-    {
+impl<TTransformed, F, N> RunTask<TTransformed, F, N> {
+    pub fn new(function: F, next_step: N) -> Self {
         Self {
-            function: Box::new(function),
-            next_step: Box::new(next_step),
+            function,
+            next_step,
             message_carried_over: None,
             commit_request_carried_over: None,
         }
     }
 }
 
-impl<TPayload, TTransformed: Send + Sync> ProcessingStrategy<TPayload>
-    for RunTask<TPayload, TTransformed>
+impl<TPayload, TTransformed, F, N> ProcessingStrategy<TPayload> for RunTask<TTransformed, F, N>
+where
+    TTransformed: Send + Sync,
+    F: FnMut(Message<TPayload>) -> Result<Message<TTransformed>, SubmitError<TPayload>>
+        + Send
+        + Sync
+        + 'static,
+    N: ProcessingStrategy<TTransformed> + 'static,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         match self.next_step.poll() {
@@ -69,7 +63,7 @@ impl<TPayload, TTransformed: Send + Sync> ProcessingStrategy<TPayload>
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
-        let next_message = (self.function)(message).map_err(SubmitError::InvalidMessage)?;
+        let next_message = (self.function)(message)?;
 
         match self.next_step.submit(next_message) {
             Err(SubmitError::MessageRejected(MessageRejected {
@@ -109,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_run_task() {
-        fn identity(value: Message<String>) -> Result<Message<String>, InvalidMessage> {
+        fn identity(value: Message<String>) -> Result<Message<String>, SubmitError<String>> {
             Ok(value)
         }
 
