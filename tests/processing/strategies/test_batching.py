@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, cast, Optional, Callable
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -8,7 +8,7 @@ import pytest
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value, BaseValue
 
 NOW = datetime(2022, 1, 1, 0, 0, 1)
 
@@ -114,6 +114,10 @@ def message(partition: int, offset: int, payload: str) -> Message[str]:
     return Message(broker_value(partition=partition, offset=offset, payload=payload))
 
 
+def increment_by(message: BaseValue[str]) -> int:
+    return len(message.payload)
+
+
 test_batch = [
     pytest.param(
         datetime(2022, 1, 1, 0, 0, 1),
@@ -122,6 +126,7 @@ test_batch = [
             message(0, 2, "Message 2"),
         ],
         [],
+        None,
         id="Half full batch",
     ),
     pytest.param(
@@ -146,6 +151,7 @@ test_batch = [
                 )
             )
         ],
+        None,
         id="One full batch",
     ),
     pytest.param(
@@ -186,23 +192,74 @@ test_batch = [
                 )
             ),
         ],
+        None,
         id="Two full batches",
+    ),
+    pytest.param(
+        datetime(2022, 1, 1, 0, 0, 1),
+        [
+            message(0, 1, "1"),
+            message(0, 2, "11"),
+            message(0, 3, "222"),
+            message(1, 1, "33"),
+            message(1, 2, "333"),
+        ],
+        [
+            call(
+                Message(
+                    Value(
+                        payload=[broker_value(0, 1, "1"), broker_value(0, 2, "11")],
+                        committable={Partition(Topic("test"), 0): 3},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+            call(
+                Message(
+                    Value(
+                        payload=[
+                            broker_value(0, 3, "222"),
+                        ],
+                        committable={Partition(Topic("test"), 0): 4},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+            call(
+                Message(
+                    Value(
+                        payload=[
+                            broker_value(1, 1, "33"),
+                            broker_value(1, 2, "333"),
+                        ],
+                        committable={Partition(Topic("test"), 1): 3},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+        ],
+        increment_by,
+        id="Three batches using increment by",
     ),
 ]
 
 
-@pytest.mark.parametrize("start_time, messages_in, expected_batches", test_batch)
+@pytest.mark.parametrize(
+    "start_time, messages_in, expected_batches, increment_by", test_batch
+)
 @patch("time.time")
 def test_batch_step(
     mock_time: Any,
     start_time: datetime,
     messages_in: Sequence[Message[str]],
     expected_batches: Sequence[ValuesBatch[str]],
+    increment_by: Optional[Callable[[BaseValue[str]], int]],
 ) -> None:
     start = time.mktime(start_time.timetuple())
     mock_time.return_value = start
     next_step = Mock()
-    batch_step = BatchStep[str](3, 10.0, next_step)
+    print("incrementby", increment_by)
+    batch_step = BatchStep[str](3, 10.0, next_step, increment_by)
     for message in messages_in:
         batch_step.submit(message)
         batch_step.poll()

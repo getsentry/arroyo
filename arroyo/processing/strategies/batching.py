@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import MutableSequence, Optional, Union
+from typing import MutableSequence, Optional, Union, Callable
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
@@ -41,6 +41,7 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         max_batch_size: int,
         max_batch_time: float,
         next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
+        increment_by: Optional[Callable[[BaseValue[TStrategyPayload]], int]] = None,
     ) -> None:
         def accumulator(
             result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
@@ -48,14 +49,15 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             result.append(value)
             return result
 
-        self.__reduce_step: Reduce[
-            TStrategyPayload, ValuesBatch[TStrategyPayload]
-        ] = Reduce(
-            max_batch_size,
-            max_batch_time,
-            accumulator,
-            lambda: [],
-            next_step,
+        self.__reduce_step: Reduce[TStrategyPayload, ValuesBatch[TStrategyPayload]] = (
+            Reduce(
+                max_batch_size,
+                max_batch_time,
+                accumulator,
+                lambda: [],
+                next_step,
+                increment_by,
+            )
         )
 
     def submit(
