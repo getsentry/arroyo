@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import MutableSequence, Optional, Union, Callable
+from typing import Callable, MutableSequence, Optional, Union
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce

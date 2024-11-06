@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence, cast, Optional, Callable
+from typing import Any, Callable, Mapping, Sequence, cast, Optional
 from unittest.mock import Mock, call, patch
 
 import pytest
