@@ -114,7 +114,7 @@ def message(partition: int, offset: int, payload: str) -> Message[str]:
     return Message(broker_value(partition=partition, offset=offset, payload=payload))
 
 
-def increment_by(message: BaseValue[str]) -> int:
+def compute_batch_size(message: BaseValue[str]) -> int:
     return len(message.payload)
 
 
@@ -238,14 +238,14 @@ test_batch = [
                 )
             ),
         ],
-        increment_by,
-        id="Three batches using increment by",
+        compute_batch_size,
+        id="Three batches using compute_batch_size",
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    "start_time, messages_in, expected_batches, increment_by", test_batch
+    "start_time, messages_in, expected_batches, compute_batch_size", test_batch
 )
 @patch("time.time")
 def test_batch_step(
@@ -253,13 +253,12 @@ def test_batch_step(
     start_time: datetime,
     messages_in: Sequence[Message[str]],
     expected_batches: Sequence[ValuesBatch[str]],
-    increment_by: Optional[Callable[[BaseValue[str]], int]],
+    compute_batch_size: Optional[Callable[[BaseValue[str]], int]],
 ) -> None:
     start = time.mktime(start_time.timetuple())
     mock_time.return_value = start
     next_step = Mock()
-    print("incrementby", increment_by)
-    batch_step = BatchStep[str](3, 10.0, next_step, increment_by)
+    batch_step = BatchStep[str](3, 10.0, next_step, compute_batch_size)
     for message in messages_in:
         batch_step.submit(message)
         batch_step.poll()

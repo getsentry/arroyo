@@ -21,13 +21,13 @@ class ReduceBuffer(Generic[TPayload, TResult]):
         initial_value: Callable[[], TResult],
         max_batch_size: int,
         max_batch_time: float,
-        increment_by: Optional[Callable[[BaseValue[TPayload]], int]] = None,
+        compute_batch_size: Optional[Callable[[BaseValue[TPayload]], int]] = None,
     ):
         self.accumulator = accumulator
         self.initial_value = initial_value
         self.max_batch_size = max_batch_size
         self.max_batch_time = max_batch_time
-        self.increment_by = increment_by
+        self.compute_batch_size = compute_batch_size
 
         self._buffer = initial_value()
         self._buffer_size = 0
@@ -50,8 +50,8 @@ class ReduceBuffer(Generic[TPayload, TResult]):
 
     def append(self, message: BaseValue[TPayload]) -> None:
         self._buffer = self.accumulator(self._buffer, message)
-        if self.increment_by:
-            buffer_increment = self.increment_by(message)
+        if self.compute_batch_size:
+            buffer_increment = self.compute_batch_size(message)
         else:
             buffer_increment = 1
         self._buffer_size += buffer_increment
@@ -62,7 +62,7 @@ class ReduceBuffer(Generic[TPayload, TResult]):
             initial_value=self.initial_value,
             max_batch_size=self.max_batch_size,
             max_batch_time=self.max_batch_time,
-            increment_by=self.increment_by,
+            compute_batch_size=self.compute_batch_size,
         )
 
 
@@ -90,7 +90,7 @@ class Reduce(
         accumulator: Accumulator[TResult, TPayload],
         initial_value: Callable[[], TResult],
         next_step: ProcessingStrategy[TResult],
-        increment_by: Optional[Callable[[BaseValue[TPayload]], int]] = None,
+        compute_batch_size: Optional[Callable[[BaseValue[TPayload]], int]] = None,
     ) -> None:
         self.__buffer_step = Buffer(
             buffer=ReduceBuffer(
@@ -98,7 +98,7 @@ class Reduce(
                 max_batch_time=max_batch_time,
                 accumulator=accumulator,
                 initial_value=initial_value,
-                increment_by=increment_by,
+                compute_batch_size=compute_batch_size,
             ),
             next_step=next_step,
         )

@@ -41,7 +41,9 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         max_batch_size: int,
         max_batch_time: float,
         next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
-        increment_by: Optional[Callable[[BaseValue[TStrategyPayload]], int]] = None,
+        compute_batch_size: Optional[
+            Callable[[BaseValue[TStrategyPayload]], int]
+        ] = None,
     ) -> None:
         def accumulator(
             result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
@@ -56,7 +58,7 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
                 accumulator,
                 lambda: [],
                 next_step,
-                increment_by,
+                compute_batch_size,
             )
         )
 
