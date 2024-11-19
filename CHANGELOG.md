@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.18.1
+
+### Various fixes & improvements
+
+- ref(batching): add compute_batch_size to BatchStep (#390) by @MeredithAnya
+- ref(rust/run_task): Remove unnecessary boxing, make FnMut, change return type (#388) by @untitaker
+
 ## 2.18.0
 
 ### Various fixes & improvements
