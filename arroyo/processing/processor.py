@@ -435,6 +435,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__consumer.pause([*self.__consumer.tell().keys()])
                         self.__is_paused = True
 
+                    elif self.__is_paused:
+                        # A paused consumer should still poll periodically to avoid it's partitions
+                        # getting revoked by the broker after reaching thte max.poll.interval.ms
+                        self.__consumer.poll(0.1)
                     else:
                         time.sleep(0.01)
 
