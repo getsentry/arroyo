@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.18.2
+
+### Various fixes & improvements
+
+- fix: avoid partition revocation on paused consumers (#391) by @lynnagara
+
 ## 2.18.1
 
 ### Various fixes & improvements
