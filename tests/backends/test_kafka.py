@@ -19,6 +19,7 @@ from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import IMMEDIATE, Commit
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.processing.processor import StreamProcessor
+from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.types import BrokerValue, Partition, Topic
 from tests.backends.mixins import StreamsTestMixin
 
@@ -86,22 +87,28 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
     def get_consumer(
         self,
         group: Optional[str] = None,
-        enable_end_of_partition: bool = True,
         auto_offset_reset: str = "earliest",
         strict_offset_reset: Optional[bool] = None,
+        max_poll_interval_ms: Optional[float] = None
     ) -> KafkaConsumer:
-        return KafkaConsumer(
-            {
-                **self.configuration,
-                "auto.offset.reset": auto_offset_reset,
-                "arroyo.strict.offset.reset": strict_offset_reset,
-                "enable.auto.commit": "false",
-                "enable.auto.offset.store": "false",
-                "enable.partition.eof": enable_end_of_partition,
-                "group.id": group if group is not None else uuid.uuid1().hex,
-                "session.timeout.ms": 10000,
-            },
-        )
+        configuration = {
+            **self.configuration,
+            "auto.offset.reset": auto_offset_reset,
+            "arroyo.strict.offset.reset": strict_offset_reset,
+            "enable.auto.commit": "false",
+            "enable.auto.offset.store": "false",
+            "group.id": group if group is not None else uuid.uuid1().hex,
+            "session.timeout.ms": 10000,
+        }
+
+        if max_poll_interval_ms:
+            configuration["max.poll.interval.ms"] = max_poll_interval_ms
+
+            # session timeout cannot be higher than max poll interval
+            if max_poll_interval_ms < 45000:
+                configuration["session.timeout.ms"] = max_poll_interval_ms
+
+        return KafkaConsumer(configuration)
 
     def get_producer(self) -> KafkaProducer:
         return KafkaProducer(self.configuration)
@@ -192,6 +199,49 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 with pytest.raises(RuntimeError):
                     processor.run()
+
+    def test_consumer_polls_when_paused(self) -> None:
+        strategy = mock.Mock()
+        factory = mock.Mock()
+        factory.create_with_partitions.return_value = strategy
+
+        poll_interval = 6000
+
+        with self.get_topic() as topic:
+            with closing(self.get_producer()) as producer, closing(self.get_consumer(max_poll_interval_ms=poll_interval)) as consumer:
+                producer.produce(topic, next(self.get_payloads())).result(5.0)
+
+                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+
+                # Wait for the consumer to subscribe and first message to be processed
+                for _ in range(1000):
+                    processor._run_once()
+                    if strategy.submit.call_count > 0:
+                        break
+                    time.sleep(0.1)
+
+                assert strategy.submit.call_count == 1
+
+                # Now we start raising message rejected. the next produced message doesn't get processed
+                strategy.submit.side_effect = MessageRejected()
+
+                producer.produce(topic, next(self.get_payloads())).result(5.0)
+                processor._run_once()
+                assert consumer.paused() == []
+                # After ~5 seconds the consumer should be paused. On the next two calls to run_once it
+                # will pause itself, then poll the consumer.
+                time.sleep(5.0)
+                processor._run_once()
+                processor._run_once()
+                assert len(consumer.paused()) == 1
+                print("!!!!!")
+
+                # Now we exceed the poll interval. After that we stop raising MessageRejected and
+                # the consumer unpauses itself.
+                time.sleep(2.0)
+                strategy.submit.side_effect = None
+                processor._run_once()
+                assert consumer.paused() == []
 
 
 def test_commit_codec() -> None:
