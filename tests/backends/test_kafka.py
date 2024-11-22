@@ -87,9 +87,10 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
     def get_consumer(
         self,
         group: Optional[str] = None,
+        enable_end_of_partition: bool = True,
         auto_offset_reset: str = "earliest",
         strict_offset_reset: Optional[bool] = None,
-        max_poll_interval_ms: Optional[float] = None
+        max_poll_interval_ms: Optional[int] = None
     ) -> KafkaConsumer:
         configuration = {
             **self.configuration,
@@ -97,6 +98,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             "arroyo.strict.offset.reset": strict_offset_reset,
             "enable.auto.commit": "false",
             "enable.auto.offset.store": "false",
+            "enable.partition.eof": enable_end_of_partition,
             "group.id": group if group is not None else uuid.uuid1().hex,
             "session.timeout.ms": 10000,
         }
@@ -234,7 +236,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 processor._run_once()
                 processor._run_once()
                 assert len(consumer.paused()) == 1
-                print("!!!!!")
 
                 # Now we exceed the poll interval. After that we stop raising MessageRejected and
                 # the consumer unpauses itself.
