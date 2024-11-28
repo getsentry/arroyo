@@ -425,7 +425,8 @@ impl<TPayload> BufferedMessages<TPayload> {
         // Number of elements that can be held in buffer deque without reallocating
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
-            buffered.capacity() as u64
+            buffered.capacity() as u64,
+            "partition_id" => message.partition.index
         );
     }
 
@@ -446,7 +447,8 @@ impl<TPayload> BufferedMessages<TPayload> {
 
                     gauge!(
                         "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64
+                        messages.capacity() as u64,
+                        "partition_id" => partition.index
                     );
 
                     return first;
@@ -459,7 +461,8 @@ impl<TPayload> BufferedMessages<TPayload> {
 
                     gauge!(
                         "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64
+                        messages.capacity() as u64,
+                        "partition_id" => partition.index
                     );
                 }
             };
