@@ -40,20 +40,20 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
     }
 }
 
-pub struct Produce {
-    inner: RunTaskInThreads<KafkaPayload, KafkaPayload, ProducerError>,
+pub struct Produce<N> {
+    inner: RunTaskInThreads<KafkaPayload, KafkaPayload, ProducerError, N>,
 }
 
-impl Produce {
-    pub fn new<N>(
+impl<N> Produce<N>
+where
+    N: ProcessingStrategy<KafkaPayload> + 'static,
+{
+    pub fn new(
         next_step: N,
         producer: impl Producer<KafkaPayload> + 'static,
         concurrency: &ConcurrencyConfig,
         topic: TopicOrPartition,
-    ) -> Self
-    where
-        N: ProcessingStrategy<KafkaPayload> + 'static,
-    {
+    ) -> Self {
         let inner = RunTaskInThreads::new(
             next_step,
             Box::new(ProduceMessage::new(producer, topic)),
@@ -65,7 +65,10 @@ impl Produce {
     }
 }
 
-impl ProcessingStrategy<KafkaPayload> for Produce {
+impl<N> ProcessingStrategy<KafkaPayload> for Produce<N>
+where
+    N: ProcessingStrategy<KafkaPayload>,
+{
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.inner.poll()
     }
