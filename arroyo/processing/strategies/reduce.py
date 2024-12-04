@@ -1,10 +1,9 @@
 import time
-from datetime import datetime
-from typing import Callable, Generic, MutableMapping, Optional, TypeVar, Union, cast
+from typing import Callable, Generic, Optional, TypeVar, Union
 
-from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
-from arroyo.utils.metrics import get_metrics
+from arroyo.processing.strategies.buffer import Buffer
+from arroyo.processing.strategies import ProcessingStrategy
+from arroyo.types import BaseValue, FilteredPayload, Message
 
 TPayload = TypeVar("TPayload")
 TResult = TypeVar("TResult")
@@ -13,60 +12,57 @@ TResult = TypeVar("TResult")
 Accumulator = Callable[[TResult, BaseValue[TPayload]], TResult]
 
 
-class BatchBuilder(Generic[TPayload, TResult]):
-    """
-    Accumulates values into a batch.
-    """
+class ReduceBuffer(Generic[TPayload, TResult]):
+    """Reduce strategy buffer class."""
 
     def __init__(
         self,
         accumulator: Accumulator[TResult, TPayload],
-        initial_value: TResult,
+        initial_value: Callable[[], TResult],
         max_batch_size: int,
         max_batch_time: float,
-    ) -> None:
-        self.__max_batch_time = max_batch_time
-        self.__max_batch_size = max_batch_size
-        self.__accumulator = accumulator
-        self.__accumulated_value = initial_value
+        compute_batch_size: Optional[Callable[[BaseValue[TPayload]], int]] = None,
+    ):
+        self.accumulator = accumulator
+        self.initial_value = initial_value
+        self.max_batch_size = max_batch_size
+        self.max_batch_time = max_batch_time
+        self.compute_batch_size = compute_batch_size
 
-        # For latency recording.
-        # The timestamp of the last message in the batch is one applied to the batch
-        self.__last_timestamp: Optional[datetime] = None
-        self.__count = 0
-        self.__offsets: MutableMapping[Partition, int] = {}
-        self.init_time = time.time()
+        self._buffer = initial_value()
+        self._buffer_size = 0
+        self._buffer_until = time.time() + max_batch_time
 
-    def append(self, value: BaseValue[Union[FilteredPayload, TPayload]]) -> None:
-        self.__offsets.update(value.committable)
-        self.__last_timestamp = value.timestamp
-        if not isinstance(value.payload, FilteredPayload):
-            self.__accumulated_value = self.__accumulator(
-                self.__accumulated_value, cast(BaseValue[TPayload], value)
-            )
+    @property
+    def buffer(self) -> TResult:
+        return self._buffer
 
-            self.__count += 1
+    @property
+    def is_empty(self) -> bool:
+        return self._buffer_size == 0
 
-    def build_if_ready(self) -> Optional[Value[TResult]]:
-        if (
-            self.__count >= self.__max_batch_size
-            or time.time() > self.init_time + self.__max_batch_time
-        ):
-            assert isinstance(self.__last_timestamp, datetime)
-            return Value(
-                payload=self.__accumulated_value,
-                committable=self.__offsets,
-                timestamp=self.__last_timestamp,
-            )
+    @property
+    def is_ready(self) -> bool:
+        return (
+            self._buffer_size >= self.max_batch_size
+            or time.time() >= self._buffer_until
+        )
+
+    def append(self, message: BaseValue[TPayload]) -> None:
+        self._buffer = self.accumulator(self._buffer, message)
+        if self.compute_batch_size:
+            buffer_increment = self.compute_batch_size(message)
         else:
-            return None
+            buffer_increment = 1
+        self._buffer_size += buffer_increment
 
-    def build(self) -> Value[TResult]:
-        assert isinstance(self.__last_timestamp, datetime)
-        return Value(
-            payload=self.__accumulated_value,
-            committable=self.__offsets,
-            timestamp=self.__last_timestamp,
+    def new(self) -> "ReduceBuffer[TPayload, TResult]":
+        return ReduceBuffer(
+            accumulator=self.accumulator,
+            initial_value=self.initial_value,
+            max_batch_size=self.max_batch_size,
+            max_batch_time=self.max_batch_time,
+            compute_batch_size=self.compute_batch_size,
         )
 
 
@@ -94,106 +90,33 @@ class Reduce(
         accumulator: Accumulator[TResult, TPayload],
         initial_value: Callable[[], TResult],
         next_step: ProcessingStrategy[TResult],
+        compute_batch_size: Optional[Callable[[BaseValue[TPayload]], int]] = None,
     ) -> None:
-        self.__max_batch_size = max_batch_size
-        self.__max_batch_time = max_batch_time
-        self.__accumulator = accumulator
-        self.__initial_value = initial_value
-        self.__next_step = next_step
-        self.__batch_builder: Optional[BatchBuilder[TPayload, TResult]] = None
-        self.__metrics = get_metrics()
-        self.__closed = False
-
-    def __flush(self, force: bool) -> None:
-        assert self.__batch_builder is not None
-        batch = (
-            self.__batch_builder.build_if_ready()
-            if not force
-            else self.__batch_builder.build()
+        self.__buffer_step = Buffer(
+            buffer=ReduceBuffer(
+                max_batch_size=max_batch_size,
+                max_batch_time=max_batch_time,
+                accumulator=accumulator,
+                initial_value=initial_value,
+                compute_batch_size=compute_batch_size,
+            ),
+            next_step=next_step,
         )
-        if batch is None:
-            return
-
-        batch_msg = Message(batch)
-
-        self.__next_step.submit(batch_msg)
-
-        self.__metrics.timing(
-            "arroyo.strategies.reduce.batch_time",
-            time.time() - self.__batch_builder.init_time,
-        )
-
-        self.__batch_builder = None
 
     def submit(self, message: Message[Union[FilteredPayload, TPayload]]) -> None:
-        """
-        Accumulates messages in the current batch.
-        A new batch is created at the first message received.
-
-        This method tries to flush before adding the message
-        to the current batch. This is so that, if we receive
-        `MessageRejected` exception from the following step,
-        we can propagate the exception without processing the
-        new message. This allows the previous step to try again
-        without introducing duplications.
-        """
-        assert not self.__closed
-
-        if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(cast(Message[TResult], message))
-            return
-
-        if self.__batch_builder is not None:
-            self.__flush(force=False)
-
-        if self.__batch_builder is None:
-            self.__batch_builder = BatchBuilder(
-                self.__accumulator,
-                self.__initial_value(),
-                max_batch_size=self.__max_batch_size,
-                max_batch_time=self.__max_batch_time,
-            )
-
-        self.__batch_builder.append(cast(BaseValue[TPayload], message.value))
+        self.__buffer_step.submit(message)
 
     def poll(self) -> None:
-        assert not self.__closed
-
-        if self.__batch_builder is not None:
-            try:
-                self.__flush(force=False)
-            except MessageRejected:
-                pass
-
-        self.__next_step.poll()
+        self.__buffer_step.poll()
 
     def close(self) -> None:
-        self.__closed = True
+        self.__buffer_step.close()
 
     def terminate(self) -> None:
-        self.__closed = True
-        self.__batch_builder = None
-        self.__next_step.terminate()
+        self.__buffer_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:
-        """
-        Terminates the strategy by joining the following step.
-        This method tries to flush the current batch no matter
-        whether the batch is ready or not.
-        """
-        deadline = time.time() + timeout if timeout is not None else None
-        if self.__batch_builder is not None:
-            while deadline is None or time.time() < deadline:
-                try:
-                    self.__flush(force=True)
-                    break
-                except MessageRejected:
-                    pass
-
-        self.__next_step.close()
-        self.__next_step.join(
-            timeout=max(deadline - time.time(), 0) if deadline is not None else None
-        )
+        self.__buffer_step.join(timeout)
 
 
 __all__ = ["Reduce"]

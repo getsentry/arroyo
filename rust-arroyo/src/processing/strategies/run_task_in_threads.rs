@@ -1,18 +1,18 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::runtime::{Handle, Runtime};
 use tokio::task::JoinHandle;
 
-use crate::gauge;
 use crate::processing::strategies::{
     merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
     SubmitError,
 };
 use crate::types::Message;
 use crate::utils::timing::Deadline;
+use crate::{counter, gauge, timer};
 
 use super::StrategyError;
 
@@ -80,8 +80,8 @@ enum RuntimeOrHandle {
     Runtime(Runtime),
 }
 
-pub struct RunTaskInThreads<TPayload, TTransformed, TError> {
-    next_step: Box<dyn ProcessingStrategy<TTransformed>>,
+pub struct RunTaskInThreads<TPayload, TTransformed, TError, N> {
+    next_step: N,
     task_runner: Box<dyn TaskRunner<TPayload, TTransformed, TError>>,
     concurrency: usize,
     runtime: Handle,
@@ -91,8 +91,8 @@ pub struct RunTaskInThreads<TPayload, TTransformed, TError> {
     metric_strategy_name: &'static str,
 }
 
-impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TError> {
-    pub fn new<N>(
+impl<TPayload, TTransformed, TError, N> RunTaskInThreads<TPayload, TTransformed, TError, N> {
+    pub fn new(
         next_step: N,
         task_runner: Box<dyn TaskRunner<TPayload, TTransformed, TError>>,
         concurrency: &ConcurrencyConfig,
@@ -105,7 +105,7 @@ impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TE
         let strategy_name = custom_strategy_name.unwrap_or("run_task_in_threads");
 
         RunTaskInThreads {
-            next_step: Box::new(next_step),
+            next_step,
             task_runner,
             concurrency: concurrency.concurrency,
             runtime: concurrency.handle(),
@@ -117,11 +117,12 @@ impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TE
     }
 }
 
-impl<TPayload, TTransformed, TError> ProcessingStrategy<TPayload>
-    for RunTaskInThreads<TPayload, TTransformed, TError>
+impl<TPayload, TTransformed, TError, N> ProcessingStrategy<TPayload>
+    for RunTaskInThreads<TPayload, TTransformed, TError, N>
 where
     TTransformed: Send + Sync + 'static,
     TError: Into<Box<dyn std::error::Error>> + Send + Sync + 'static,
+    N: ProcessingStrategy<TTransformed>,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         let commit_request = self.next_step.poll()?;
@@ -142,6 +143,7 @@ where
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
+                    counter!("arroyo.strategies.run_task_in_threads.got_backpressure", 1, "strategy_name" => self.metric_strategy_name);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
@@ -190,6 +192,7 @@ where
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
         if self.message_carried_over.is_some() {
+            counter!("arroyo.strategies.run_task_in_threads.giving_backpressure", 1, "strategy_name" => self.metric_strategy_name);
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
@@ -204,10 +207,6 @@ where
         Ok(())
     }
 
-    fn close(&mut self) {
-        self.next_step.close();
-    }
-
     fn terminate(&mut self) {
         for handle in &self.handles {
             handle.abort();
@@ -218,6 +217,7 @@ where
 
     fn join(&mut self, timeout: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
         let deadline = timeout.map(Deadline::new);
+        let start = Instant::now();
 
         // Poll until there are no more messages or timeout is hit
         while self.message_carried_over.is_some() || !self.handles.is_empty() {
@@ -239,6 +239,12 @@ where
             handle.abort();
         }
         self.handles.clear();
+
+        timer!(
+            "arroyo.strategies.run_task_in_threads.join_time",
+            start.elapsed(),
+            "strategy_name" => self.metric_strategy_name
+        );
 
         let next_commit = self.next_step.join(deadline.map(|d| d.remaining()))?;
 
@@ -292,7 +298,6 @@ mod tests {
             self.0.lock().unwrap().submit += 1;
             Ok(())
         }
-        fn close(&mut self) {}
         fn terminate(&mut self) {}
         fn join(
             &mut self,

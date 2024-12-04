@@ -1,9 +1,10 @@
-use crate::types::{Message, Partition};
+use crate::types::{BrokerMessage, Message, Partition};
 use std::collections::HashMap;
 use std::time::Duration;
 
 pub mod commit_offsets;
 pub mod healthcheck;
+pub mod noop;
 pub mod produce;
 pub mod reduce;
 pub mod run_task;
@@ -15,6 +16,12 @@ pub enum SubmitError<T> {
     InvalidMessage(InvalidMessage),
 }
 
+impl<T> From<MessageRejected<T>> for SubmitError<T> {
+    fn from(other: MessageRejected<T>) -> Self {
+        SubmitError::MessageRejected(other)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MessageRejected<T> {
     pub message: Message<T>,
@@ -24,6 +31,15 @@ pub struct MessageRejected<T> {
 pub struct InvalidMessage {
     pub partition: Partition,
     pub offset: u64,
+}
+
+impl<TPayload> From<&BrokerMessage<TPayload>> for InvalidMessage {
+    fn from(value: &BrokerMessage<TPayload>) -> Self {
+        Self {
+            partition: value.partition,
+            offset: value.offset,
+        }
+    }
 }
 
 /// Signals that we need to commit offsets
@@ -103,16 +119,6 @@ pub trait ProcessingStrategy<TPayload>: Send + Sync {
     /// ``MessageRejected`` exception.
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>>;
 
-    /// Close this instance. No more messages should be accepted by the
-    /// instance after this method has been called.
-    ///
-    /// This method should not block. Once this strategy instance has
-    /// finished processing (or discarded) all messages that were submitted
-    /// prior to this method being called, the strategy should commit its
-    /// partition offsets and release any resources that will no longer be
-    /// used (threads, processes, sockets, files, etc.)
-    fn close(&mut self);
-
     /// Close the processing strategy immediately, abandoning any work in
     /// progress. No more messages should be accepted by the instance after
     /// this method has been called.
@@ -137,10 +143,6 @@ impl<TPayload, S: ProcessingStrategy<TPayload> + ?Sized> ProcessingStrategy<TPay
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
         (**self).submit(message)
-    }
-
-    fn close(&mut self) {
-        (**self).close()
     }
 
     fn terminate(&mut self) {

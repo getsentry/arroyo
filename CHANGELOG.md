@@ -1,5 +1,141 @@
 # Changelog and versioning
 
+## 2.18.2
+
+### Various fixes & improvements
+
+- fix: avoid partition revocation on paused consumers (#391) by @lynnagara
+
+## 2.18.1
+
+### Various fixes & improvements
+
+- ref(batching): add compute_batch_size to BatchStep (#390) by @MeredithAnya
+- ref(rust/run_task): Remove unnecessary boxing, make FnMut, change return type (#388) by @untitaker
+
+## 2.18.0
+
+### Various fixes & improvements
+
+- fix: Allow sending committable from Unfold (#371) by @mj0nez
+- all-repos: update actions/upload-artifact to v4 (#381) by @joshuarli
+
+## 2.17.6
+
+### Various fixes & improvements
+
+- Remove non-existent @getsentry/processing from CODEOWNERS (#386) by @onkar
+
+## 2.17.5
+
+### Various fixes & improvements
+
+- chore: Fix release builds (#385) by @untitaker
+- Add a basic metric for tracking the capacity in VecDeque buffer (#383) by @ayirr7
+- feat: enhance metrics defs (#378) by @mj0nez
+- feat: Add From<BrokerMessage<_>> impl for InvalidMessage (#377) by @evanpurkhiser
+- feat: Add Noop processing strategy (#376) by @evanpurkhiser
+- Update RunTask to receive a Message<TPayload> (#375) by @evanpurkhiser
+- hotfix, fix master ci (66f1efc3) by @untitaker
+- fix: add guard to Produce.poll to ensure next_step is called regardless of produce queue (#370) by @mj0nez
+- ref: Add pre-commit hook for rustfmt (#364) by @untitaker
+- update accumulator sig to return Result<TResult> instead of TResult (#359) by @john-z-yang
+- ref: Use coarsetime consistently (#366) by @untitaker
+- ref(rust): Backpressure metrics for threadpools (#367) by @untitaker
+- ref(reduce): Refactor for timeout=0 (#363) by @untitaker
+- ref(rust): Remove strategy.close (#361) by @untitaker
+- ref(rust): Add join-time metric for threadpools (#362) by @untitaker
+
+## 2.17.4
+
+### Various fixes & improvements
+
+- rust: add more rust logging (#351) by @dbanda
+- fixes #353: return message.payload (#354) by @mwarkentin
+
+## 2.17.3
+
+### Various fixes & improvements
+
+- feat(header): Implement find method on headers (#350) by @nikhars
+
+## 2.17.2
+
+### Various fixes & improvements
+
+- feat: make default auto.offset.reset earliest (#349) by @lynnagara
+
+## 2.17.1
+
+### Various fixes & improvements
+
+- fix: Enable stats collection (#348) by @phacops
+
+## 2.17.0
+
+### Various fixes & improvements
+
+- ref(reduce): Allow to reduce to non-cloneable values (#346) by @untitaker
+
+## 2.16.5
+
+### Various fixes & improvements
+
+- build(deps): bump black from 22.3.0 to 24.3.0 (#343) by @dependabot
+- feat: confluent-kafka-python 2.3.0 (#344) by @lynnagara
+- meta: Update codeowners (#345) by @lynnagara
+
+## 2.16.4
+
+### Various fixes & improvements
+
+- ref: Metric definition (#341) by @lynnagara
+- feat: Ingest a metric for rdkafka queue size (#342) by @phacops
+
+## 2.16.2
+
+### Various fixes & improvements
+
+- feat: Increase backpressure threshold to 5 seconds (#340) by @lynnagara
+
+## 2.16.1
+
+### Various fixes & improvements
+
+- ref(metrics): Add pause/resume counters [INC-626] (#338) by @untitaker
+- perf: inline now calling `coarsetime::Instant` (#336) by @anonrig
+
+## 2.16.0
+
+### Various fixes & improvements
+
+- Add flexible Reduce strategy type (#333) by @cmanallen
+- fix(release): Stop releasing to crates.io while it doesn't work (#335) by @untitaker
+- feat(logs): Add partition info upon assignment and revocation (#334) by @ayirr7
+- ref: Restore owners on rust-arroyo (#330) by @untitaker
+- fix: Rename Rust arroyo metric since it has a different unit (#329) by @untitaker
+- fix(rust): Add feature to Reduce to flush empty batches (#332) by @untitaker
+- ref: Add release workflow for Rust (#327) by @untitaker
+- ref(ci): Add Rust CI (#324) by @untitaker
+- Revert "ref: Move rust-arroyo from snuba to arroyo" (#325) by @untitaker
+- ref: Move rust-arroyo from snuba to arroyo (#323) by @untitaker
+- move rust-arroyo to subdirectory (#323) by @untitaker
+- fix(multiprocessing): Implement better error messages for block overflow (#322) by @untitaker
+- rust: add rust concurrency metric (#5341) by @untitaker
+- ref(rust): Don't panic in RunTaskInThreads::poll (#5387) by @untitaker
+- deps(rust): Change rdkafka dep to upstream master (#5386) by @untitaker
+- ref(metrics): Refactor how global tags work, and introduce min_partition tag (#5346) by @untitaker
+- Add Metrics impl based on `merni` (#5351) by @untitaker
+- fix: Remove any panics in threads (#5353) by @untitaker
+- ref(devserver): Use Rust consumers almost everywhere, and fix commitlog implementation (#5311) by @untitaker
+- Avoid calling `Topic::new` for every received Message (#5331) by @untitaker
+- Reuse Tokio Handle in DlqPolicy (#5329) by @untitaker
+- ref(rust): Log actual error if strategy panics (#5317) by @untitaker
+- fix(rust): add testcase for empty batches (#5299) by @untitaker
+- Revert "ref(rust): Do not do extra work when merging if not needed (#5294)" (#323) by @untitaker
+
+_Plus 146 more_
+
 ## 2.15.3
 
 ### Various fixes & improvements

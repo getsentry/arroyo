@@ -1,6 +1,7 @@
 extern crate rust_arroyo;
 
-use chrono::Duration;
+use std::time::Duration;
+
 use rust_arroyo::backends::kafka::config::KafkaConfig;
 use rust_arroyo::backends::kafka::types::KafkaPayload;
 use rust_arroyo::backends::kafka::InitialOffset;
@@ -12,7 +13,7 @@ use rust_arroyo::types::Topic;
 struct TestFactory {}
 impl ProcessingStrategyFactory<KafkaPayload> for TestFactory {
     fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-        Box::new(CommitOffsets::new(Duration::seconds(1)))
+        Box::new(CommitOffsets::new(Duration::from_secs(1)))
     }
 }
 

@@ -359,6 +359,10 @@ class LocalConsumer(Consumer[TStrategyPayload]):
     def closed(self) -> bool:
         return self.__closed
 
+    @property
+    def member_id(self) -> str:
+        return "local-consumer"
+
 
 class LocalProducer(Producer[TStrategyPayload]):
     def __init__(self, broker: LocalBroker[TStrategyPayload]) -> None:

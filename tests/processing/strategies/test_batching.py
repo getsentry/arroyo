@@ -1,15 +1,14 @@
 import time
 from datetime import datetime
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, Callable, Mapping, Sequence, cast, Optional
 from unittest.mock import Mock, call, patch
 
 import pytest
 
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
-from arroyo.processing.strategies.reduce import BatchBuilder
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
+from arroyo.types import BrokerValue, Message, Partition, Topic, Value, BaseValue
 
 NOW = datetime(2022, 1, 1, 0, 0, 1)
 
@@ -111,46 +110,12 @@ test_builder = [
 ]
 
 
-@pytest.mark.parametrize(
-    "values_in, time_create, time_end, expected_offsets, expected_ready", test_builder
-)
-@patch("time.time")
-def test_batch_builder(
-    mock_time: Any,
-    values_in: Sequence[BaseValue[str]],
-    time_create: datetime,
-    time_end: datetime,
-    expected_offsets: Mapping[Partition, int],
-    expected_ready: bool,
-) -> None:
-    start = time.mktime(time_create.timetuple())
-    mock_time.return_value = start
-
-    def accumulator(
-        result: ValuesBatch[str], value: BaseValue[str]
-    ) -> ValuesBatch[str]:
-        result.append(value)
-        return result
-
-    batch_builder: BatchBuilder[str, ValuesBatch[str]] = BatchBuilder(
-        accumulator, [], 5, 10.0
-    )
-    for m in values_in:
-        batch_builder.append(m)
-
-    flush = time.mktime(time_end.timetuple())
-    mock_time.return_value = flush
-    batch = batch_builder.build_if_ready()
-    if expected_ready:
-        assert batch is not None
-        assert len(batch.payload) == len(values_in)
-        assert batch.committable == expected_offsets
-    else:
-        assert batch is None
-
-
 def message(partition: int, offset: int, payload: str) -> Message[str]:
     return Message(broker_value(partition=partition, offset=offset, payload=payload))
+
+
+def compute_batch_size(message: BaseValue[str]) -> int:
+    return len(message.payload)
 
 
 test_batch = [
@@ -161,6 +126,7 @@ test_batch = [
             message(0, 2, "Message 2"),
         ],
         [],
+        None,
         id="Half full batch",
     ),
     pytest.param(
@@ -185,6 +151,7 @@ test_batch = [
                 )
             )
         ],
+        None,
         id="One full batch",
     ),
     pytest.param(
@@ -225,23 +192,73 @@ test_batch = [
                 )
             ),
         ],
+        None,
         id="Two full batches",
+    ),
+    pytest.param(
+        datetime(2022, 1, 1, 0, 0, 1),
+        [
+            message(0, 1, "1"),
+            message(0, 2, "11"),
+            message(0, 3, "222"),
+            message(1, 1, "33"),
+            message(1, 2, "333"),
+        ],
+        [
+            call(
+                Message(
+                    Value(
+                        payload=[broker_value(0, 1, "1"), broker_value(0, 2, "11")],
+                        committable={Partition(Topic("test"), 0): 3},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+            call(
+                Message(
+                    Value(
+                        payload=[
+                            broker_value(0, 3, "222"),
+                        ],
+                        committable={Partition(Topic("test"), 0): 4},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+            call(
+                Message(
+                    Value(
+                        payload=[
+                            broker_value(1, 1, "33"),
+                            broker_value(1, 2, "333"),
+                        ],
+                        committable={Partition(Topic("test"), 1): 3},
+                        timestamp=NOW,
+                    ),
+                )
+            ),
+        ],
+        compute_batch_size,
+        id="Three batches using compute_batch_size",
     ),
 ]
 
 
-@pytest.mark.parametrize("start_time, messages_in, expected_batches", test_batch)
+@pytest.mark.parametrize(
+    "start_time, messages_in, expected_batches, compute_batch_size", test_batch
+)
 @patch("time.time")
 def test_batch_step(
     mock_time: Any,
     start_time: datetime,
     messages_in: Sequence[Message[str]],
     expected_batches: Sequence[ValuesBatch[str]],
+    compute_batch_size: Optional[Callable[[BaseValue[str]], int]],
 ) -> None:
     start = time.mktime(start_time.timetuple())
     mock_time.return_value = start
     next_step = Mock()
-    batch_step = BatchStep[str](3, 10.0, next_step)
+    batch_step = BatchStep[str](3, 10.0, next_step, compute_batch_size)
     for message in messages_in:
         batch_step.submit(message)
         batch_step.poll()
@@ -300,16 +317,14 @@ def test_unbatch_step() -> None:
         ),
     )
 
-    partition = Partition(Topic("test"), 1)
-
     next_step = Mock()
     unbatch_step = UnbatchStep[str](next_step)
     unbatch_step.submit(msg)
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -328,9 +343,9 @@ def test_unbatch_step() -> None:
     unbatch_step.poll()
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -341,9 +356,9 @@ def test_unbatch_step() -> None:
 
     next_step.submit.assert_has_calls(
         [
-            call(Message(Value("Message 1", {}, NOW))),
-            call(Message(Value("Message 2", {}, NOW))),
-            call(Message(Value("Message 3", {partition: 4}, NOW))),
+            call(Message(broker_value(1, 1, "Message 1"))),
+            call(Message(broker_value(1, 2, "Message 2"))),
+            call(Message(broker_value(1, 3, "Message 3"))),
         ]
     )
 
@@ -356,6 +371,7 @@ def test_batch_unbatch() -> None:
     def transformer(
         batch: Message[ValuesBatch[str]],
     ) -> ValuesBatch[str]:
+
         return [sub_msg.replace("Transformed") for sub_msg in batch.payload]
 
     final_step = Mock()
@@ -363,7 +379,7 @@ def test_batch_unbatch() -> None:
         function=transformer, next_step=UnbatchStep(final_step)
     )
 
-    pipeline = BatchStep[str](max_batch_size=3, max_batch_time=10, next_step=next_step)
+    pipeline = BatchStep[str](max_batch_size=3, max_batch_time=100, next_step=next_step)
 
     input_msgs = [
         message(1, 1, "Message 1"),
@@ -375,12 +391,10 @@ def test_batch_unbatch() -> None:
         final_step.submit.assert_not_called()
         pipeline.poll()
 
-    partition = Partition(Topic("test"), 1)
-
     final_step.submit.assert_has_calls(
         [
-            call(Message(Value("Transformed", {}, NOW))),
-            call(Message(Value("Transformed", {}, NOW))),
-            call(Message(Value("Transformed", {partition: 4}, NOW))),
+            call(message(1, 1, "Transformed")),
+            call(message(1, 2, "Transformed")),
+            call(message(1, 3, "Transformed")),
         ]
     )

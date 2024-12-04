@@ -40,20 +40,20 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
     }
 }
 
-pub struct Produce {
-    inner: RunTaskInThreads<KafkaPayload, KafkaPayload, ProducerError>,
+pub struct Produce<N> {
+    inner: RunTaskInThreads<KafkaPayload, KafkaPayload, ProducerError, N>,
 }
 
-impl Produce {
-    pub fn new<N>(
+impl<N> Produce<N>
+where
+    N: ProcessingStrategy<KafkaPayload> + 'static,
+{
+    pub fn new(
         next_step: N,
         producer: impl Producer<KafkaPayload> + 'static,
         concurrency: &ConcurrencyConfig,
         topic: TopicOrPartition,
-    ) -> Self
-    where
-        N: ProcessingStrategy<KafkaPayload> + 'static,
-    {
+    ) -> Self {
         let inner = RunTaskInThreads::new(
             next_step,
             Box::new(ProduceMessage::new(producer, topic)),
@@ -65,17 +65,16 @@ impl Produce {
     }
 }
 
-impl ProcessingStrategy<KafkaPayload> for Produce {
+impl<N> ProcessingStrategy<KafkaPayload> for Produce<N>
+where
+    N: ProcessingStrategy<KafkaPayload>,
+{
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         self.inner.poll()
     }
 
     fn submit(&mut self, message: Message<KafkaPayload>) -> Result<(), SubmitError<KafkaPayload>> {
         self.inner.submit(message)
-    }
-
-    fn close(&mut self) {
-        self.inner.close();
     }
 
     fn terminate(&mut self) {
@@ -99,6 +98,7 @@ mod tests {
     use crate::backends::local::broker::LocalBroker;
     use crate::backends::local::LocalProducer;
     use crate::backends::storages::memory::MemoryMessageStorage;
+    use crate::processing::strategies::noop::Noop;
     use crate::processing::strategies::StrategyError;
     use crate::types::{BrokerMessage, InnerMessage, Partition, Topic};
     use crate::utils::clock::TestingClock;
@@ -134,7 +134,6 @@ mod tests {
             self.0.lock().submit += 1;
             Ok(())
         }
-        fn close(&mut self) {}
         fn terminate(&mut self) {}
         fn join(
             &mut self,
@@ -157,27 +156,6 @@ mod tests {
 
         let partition = Partition::new(Topic::new("test"), 0);
 
-        struct Noop {}
-        impl ProcessingStrategy<KafkaPayload> for Noop {
-            fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-                Ok(None)
-            }
-            fn submit(
-                &mut self,
-                _message: Message<KafkaPayload>,
-            ) -> Result<(), SubmitError<KafkaPayload>> {
-                Ok(())
-            }
-            fn close(&mut self) {}
-            fn terminate(&mut self) {}
-            fn join(
-                &mut self,
-                _timeout: Option<Duration>,
-            ) -> Result<Option<CommitRequest>, StrategyError> {
-                Ok(None)
-            }
-        }
-
         let producer: KafkaProducer = KafkaProducer::new(config);
         let concurrency = ConcurrencyConfig::new(10);
         let mut strategy = Produce::new(
@@ -198,7 +176,6 @@ mod tests {
         };
 
         strategy.submit(message).unwrap();
-        strategy.close();
         let _ = strategy.join(None);
     }
 

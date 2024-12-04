@@ -34,6 +34,7 @@ from arroyo.utils.metrics import get_metrics
 logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
+BACKPRESSURE_THRESHOLD = 5.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -81,6 +82,8 @@ ConsumerTiming = Literal[
 ConsumerCounter = Literal[
     "arroyo.consumer.run.count",
     "arroyo.consumer.invalid_message.count",
+    "arroyo.consumer.pause",
+    "arroyo.consumer.resume",
 ]
 
 
@@ -140,15 +143,15 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[
-            ProcessingStrategy[TStrategyPayload]
-        ] = None
+        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
+            None
+        )
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
         # The timestamp when backpressure state started
         self.__backpressure_timestamp: Optional[float] = None
-        # Consumer is paused after it is in backpressure state for > 1 second
+        # Consumer is paused after it is in backpressure state for > BACKPRESSURE_THRESHOLD seconds
         self.__is_paused = False
 
         self.__commit_policy_state = commit_policy.get_state_machine()
@@ -230,6 +233,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
+            logger.info("Member id: %r", self.__consumer.member_id)
             self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
@@ -419,8 +423,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__backpressure_timestamp = time.time()
 
                     elif not self.__is_paused and (
-                        time.time() - self.__backpressure_timestamp > 1
+                        time.time() - self.__backpressure_timestamp
+                        > BACKPRESSURE_THRESHOLD
                     ):
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.pause", 1)
                         logger.debug(
                             "Caught %r while submitting %r, pausing consumer...",
                             e,
@@ -429,6 +435,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__consumer.pause([*self.__consumer.tell().keys()])
                         self.__is_paused = True
 
+                    elif self.__is_paused:
+                        # A paused consumer should still poll periodically to avoid it's partitions
+                        # getting revoked by the broker after reaching the max.poll.interval.ms
+                        # Polling a paused consumer should never yield a message.
+                        assert self.__consumer.poll(0.1) is None
                     else:
                         time.sleep(0.01)
 
@@ -438,6 +449,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 else:
                     # Resume if we are currently in a paused state
                     if self.__is_paused:
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.resume", 1)
                         self.__consumer.resume([*self.__consumer.tell().keys()])
                         self.__is_paused = False
 

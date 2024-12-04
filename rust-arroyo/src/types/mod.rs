@@ -349,7 +349,7 @@ enum CommittableInner<'a> {
 #[derive(Debug, Clone)]
 pub struct Committable<'a>(CommittableInner<'a>);
 
-impl<'a> Iterator for Committable<'a> {
+impl Iterator for Committable<'_> {
     type Item = (Partition, u64);
 
     fn next(&mut self) -> Option<Self::Item> {

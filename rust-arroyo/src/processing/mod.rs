@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
 use thiserror::Error;
@@ -46,7 +46,7 @@ pub enum RunError {
     Strategy(#[source] Box<dyn std::error::Error>),
 }
 
-const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(1);
+const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ConsumerState<TPayload>(Arc<(AtomicBool, Mutex<ConsumerStateInner<TPayload>>)>);
@@ -105,6 +105,7 @@ pub struct ProcessorHandle {
 
 impl ProcessorHandle {
     pub fn signal_shutdown(&mut self) {
+        tracing::info!("Shutdown requested");
         self.shutdown_requested.store(true, Ordering::Relaxed);
     }
 }
@@ -117,34 +118,38 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
     // initialization.  But we just provide a signal back to the
     // processor to do that.
     fn on_assign(&self, partitions: HashMap<Partition, u64>) {
+        tracing::info!("New partitions assigned: {:?}", partitions);
         counter!(
             "arroyo.consumer.partitions_assigned.count",
             partitions.len() as i64
         );
 
-        let start = Instant::now();
+        let start = coarsetime::Instant::recent();
 
         let mut state = self.0.locked_state();
         state.processing_factory.update_partitions(&partitions);
         state.strategy = Some(state.processing_factory.create());
         state.dlq_policy.reset_dlq_limits(&partitions);
 
-        timer!("arroyo.consumer.create_strategy.time", start.elapsed());
+        timer!(
+            "arroyo.consumer.create_strategy.time",
+            start.elapsed_since_recent()
+        );
     }
 
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>) {
-        tracing::info!("Start revoke partitions");
+        tracing::info!("Partitions to revoke: {:?}", partitions);
         counter!(
             "arroyo.consumer.partitions_revoked.count",
             partitions.len() as i64,
         );
 
-        let start = Instant::now();
+        let start = coarsetime::Instant::recent();
 
         let mut state = self.0.locked_state();
         if let Some(s) = state.strategy.as_mut() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                s.close();
+                tracing::info!("Joining strategy");
                 s.join(None)
             }));
 
@@ -171,9 +176,9 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         self.0.set_paused(false);
         state.clear_backpressure();
 
-        timer!("arroyo.consumer.join.time", start.elapsed());
+        timer!("arroyo.consumer.join.time", start.elapsed_since_recent());
 
-        tracing::info!("End revoke partitions");
+        tracing::info!("Partition revocation complete.");
 
         // TODO: Figure out how to flush the metrics buffer from the recovation callback.
     }
@@ -190,6 +195,7 @@ pub struct StreamProcessor<TPayload: Clone> {
     processor_handle: ProcessorHandle,
     buffered_messages: BufferedMessages<TPayload>,
     metrics_buffer: metrics_buffer::MetricsBuffer,
+    _time_updater: coarsetime::Updater,
 }
 
 impl StreamProcessor<KafkaPayload> {
@@ -228,6 +234,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             },
             buffered_messages: BufferedMessages::new(max_buffered_messages_per_partition),
             metrics_buffer: metrics_buffer::MetricsBuffer::new(),
+            _time_updater: coarsetime::Updater::new(10).start().unwrap(),
         }
     }
 
@@ -252,12 +259,14 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         } else if self.message.is_none() {
             // Otherwise, we need to try fetch a new message from the consumer,
             // even if there is no active assignment and/or processing strategy.
-            let poll_start = Instant::now();
+            let poll_start = coarsetime::Instant::recent();
             //TODO: Support errors properly
             match self.consumer.poll(Some(Duration::from_secs(1))) {
                 Ok(msg) => {
-                    self.metrics_buffer
-                        .incr_timing("arroyo.consumer.poll.time", poll_start.elapsed());
+                    self.metrics_buffer.incr_timing(
+                        "arroyo.consumer.poll.time",
+                        poll_start.elapsed_since_recent().into(),
+                    );
 
                     if let Some(broker_msg) = msg {
                         self.message = Some(Message {
@@ -287,7 +296,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 Some(_) => return Err(RunError::InvalidState),
             }
         };
-        let processing_start = Instant::now();
+        let processing_start = coarsetime::Instant::recent();
 
         match strategy.poll() {
             Ok(None) => {}
@@ -319,7 +328,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         let Some(msg_s) = self.message.take() else {
             self.metrics_buffer.incr_timing(
                 "arroyo.consumer.processing.time",
-                processing_start.elapsed(),
+                processing_start.elapsed_since_recent().into(),
             );
             return Ok(());
         };
@@ -327,7 +336,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         let ret = strategy.submit(msg_s);
         self.metrics_buffer.incr_timing(
             "arroyo.consumer.processing.time",
-            processing_start.elapsed(),
+            processing_start.elapsed_since_recent().into(),
         );
 
         match ret {
@@ -361,12 +370,12 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     return Ok(());
                 };
 
-                // If we are in the backpressure state for more than 1 second,
+                // If we are in the backpressure state for more than BACKPRESSURE_THRESHOLD seconds,
                 // we pause the consumer and hold the message until it is
                 // accepted, at which point we can resume consuming.
                 if !consumer_is_paused && deadline.has_elapsed() {
                     tracing::warn!(
-                        "Consumer is in backpressure state for more than 1 second, pausing",
+                        "Consumer is in backpressure state for more than 5 seconds, pausing",
                     );
 
                     let partitions = self.consumer.tell().unwrap().into_keys().collect();
@@ -409,6 +418,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             if let Err(e) = self.run_once() {
                 let mut trait_callbacks = self.consumer_state.locked_state();
 
+                tracing::info!("Caught error, terminating strategy");
                 if let Some(strategy) = trait_callbacks.strategy.as_mut() {
                     strategy.terminate();
                 }
@@ -417,6 +427,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 return Err(e);
             }
         }
+        tracing::info!("Shutdown processor");
         Ok(())
     }
 
@@ -461,8 +472,6 @@ mod tests {
             self.message = Some(message);
             Ok(())
         }
-
-        fn close(&mut self) {}
 
         fn terminate(&mut self) {}
 
@@ -560,12 +569,6 @@ mod tests {
                 }
 
                 Ok(())
-            }
-
-            fn close(&mut self) {
-                if self.panic_on == "close" {
-                    panic!("panic in close");
-                }
             }
 
             fn terminate(&mut self) {}
