@@ -13,7 +13,7 @@ chrono = "0.4.26"
 coarsetime = "0.1.33"
 once_cell = "1.18.0"
 rand = "0.8.5"
-rdkafka = { version = "0.36.1", features = ["cmake-build", "tracing"] }
+rdkafka = { version = "0.37.0", features = ["cmake-build", "tracing"] }
 sentry = { version = "0.32.0" }
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
@@ -25,9 +25,6 @@ parking_lot = "0.12.1"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"
-
-[patch.crates-io]
-rdkafka = { git = "https://github.com/fede1024/rust-rdkafka" }
 
 [[example]]
 name = "base_processor"

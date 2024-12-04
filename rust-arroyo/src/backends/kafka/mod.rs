@@ -6,7 +6,7 @@ use super::ConsumerError;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use rdkafka::bindings::rd_kafka_memberid;
 use rdkafka::client::ClientContext;
@@ -102,10 +102,7 @@ fn create_kafka_message(topics: &[Topic], msg: BorrowedMessage) -> BrokerMessage
         ),
         partition,
         msg.offset() as u64,
-        DateTime::from_naive_utc_and_offset(
-            NaiveDateTime::from_timestamp_millis(time_millis).unwrap_or(NaiveDateTime::MIN),
-            Utc,
-        ),
+        DateTime::from_timestamp_millis(time_millis).unwrap_or(DateTime::<Utc>::MIN_UTC),
     )
 }
 
@@ -130,7 +127,7 @@ struct OffsetCommitter<'a, C: AssignmentCallbacks> {
     consumer: &'a BaseConsumer<CustomContext<C>>,
 }
 
-impl<'a, C: AssignmentCallbacks> CommitOffsets for OffsetCommitter<'a, C> {
+impl<C: AssignmentCallbacks> CommitOffsets for OffsetCommitter<'_, C> {
     fn commit(self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
         commit_impl(self.consumer, offsets)
     }

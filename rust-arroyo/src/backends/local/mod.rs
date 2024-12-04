@@ -30,7 +30,7 @@ struct OffsetCommitter<'a, TPayload> {
     broker: &'a mut LocalBroker<TPayload>,
 }
 
-impl<'a, TPayload> CommitOffsets for OffsetCommitter<'a, TPayload> {
+impl<TPayload> CommitOffsets for OffsetCommitter<'_, TPayload> {
     fn commit(self, offsets: HashMap<Partition, u64>) -> Result<(), ConsumerError> {
         self.broker.commit(self.group, offsets);
         Ok(())
