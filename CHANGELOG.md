@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.19.0
+
+### Various fixes & improvements
+
+- chore: Preparations for publishing the Rust crate (#398) by @untitaker
+- fix(rust): Add required metadata for crates.io (#328) by @untitaker
+- Remove box from RunTaskInThreads (#393) by @untitaker
+- chore(ci): Clippy fixes, bump rdkafka (#397) by @untitaker
+- replace gh bot with gh app (#396) by @Jeffreyhung
+
 ## 2.18.2
 
 ### Various fixes & improvements
