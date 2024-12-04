@@ -1,14 +1,14 @@
-extern crate rust_arroyo;
+extern crate sentry_arroyo;
 
 use std::time::Duration;
 
-use rust_arroyo::backends::kafka::config::KafkaConfig;
-use rust_arroyo::backends::kafka::types::KafkaPayload;
-use rust_arroyo::backends::kafka::InitialOffset;
-use rust_arroyo::processing::strategies::commit_offsets::CommitOffsets;
-use rust_arroyo::processing::strategies::{ProcessingStrategy, ProcessingStrategyFactory};
-use rust_arroyo::processing::StreamProcessor;
-use rust_arroyo::types::Topic;
+use sentry_arroyo::backends::kafka::config::KafkaConfig;
+use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::backends::kafka::InitialOffset;
+use sentry_arroyo::processing::strategies::commit_offsets::CommitOffsets;
+use sentry_arroyo::processing::strategies::{ProcessingStrategy, ProcessingStrategyFactory};
+use sentry_arroyo::processing::StreamProcessor;
+use sentry_arroyo::types::Topic;
 
 struct TestFactory {}
 impl ProcessingStrategyFactory<KafkaPayload> for TestFactory {
