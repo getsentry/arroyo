@@ -9,7 +9,7 @@ pub struct Deadline {
 
 #[inline(always)]
 fn now() -> coarsetime::Instant {
-    coarsetime::Instant::now_without_cache_update()
+    coarsetime::Instant::recent()
 }
 
 impl Deadline {

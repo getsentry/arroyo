@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import MutableSequence, Optional, Union
+from typing import Callable, MutableSequence, Optional, Union
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
 from arroyo.processing.strategies.reduce import Reduce
@@ -41,6 +41,9 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         max_batch_size: int,
         max_batch_time: float,
         next_step: ProcessingStrategy[ValuesBatch[TStrategyPayload]],
+        compute_batch_size: Optional[
+            Callable[[BaseValue[TStrategyPayload]], int]
+        ] = None,
     ) -> None:
         def accumulator(
             result: ValuesBatch[TStrategyPayload], value: BaseValue[TStrategyPayload]
@@ -48,14 +51,15 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             result.append(value)
             return result
 
-        self.__reduce_step: Reduce[
-            TStrategyPayload, ValuesBatch[TStrategyPayload]
-        ] = Reduce(
-            max_batch_size,
-            max_batch_time,
-            accumulator,
-            lambda: [],
-            next_step,
+        self.__reduce_step: Reduce[TStrategyPayload, ValuesBatch[TStrategyPayload]] = (
+            Reduce(
+                max_batch_size,
+                max_batch_time,
+                accumulator,
+                lambda: [],
+                next_step,
+                compute_batch_size,
+            )
         )
 
     def submit(
@@ -112,8 +116,8 @@ class UnbatchStep(
     ) -> None:
         def generator(
             values: ValuesBatch[TStrategyPayload],
-        ) -> MutableSequence[TStrategyPayload]:
-            return [value.payload for value in values]
+        ) -> ValuesBatch[TStrategyPayload]:
+            return values
 
         self.__unfold_step = Unfold(generator, next_step)
 

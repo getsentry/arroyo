@@ -49,15 +49,16 @@ pub trait MessageStorage<TPayload>: Send {
     /// the tail of the partition, this method returns `Ok(None)`.
     ///
     /// # Errors
+    ///
     /// * If the offset is out of range (there are no messages, and we're not
-    /// reading from the tail of the partition where the next message would
-    /// be if it existed), [`OffsetOutOfRange`] will be returned.
+    ///   reading from the tail of the partition where the next message would
+    ///   be if it existed), [`OffsetOutOfRange`] will be returned.
     ///
     /// * If the topic does not exist, [`TopicDoesNotExist`] will
-    /// be returned.
+    ///   be returned.
     ///
     /// * If the topic exists but the partition does not,
-    /// [`PartitionDoesNotExist`] will be returned.
+    ///   [`PartitionDoesNotExist`] will be returned.
     fn consume(
         &self,
         partition: &Partition,
@@ -67,11 +68,12 @@ pub trait MessageStorage<TPayload>: Send {
     /// Produce a single message to the provided partition.
     ///
     /// # Errors
+    ///
     /// * If the topic does not exist, [`TopicDoesNotExist`] will
-    /// be returned.
+    ///   be returned.
     ///
     /// * If the topic exists but the partition does not,
-    /// [`PartitionDoesNotExist`] will be returned.
+    ///   [`PartitionDoesNotExist`] will be returned.
     fn produce(
         &mut self,
         partition: &Partition,

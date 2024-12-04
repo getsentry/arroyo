@@ -90,7 +90,7 @@ impl<'a> KafkaPayload {
     pub fn to_base_record(
         &'a self,
         destination: &'a TopicOrPartition,
-    ) -> BaseRecord<'_, Vec<u8>, Vec<u8>> {
+    ) -> BaseRecord<'a, Vec<u8>, Vec<u8>> {
         let topic = match destination {
             TopicOrPartition::Topic(topic) => topic.as_str(),
             TopicOrPartition::Partition(partition) => partition.topic.as_str(),

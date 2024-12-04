@@ -53,3 +53,16 @@ def test_produce() -> None:
             strategy.submit(message)
 
     strategy.join()
+
+
+def test_produce_forwards_poll() -> None:
+    result_topic = Topic("result-topic")
+
+    next_step = mock.Mock()
+    producer = mock.Mock()
+
+    strategy: Produce[str] = Produce(producer, result_topic, next_step, 2)
+
+    strategy.poll()
+
+    assert next_step.poll.call_count == 1

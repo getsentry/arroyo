@@ -1,5 +1,58 @@
 # Changelog and versioning
 
+## 2.18.2
+
+### Various fixes & improvements
+
+- fix: avoid partition revocation on paused consumers (#391) by @lynnagara
+
+## 2.18.1
+
+### Various fixes & improvements
+
+- ref(batching): add compute_batch_size to BatchStep (#390) by @MeredithAnya
+- ref(rust/run_task): Remove unnecessary boxing, make FnMut, change return type (#388) by @untitaker
+
+## 2.18.0
+
+### Various fixes & improvements
+
+- fix: Allow sending committable from Unfold (#371) by @mj0nez
+- all-repos: update actions/upload-artifact to v4 (#381) by @joshuarli
+
+## 2.17.6
+
+### Various fixes & improvements
+
+- Remove non-existent @getsentry/processing from CODEOWNERS (#386) by @onkar
+
+## 2.17.5
+
+### Various fixes & improvements
+
+- chore: Fix release builds (#385) by @untitaker
+- Add a basic metric for tracking the capacity in VecDeque buffer (#383) by @ayirr7
+- feat: enhance metrics defs (#378) by @mj0nez
+- feat: Add From<BrokerMessage<_>> impl for InvalidMessage (#377) by @evanpurkhiser
+- feat: Add Noop processing strategy (#376) by @evanpurkhiser
+- Update RunTask to receive a Message<TPayload> (#375) by @evanpurkhiser
+- hotfix, fix master ci (66f1efc3) by @untitaker
+- fix: add guard to Produce.poll to ensure next_step is called regardless of produce queue (#370) by @mj0nez
+- ref: Add pre-commit hook for rustfmt (#364) by @untitaker
+- update accumulator sig to return Result<TResult> instead of TResult (#359) by @john-z-yang
+- ref: Use coarsetime consistently (#366) by @untitaker
+- ref(rust): Backpressure metrics for threadpools (#367) by @untitaker
+- ref(reduce): Refactor for timeout=0 (#363) by @untitaker
+- ref(rust): Remove strategy.close (#361) by @untitaker
+- ref(rust): Add join-time metric for threadpools (#362) by @untitaker
+
+## 2.17.4
+
+### Various fixes & improvements
+
+- rust: add more rust logging (#351) by @dbanda
+- fixes #353: return message.payload (#354) by @mwarkentin
+
 ## 2.17.3
 
 ### Various fixes & improvements

@@ -45,6 +45,16 @@ Available Metrics
 
 .. literalinclude:: ../../arroyo/utils/metric_defs.py
 
+For convenience Arroyo includes a machine readable version which can be loaded like:
+
+.. code:: python
+
+    import importlib.resources
+    import json
+
+    with importlib.resources.files("arroyo.utils").joinpath("metricDefs.json").open() as f:
+        metric_defs = json.load(f)
+
 API
 =======
 
