@@ -12,11 +12,12 @@ use std::time::Duration;
 
 use super::InvalidMessage;
 
+type Acc<T, TResult> =
+    Arc<dyn Fn(TResult, Message<T>) -> Result<TResult, (SubmitError<T>, TResult)> + Send + Sync>;
+
 struct BatchState<T, TResult> {
     value: Option<TResult>,
-    accumulator: Arc<
-        dyn Fn(TResult, Message<T>) -> Result<TResult, (SubmitError<T>, TResult)> + Send + Sync,
-    >,
+    accumulator: Acc<T, TResult>,
     offsets: BTreeMap<Partition, u64>,
     batch_start_time: Deadline,
     message_count: usize,
@@ -26,9 +27,7 @@ struct BatchState<T, TResult> {
 impl<T, TResult> BatchState<T, TResult> {
     fn new(
         initial_value: TResult,
-        accumulator: Arc<
-            dyn Fn(TResult, Message<T>) -> Result<TResult, (SubmitError<T>, TResult)> + Send + Sync,
-        >,
+        accumulator: Acc<T, TResult>,
         max_batch_time: Duration,
         compute_batch_size: fn(&T) -> usize,
     ) -> BatchState<T, TResult> {
@@ -44,7 +43,7 @@ impl<T, TResult> BatchState<T, TResult> {
 
     fn add(&mut self, message: Message<T>) -> Result<(), SubmitError<T>> {
         let commitable: Vec<_> = message.committable().collect();
-        let message_count = (self.compute_batch_size)(&message.payload());
+        let message_count = (self.compute_batch_size)(message.payload());
         let prev_result = self.value.take().unwrap();
 
         match (self.accumulator)(prev_result, message) {
@@ -66,9 +65,7 @@ impl<T, TResult> BatchState<T, TResult> {
 
 pub struct Reduce<T, TResult> {
     next_step: Box<dyn ProcessingStrategy<TResult>>,
-    accumulator: Arc<
-        dyn Fn(TResult, Message<T>) -> Result<TResult, (SubmitError<T>, TResult)> + Send + Sync,
-    >,
+    accumulator: Acc<T, TResult>,
     initial_value: Arc<dyn Fn() -> TResult + Send + Sync>,
     max_batch_size: usize,
     max_batch_time: Duration,
@@ -139,9 +136,7 @@ impl<T: Send + Sync, TResult: Send + Sync> ProcessingStrategy<T> for Reduce<T, T
 impl<T, TResult> Reduce<T, TResult> {
     pub fn new<N>(
         next_step: N,
-        accumulator: Arc<
-            dyn Fn(TResult, Message<T>) -> Result<TResult, (SubmitError<T>, TResult)> + Send + Sync,
-        >,
+        accumulator: Acc<T, TResult>,
         initial_value: Arc<dyn Fn() -> TResult + Send + Sync>,
         max_batch_size: usize,
         max_batch_time: Duration,
