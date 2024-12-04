@@ -1,5 +1,5 @@
 [package]
-name = "rust_arroyo"
+name = "sentry_arroyo"
 version = "2.18.2"
 authors = ["Sentry <oss@sentry.io>"]
 description = "A library for working with streaming data."

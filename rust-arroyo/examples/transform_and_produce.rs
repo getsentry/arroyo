@@ -2,22 +2,22 @@
 // inspired by https://github.com/getsentry/arroyo/blob/main/examples/transform_and_produce/script.py
 // This creates a consumer that reads from a topic test_in, reverses the string message,
 // and then produces it to topic test_out.
-extern crate rust_arroyo;
+extern crate sentry_arroyo;
 
 use rdkafka::message::ToBytes;
-use rust_arroyo::backends::kafka::config::KafkaConfig;
-use rust_arroyo::backends::kafka::producer::KafkaProducer;
-use rust_arroyo::backends::kafka::types::KafkaPayload;
-use rust_arroyo::backends::kafka::InitialOffset;
-use rust_arroyo::processing::strategies::noop::Noop;
-use rust_arroyo::processing::strategies::produce::Produce;
-use rust_arroyo::processing::strategies::run_task::RunTask;
-use rust_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
-use rust_arroyo::processing::strategies::{
+use sentry_arroyo::backends::kafka::config::KafkaConfig;
+use sentry_arroyo::backends::kafka::producer::KafkaProducer;
+use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::backends::kafka::InitialOffset;
+use sentry_arroyo::processing::strategies::noop::Noop;
+use sentry_arroyo::processing::strategies::produce::Produce;
+use sentry_arroyo::processing::strategies::run_task::RunTask;
+use sentry_arroyo::processing::strategies::run_task_in_threads::ConcurrencyConfig;
+use sentry_arroyo::processing::strategies::{
     ProcessingStrategy, ProcessingStrategyFactory, SubmitError,
 };
-use rust_arroyo::processing::StreamProcessor;
-use rust_arroyo::types::{Message, Topic, TopicOrPartition};
+use sentry_arroyo::processing::StreamProcessor;
+use sentry_arroyo::types::{Message, Topic, TopicOrPartition};
 
 fn reverse_string(
     message: Message<KafkaPayload>,

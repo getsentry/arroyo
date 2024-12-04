@@ -1,12 +1,12 @@
-extern crate rust_arroyo;
+extern crate sentry_arroyo;
 
-use rust_arroyo::backends::kafka::config::KafkaConfig;
-use rust_arroyo::backends::kafka::InitialOffset;
-use rust_arroyo::backends::kafka::KafkaConsumer;
-use rust_arroyo::backends::AssignmentCallbacks;
-use rust_arroyo::backends::CommitOffsets;
-use rust_arroyo::backends::Consumer;
-use rust_arroyo::types::{Partition, Topic};
+use sentry_arroyo::backends::kafka::config::KafkaConfig;
+use sentry_arroyo::backends::kafka::InitialOffset;
+use sentry_arroyo::backends::kafka::KafkaConsumer;
+use sentry_arroyo::backends::AssignmentCallbacks;
+use sentry_arroyo::backends::CommitOffsets;
+use sentry_arroyo::backends::Consumer;
+use sentry_arroyo::types::{Partition, Topic};
 use std::collections::HashMap;
 
 struct EmptyCallbacks {}
