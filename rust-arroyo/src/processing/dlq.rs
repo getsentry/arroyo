@@ -1,9 +1,10 @@
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::{clone, fmt};
 
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
@@ -403,6 +404,8 @@ impl<TPayload> BufferedMessages<TPayload> {
             return;
         }
 
+        let cloned = message.clone();
+
         // Number of partitions in the buffer map
         gauge!(
             "arroyo.consumer.dlq_buffer.assigned_partitions",
@@ -420,13 +423,13 @@ impl<TPayload> BufferedMessages<TPayload> {
             }
         }
 
-        buffered.push_back(message);
+        buffered.push_back(cloned);
 
         // Number of elements that can be held in buffer deque without reallocating
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64,
-            "partition_id" => message.partition.index
+            "partition_id" => cloned.partition.index
         );
     }
 
