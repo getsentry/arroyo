@@ -1,6 +1,10 @@
 [package]
-name = "rust_arroyo"
-version = "2.18.2"
+name = "sentry_arroyo"
+version = "2.19.0"
+authors = ["Sentry <oss@sentry.io>"]
+description = "A library for working with streaming data."
+repository = "https://github.com/getsentry/sentry-kafka-schemas"
+license = "Apache-2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

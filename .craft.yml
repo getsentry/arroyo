@@ -6,7 +6,6 @@ changelogPolicy: auto
 targets:
   - name: github
   - name: pypi
-  # disabled until we merge https://github.com/getsentry/arroyo/pull/328
-    # - name: crates
+  - name: crates
   - name: sentry-pypi
     internalPypiRepo: getsentry/pypi

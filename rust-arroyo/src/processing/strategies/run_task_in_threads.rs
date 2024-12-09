@@ -80,8 +80,8 @@ enum RuntimeOrHandle {
     Runtime(Runtime),
 }
 
-pub struct RunTaskInThreads<TPayload, TTransformed, TError> {
-    next_step: Box<dyn ProcessingStrategy<TTransformed>>,
+pub struct RunTaskInThreads<TPayload, TTransformed, TError, N> {
+    next_step: N,
     task_runner: Box<dyn TaskRunner<TPayload, TTransformed, TError>>,
     concurrency: usize,
     runtime: Handle,
@@ -91,8 +91,8 @@ pub struct RunTaskInThreads<TPayload, TTransformed, TError> {
     metric_strategy_name: &'static str,
 }
 
-impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TError> {
-    pub fn new<N>(
+impl<TPayload, TTransformed, TError, N> RunTaskInThreads<TPayload, TTransformed, TError, N> {
+    pub fn new(
         next_step: N,
         task_runner: Box<dyn TaskRunner<TPayload, TTransformed, TError>>,
         concurrency: &ConcurrencyConfig,
@@ -105,7 +105,7 @@ impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TE
         let strategy_name = custom_strategy_name.unwrap_or("run_task_in_threads");
 
         RunTaskInThreads {
-            next_step: Box::new(next_step),
+            next_step,
             task_runner,
             concurrency: concurrency.concurrency,
             runtime: concurrency.handle(),
@@ -117,11 +117,12 @@ impl<TPayload, TTransformed, TError> RunTaskInThreads<TPayload, TTransformed, TE
     }
 }
 
-impl<TPayload, TTransformed, TError> ProcessingStrategy<TPayload>
-    for RunTaskInThreads<TPayload, TTransformed, TError>
+impl<TPayload, TTransformed, TError, N> ProcessingStrategy<TPayload>
+    for RunTaskInThreads<TPayload, TTransformed, TError, N>
 where
     TTransformed: Send + Sync + 'static,
     TError: Into<Box<dyn std::error::Error>> + Send + Sync + 'static,
+    N: ProcessingStrategy<TTransformed>,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
         let commit_request = self.next_step.poll()?;
