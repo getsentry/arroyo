@@ -1,10 +1,9 @@
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::{clone, fmt};
 
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
