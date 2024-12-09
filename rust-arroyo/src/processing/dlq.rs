@@ -400,11 +400,11 @@ impl<TPayload> BufferedMessages<TPayload> {
     ///
     /// If the configured `max_per_partition` is `0`, this is a no-op.
     pub fn append(&mut self, message: BrokerMessage<TPayload>) {
+        let partition_index = message.partition.index;
+
         if self.max_per_partition == Some(0) {
             return;
         }
-
-        let cloned = message.clone();
 
         // Number of partitions in the buffer map
         gauge!(
@@ -423,13 +423,13 @@ impl<TPayload> BufferedMessages<TPayload> {
             }
         }
 
-        buffered.push_back(cloned);
+        buffered.push_back(message);
 
         // Number of elements that can be held in buffer deque without reallocating
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64,
-            "partition_id" => cloned.partition.index
+            "partition_id" => partition_index
         );
     }
 
