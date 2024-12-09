@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.1
+
+### Various fixes & improvements
+
+- metric: Add partition tag to DLQ buffer capacity metric (#392) by @ayirr7
+
 ## 2.19.0
 
 ### Various fixes & improvements
