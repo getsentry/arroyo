@@ -269,11 +269,10 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     );
 
                     if let Some(broker_msg) = msg {
+                        self.buffered_messages.append(&broker_msg);
                         self.message = Some(Message {
-                            inner_message: InnerMessage::BrokerMessage(broker_msg.clone()),
+                            inner_message: InnerMessage::BrokerMessage(broker_msg),
                         });
-
-                        self.buffered_messages.append(broker_msg);
                     }
                 }
                 Err(err) => {
