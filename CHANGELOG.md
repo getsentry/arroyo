@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.2
+
+### Various fixes & improvements
+
+- fix(dlq): Set limit correctly if no dlq-topic is configured (#401) by @untitaker
+
 ## 2.19.1
 
 ### Various fixes & improvements
