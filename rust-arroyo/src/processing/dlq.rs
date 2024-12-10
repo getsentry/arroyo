@@ -294,9 +294,11 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
     }
 
     pub fn max_buffered_messages_per_partition(&self) -> Option<usize> {
-        self.inner
-            .as_ref()
-            .and_then(|i| i.dlq_policy.max_buffered_messages_per_partition)
+        match self.inner {
+            // there is no DLQ topic, so we don't need to retain any messages at all
+            None => Some(0),
+            Some(ref i) => i.dlq_policy.max_buffered_messages_per_partition,
+        }
     }
 
     /// Clears the DLQ limits.
