@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.19.3
+
+### Various fixes & improvements
+
+- fix(dlq): Do not clone the message if the DLQ is disabled. (#402) by @untitaker
+- feat: Make ONCE_PER_SECOND the default (#403) by @untitaker
+- fix(meta): Fix repo link in Cargo.toml (#399) by @untitaker
+
 ## 2.19.2
 
 ### Various fixes & improvements
