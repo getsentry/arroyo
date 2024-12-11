@@ -19,7 +19,7 @@ from typing import (
 )
 
 from arroyo.backends.abstract import Consumer
-from arroyo.commit import CommitPolicy
+from arroyo.commit import ONCE_PER_SECOND, CommitPolicy
 from arroyo.dlq import BufferedMessages, DlqPolicy, DlqPolicyWrapper, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
@@ -135,7 +135,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         consumer: Consumer[TStrategyPayload],
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TStrategyPayload],
-        commit_policy: CommitPolicy,
+        commit_policy: CommitPolicy = ONCE_PER_SECOND,
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
     ) -> None:
@@ -143,9 +143,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
-            None
-        )
+        self.__processing_strategy: Optional[
+            ProcessingStrategy[TStrategyPayload]
+        ] = None
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
