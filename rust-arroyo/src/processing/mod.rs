@@ -10,7 +10,6 @@ use thiserror::Error;
 use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::kafka::KafkaConsumer;
-use crate::backends::local::broker;
 use crate::backends::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError};
 use crate::processing::dlq::{DlqPolicy, DlqPolicyWrapper};
 use crate::processing::strategies::{MessageRejected, StrategyError, SubmitError};
@@ -466,41 +465,12 @@ mod tests {
     use crate::backends::local::broker::LocalBroker;
     use crate::backends::local::LocalConsumer;
     use crate::backends::storages::memory::MemoryMessageStorage;
+    use crate::testutils::TestFactory;
     use crate::types::{Message, Partition, Topic};
     use crate::utils::clock::SystemClock;
     use std::collections::HashMap;
     use std::time::Duration;
     use uuid::Uuid;
-
-    struct TestStrategy {
-        message: Option<Message<String>>,
-    }
-    impl ProcessingStrategy<String> for TestStrategy {
-        #[allow(clippy::manual_map)]
-        fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-            Ok(self.message.as_ref().map(|message| CommitRequest {
-                positions: HashMap::from_iter(message.committable()),
-            }))
-        }
-
-        fn submit(&mut self, message: Message<String>) -> Result<(), SubmitError<String>> {
-            self.message = Some(message);
-            Ok(())
-        }
-
-        fn terminate(&mut self) {}
-
-        fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
-            Ok(None)
-        }
-    }
-
-    struct TestFactory {}
-    impl ProcessingStrategyFactory<String> for TestFactory {
-        fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
-            Box::new(TestStrategy { message: None })
-        }
-    }
 
     fn build_broker() -> LocalBroker<String> {
         let storage: MemoryMessageStorage<String> = Default::default();
