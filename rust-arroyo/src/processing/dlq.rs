@@ -701,13 +701,6 @@ mod tests {
         assert!(!state.record_invalid_message(&msg));
     }
 
-    // struct TestFactory {}
-    // impl ProcessingStrategyFactory<String> for TestFactory {
-    //     fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
-    //         Box::new(ProcessingTestStrategy { message: None })
-    //     }
-    // }
-
     #[test]
     fn test_state_with_limited_dlq_policy() {
         let producer = TestDlqProducer::new();
