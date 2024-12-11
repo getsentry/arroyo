@@ -302,6 +302,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
 
     pub fn buffered_messages(&mut self) -> Option<&mut BufferedMessages<TPayload>> {
         match self.inner {
+            // If there is no DLQ policy configued, we don't need to maintain a DLQ buffer
             None => None,
             Some(ref mut i) => Some(&mut i.buffered_messages),
         }
