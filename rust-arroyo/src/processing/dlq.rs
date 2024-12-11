@@ -501,9 +501,8 @@ mod tests {
     use chrono::Utc;
 
     use crate::processing::strategies::run_task_in_threads::ConcurrencyConfig;
-    use crate::processing::strategies::{ProcessingStrategy, ProcessingStrategyFactory};
     use crate::processing::ConsumerState;
-    use crate::testutils::ProcessingTestStrategy;
+    use crate::testutils::TestFactory;
     use crate::types::Topic;
 
     #[test]
@@ -702,12 +701,12 @@ mod tests {
         assert!(!state.record_invalid_message(&msg));
     }
 
-    struct TestFactory {}
-    impl ProcessingStrategyFactory<String> for TestFactory {
-        fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
-            Box::new(ProcessingTestStrategy { message: None })
-        }
-    }
+    // struct TestFactory {}
+    // impl ProcessingStrategyFactory<String> for TestFactory {
+    //     fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
+    //         Box::new(ProcessingTestStrategy { message: None })
+    //     }
+    // }
 
     #[test]
     fn test_state_with_limited_dlq_policy() {
