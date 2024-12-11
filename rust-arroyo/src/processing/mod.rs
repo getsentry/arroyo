@@ -263,10 +263,6 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     );
 
                     if let Some(broker_msg) = msg {
-                        self.message = Some(Message {
-                            inner_message: InnerMessage::BrokerMessage(broker_msg.clone()),
-                        });
-
                         if let Some(dlq_buffer) = self
                             .consumer_state
                             .locked_state()
@@ -275,6 +271,10 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                         {
                             dlq_buffer.append(&broker_msg)
                         }
+
+                        self.message = Some(Message {
+                            inner_message: InnerMessage::BrokerMessage(broker_msg),
+                        });
                     }
                 }
                 Err(err) => {
