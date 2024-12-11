@@ -277,6 +277,7 @@ struct Inner<TPayload> {
     dlq_policy: DlqPolicy<TPayload>,
     dlq_limit_state: DlqLimitState,
     futures: BTreeMap<Partition, Futures<TPayload>>,
+    buffered_messages: BufferedMessages<TPayload>,
 }
 
 pub(crate) struct DlqPolicyWrapper<TPayload> {
@@ -285,19 +286,24 @@ pub(crate) struct DlqPolicyWrapper<TPayload> {
 
 impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
     pub fn new(dlq_policy: Option<DlqPolicy<TPayload>>) -> Self {
-        let inner = dlq_policy.map(|dlq_policy| Inner {
-            dlq_policy,
-            dlq_limit_state: DlqLimitState::default(),
-            futures: BTreeMap::new(),
+        let inner = dlq_policy.map(|dlq_policy| {
+            let buffered_messages =
+                BufferedMessages::new(dlq_policy.max_buffered_messages_per_partition);
+
+            Inner {
+                dlq_policy,
+                dlq_limit_state: DlqLimitState::default(),
+                futures: BTreeMap::new(),
+                buffered_messages: buffered_messages,
+            }
         });
         Self { inner }
     }
 
-    pub fn max_buffered_messages_per_partition(&self) -> Option<usize> {
+    pub fn buffered_messages(&mut self) -> Option<&mut BufferedMessages<TPayload>> {
         match self.inner {
-            // there is no DLQ topic, so we don't need to retain any messages at all
-            None => Some(0),
-            Some(ref i) => i.dlq_policy.max_buffered_messages_per_partition,
+            None => None,
+            Some(ref mut i) => Some(&mut i.buffered_messages),
         }
     }
 
