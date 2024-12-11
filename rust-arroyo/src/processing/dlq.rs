@@ -406,7 +406,10 @@ impl<TPayload> BufferedMessages<TPayload> {
     /// Add a message to the buffer.
     ///
     /// If the configured `max_per_partition` is `0`, this is a no-op.
-    pub fn append(&mut self, message: BrokerMessage<TPayload>) {
+    pub fn append(&mut self, message: &BrokerMessage<TPayload>)
+    where
+        TPayload: Clone,
+    {
         let partition_index = message.partition.index;
 
         if self.max_per_partition == Some(0) {
@@ -430,7 +433,7 @@ impl<TPayload> BufferedMessages<TPayload> {
             }
         }
 
-        buffered.push_back(message);
+        buffered.push_back(message.clone());
 
         // Number of elements that can be held in buffer deque without reallocating
         gauge!(
@@ -508,7 +511,7 @@ mod tests {
         };
 
         for i in 0..10 {
-            buffer.append(BrokerMessage {
+            buffer.append(&BrokerMessage {
                 partition,
                 offset: i,
                 payload: i,
@@ -532,7 +535,7 @@ mod tests {
         };
 
         for i in 0..10 {
-            buffer.append(BrokerMessage {
+            buffer.append(&BrokerMessage {
                 partition,
                 offset: i,
                 payload: i,
@@ -555,7 +558,7 @@ mod tests {
         };
 
         for i in 0..10 {
-            buffer.append(BrokerMessage {
+            buffer.append(&BrokerMessage {
                 partition,
                 offset: i,
                 payload: i,

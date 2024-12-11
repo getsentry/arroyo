@@ -10,6 +10,7 @@ use thiserror::Error;
 use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::kafka::KafkaConsumer;
+use crate::backends::local::broker;
 use crate::backends::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError};
 use crate::processing::dlq::{DlqPolicy, DlqPolicyWrapper};
 use crate::processing::strategies::{MessageRejected, StrategyError, SubmitError};
@@ -272,7 +273,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                             .dlq_policy
                             .buffered_messages()
                         {
-                            dlq_buffer.append(broker_msg)
+                            dlq_buffer.append(&broker_msg)
                         }
                     }
                 }
