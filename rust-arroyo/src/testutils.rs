@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use crate::backends::kafka::producer::KafkaProducer;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
 use crate::processing::strategies::{
-    CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
+    CommitRequest, ProcessingStrategy, ProcessingStrategyFactory, StrategyError, SubmitError,
 };
 use crate::types::Message;
 use crate::types::Topic;
@@ -116,5 +117,35 @@ impl Drop for TestTopic {
         let name = self.topic.as_str();
         // i really wish i had async drop now
         self.runtime.block_on(delete_topic(name));
+    }
+}
+
+pub struct ProcessingTestStrategy {
+    pub message: Option<Message<String>>,
+}
+impl ProcessingStrategy<String> for ProcessingTestStrategy {
+    #[allow(clippy::manual_map)]
+    fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+        Ok(self.message.as_ref().map(|message| CommitRequest {
+            positions: HashMap::from_iter(message.committable()),
+        }))
+    }
+
+    fn submit(&mut self, message: Message<String>) -> Result<(), SubmitError<String>> {
+        self.message = Some(message);
+        Ok(())
+    }
+
+    fn terminate(&mut self) {}
+
+    fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
+        Ok(None)
+    }
+}
+
+pub struct TestFactory {}
+impl ProcessingStrategyFactory<String> for TestFactory {
+    fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
+        Box::new(ProcessingTestStrategy { message: None })
     }
 }

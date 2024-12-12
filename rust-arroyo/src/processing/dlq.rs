@@ -277,6 +277,7 @@ struct Inner<TPayload> {
     dlq_policy: DlqPolicy<TPayload>,
     dlq_limit_state: DlqLimitState,
     futures: BTreeMap<Partition, Futures<TPayload>>,
+    buffered_messages: BufferedMessages<TPayload>,
 }
 
 pub(crate) struct DlqPolicyWrapper<TPayload> {
@@ -285,19 +286,25 @@ pub(crate) struct DlqPolicyWrapper<TPayload> {
 
 impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
     pub fn new(dlq_policy: Option<DlqPolicy<TPayload>>) -> Self {
-        let inner = dlq_policy.map(|dlq_policy| Inner {
-            dlq_policy,
-            dlq_limit_state: DlqLimitState::default(),
-            futures: BTreeMap::new(),
+        let inner = dlq_policy.map(|dlq_policy| {
+            let buffered_messages =
+                BufferedMessages::new(dlq_policy.max_buffered_messages_per_partition);
+
+            Inner {
+                dlq_policy,
+                dlq_limit_state: DlqLimitState::default(),
+                futures: BTreeMap::new(),
+                buffered_messages: buffered_messages,
+            }
         });
         Self { inner }
     }
 
-    pub fn max_buffered_messages_per_partition(&self) -> Option<usize> {
+    pub fn buffered_messages(&mut self) -> Option<&mut BufferedMessages<TPayload>> {
         match self.inner {
-            // there is no DLQ topic, so we don't need to retain any messages at all
-            None => Some(0),
-            Some(ref i) => i.dlq_policy.max_buffered_messages_per_partition,
+            // If there is no DLQ policy configued, we don't need to maintain a DLQ buffer
+            None => None,
+            Some(ref mut i) => Some(&mut i.buffered_messages),
         }
     }
 
@@ -494,6 +501,8 @@ mod tests {
     use chrono::Utc;
 
     use crate::processing::strategies::run_task_in_threads::ConcurrencyConfig;
+    use crate::processing::ConsumerState;
+    use crate::testutils::TestFactory;
     use crate::types::Topic;
 
     #[test]
@@ -690,5 +699,119 @@ mod tests {
         // Next message should not be accepted
         let msg = BrokerMessage::new(9, partition, 9, chrono::Utc::now());
         assert!(!state.record_invalid_message(&msg));
+    }
+
+    #[test]
+    fn test_state_with_limited_dlq_policy() {
+        let producer = TestDlqProducer::new();
+
+        let handle = ConcurrencyConfig::new(10).handle();
+        let policy = Some(DlqPolicy::new(
+            handle,
+            Box::new(producer),
+            DlqLimit {
+                max_consecutive_count: Some(5),
+                ..Default::default()
+            },
+            Some(6),
+        ));
+
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
+        // ConsumerState creates a new DLQPolicyWrapper
+        let mut consumer_state = state.locked_state();
+        let consumer_state = &mut consumer_state;
+        let dlq_buffer = consumer_state.dlq_policy.buffered_messages();
+
+        // Assert buffer exists
+        assert!(dlq_buffer.is_some());
+        let dlq_buffer = dlq_buffer.unwrap();
+
+        assert_eq!(dlq_buffer.max_per_partition, Some(6));
+
+        // Append messages
+        let partition = Partition {
+            topic: Topic::new("test"),
+            index: 1,
+        };
+
+        for i in 0..10 {
+            dlq_buffer.append(&BrokerMessage {
+                partition,
+                offset: i,
+                payload: i.to_string(),
+                timestamp: Utc::now(),
+            });
+        }
+
+        // Buffer will look like: [4 5 6 7 8 9]
+        // Offsets 0 - 3 are gone
+        assert!(dlq_buffer.pop(&partition, 0).is_none());
+        assert!(dlq_buffer.pop(&partition, 3).is_none());
+
+        assert_eq!(dlq_buffer.pop(&partition, 4).unwrap().payload, "4");
+        assert_eq!(dlq_buffer.pop(&partition, 9).unwrap().payload, "9");
+    }
+
+    #[test]
+    fn test_state_with_unlimited_dlq_policy() {
+        let producer = TestDlqProducer::new();
+
+        let handle = ConcurrencyConfig::new(10).handle();
+        let policy = Some(DlqPolicy::new(
+            handle,
+            Box::new(producer),
+            DlqLimit {
+                max_consecutive_count: Some(5),
+                ..Default::default()
+            },
+            None,
+        ));
+
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
+        // ConsumerState creates a new DLQPolicyWrapper
+        let mut consumer_state = state.locked_state();
+        let consumer_state = &mut consumer_state;
+        let dlq_buffer = consumer_state.dlq_policy.buffered_messages();
+
+        // Assert buffer exists
+        assert!(dlq_buffer.is_some());
+        let dlq_buffer = dlq_buffer.unwrap();
+
+        assert_eq!(dlq_buffer.max_per_partition, None);
+
+        // Append messages
+        let partition = Partition {
+            topic: Topic::new("test"),
+            index: 1,
+        };
+
+        for i in 0..10 {
+            dlq_buffer.append(&BrokerMessage {
+                partition,
+                offset: i,
+                payload: i.to_string(),
+                timestamp: Utc::now(),
+            });
+        }
+
+        // Buffer will look like: [0 1 2 3 4 5 6 7 8 9]
+        assert_eq!(dlq_buffer.pop(&partition, 0).unwrap().payload, "0");
+        assert_eq!(dlq_buffer.pop(&partition, 3).unwrap().payload, "3");
+        assert_eq!(dlq_buffer.pop(&partition, 4).unwrap().payload, "4");
+        assert_eq!(dlq_buffer.pop(&partition, 9).unwrap().payload, "9");
+    }
+
+    #[test]
+    fn test_state_with_no_policy() {
+        let policy = None;
+
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
+        // ConsumerState creates a new DLQPolicyWrapper
+        let mut consumer_state = state.locked_state();
+        let consumer_state = &mut consumer_state;
+        let dlq_buffer = consumer_state.dlq_policy.buffered_messages();
+
+        // Assert buffer does not exist
+        assert!(dlq_buffer.is_none());
     }
 }

@@ -11,7 +11,7 @@ use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::kafka::KafkaConsumer;
 use crate::backends::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError};
-use crate::processing::dlq::{BufferedMessages, DlqPolicy, DlqPolicyWrapper};
+use crate::processing::dlq::{DlqPolicy, DlqPolicyWrapper};
 use crate::processing::strategies::{MessageRejected, StrategyError, SubmitError};
 use crate::types::{InnerMessage, Message, Partition, Topic};
 use crate::utils::timing::Deadline;
@@ -193,7 +193,6 @@ pub struct StreamProcessor<TPayload: Clone> {
     consumer_state: ConsumerState<TPayload>,
     message: Option<Message<TPayload>>,
     processor_handle: ProcessorHandle,
-    buffered_messages: BufferedMessages<TPayload>,
     metrics_buffer: metrics_buffer::MetricsBuffer,
     _time_updater: coarsetime::Updater,
 }
@@ -220,11 +219,6 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
         consumer: Box<dyn Consumer<TPayload, Callbacks<TPayload>>>,
         consumer_state: ConsumerState<TPayload>,
     ) -> Self {
-        let max_buffered_messages_per_partition = consumer_state
-            .locked_state()
-            .dlq_policy
-            .max_buffered_messages_per_partition();
-
         Self {
             consumer,
             consumer_state,
@@ -232,7 +226,6 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             processor_handle: ProcessorHandle {
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
             },
-            buffered_messages: BufferedMessages::new(max_buffered_messages_per_partition),
             metrics_buffer: metrics_buffer::MetricsBuffer::new(),
             _time_updater: coarsetime::Updater::new(10).start().unwrap(),
         }
@@ -269,7 +262,15 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     );
 
                     if let Some(broker_msg) = msg {
-                        self.buffered_messages.append(&broker_msg);
+                        if let Some(dlq_buffer) = self
+                            .consumer_state
+                            .locked_state()
+                            .dlq_policy
+                            .buffered_messages()
+                        {
+                            dlq_buffer.append(&broker_msg)
+                        }
+
                         self.message = Some(Message {
                             inner_message: InnerMessage::BrokerMessage(broker_msg),
                         });
@@ -301,21 +302,29 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
             Ok(None) => {}
             Ok(Some(request)) => {
                 for (partition, offset) in &request.positions {
-                    self.buffered_messages.pop(partition, offset - 1);
+                    if let Some(dlq_buffer) = consumer_state.dlq_policy.buffered_messages() {
+                        dlq_buffer.pop(partition, offset - 1);
+                    }
                 }
 
                 consumer_state.dlq_policy.flush(&request.positions);
                 self.consumer.commit_offsets(request.positions).unwrap();
             }
             Err(StrategyError::InvalidMessage(e)) => {
-                match self.buffered_messages.pop(&e.partition, e.offset) {
-                    Some(msg) => {
-                        tracing::error!(?e, "Invalid message");
-                        consumer_state.dlq_policy.produce(msg);
+                if let Some(dlq_buffer) = consumer_state.dlq_policy.buffered_messages() {
+                    let message = dlq_buffer.pop(&e.partition, e.offset);
+
+                    match message {
+                        Some(msg) => {
+                            tracing::error!(?e, "Invalid message");
+                            consumer_state.dlq_policy.produce(msg);
+                        }
+                        None => {
+                            tracing::error!("Could not find invalid message in buffer");
+                        }
                     }
-                    None => {
-                        tracing::error!("Could not find invalid message in buffer");
-                    }
+                } else {
+                    tracing::error!(?e, "Invalid message, but no DLQ policy configured");
                 }
             }
 
@@ -391,16 +400,22 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     }
                 }
             }
-            Err(SubmitError::InvalidMessage(message)) => {
-                let invalid_message = self
-                    .buffered_messages
-                    .pop(&message.partition, message.offset);
 
-                if let Some(msg) = invalid_message {
-                    tracing::error!(?message, "Invalid message");
-                    consumer_state.dlq_policy.produce(msg);
+            Err(SubmitError::InvalidMessage(e)) => {
+                if let Some(dlq_buffer) = consumer_state.dlq_policy.buffered_messages() {
+                    let message = dlq_buffer.pop(&e.partition, e.offset);
+
+                    match message {
+                        Some(msg) => {
+                            tracing::error!(?e, "Invalid message");
+                            consumer_state.dlq_policy.produce(msg);
+                        }
+                        None => {
+                            tracing::error!("Could not find invalid message in buffer");
+                        }
+                    }
                 } else {
-                    tracing::error!(?message, "Could not retrieve invalid message from buffer");
+                    tracing::error!(?e, "Invalid message, but no DLQ policy configured");
                 }
             }
         }
@@ -450,41 +465,12 @@ mod tests {
     use crate::backends::local::broker::LocalBroker;
     use crate::backends::local::LocalConsumer;
     use crate::backends::storages::memory::MemoryMessageStorage;
+    use crate::testutils::TestFactory;
     use crate::types::{Message, Partition, Topic};
     use crate::utils::clock::SystemClock;
     use std::collections::HashMap;
     use std::time::Duration;
     use uuid::Uuid;
-
-    struct TestStrategy {
-        message: Option<Message<String>>,
-    }
-    impl ProcessingStrategy<String> for TestStrategy {
-        #[allow(clippy::manual_map)]
-        fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-            Ok(self.message.as_ref().map(|message| CommitRequest {
-                positions: HashMap::from_iter(message.committable()),
-            }))
-        }
-
-        fn submit(&mut self, message: Message<String>) -> Result<(), SubmitError<String>> {
-            self.message = Some(message);
-            Ok(())
-        }
-
-        fn terminate(&mut self) {}
-
-        fn join(&mut self, _: Option<Duration>) -> Result<Option<CommitRequest>, StrategyError> {
-            Ok(None)
-        }
-    }
-
-    struct TestFactory {}
-    impl ProcessingStrategyFactory<String> for TestFactory {
-        fn create(&self) -> Box<dyn ProcessingStrategy<String>> {
-            Box::new(TestStrategy { message: None })
-        }
-    }
 
     fn build_broker() -> LocalBroker<String> {
         let storage: MemoryMessageStorage<String> = Default::default();
