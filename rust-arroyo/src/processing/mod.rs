@@ -176,6 +176,12 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         self.0.set_paused(false);
         state.clear_backpressure();
 
+        if let Some(dlq_buffer) = state.dlq_policy.buffered_messages() {
+            for partition in &partitions {
+                dlq_buffer.remove(partition);
+            }
+        }
+
         timer!("arroyo.consumer.join.time", start.elapsed_since_recent());
 
         tracing::info!("Partition revocation complete.");
