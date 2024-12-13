@@ -9,13 +9,13 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.produce import Produce
 from arroyo.types import Message, Partition, Topic, Value
-from arroyo.utils.clock import TestingClock
+from arroyo.utils.clock import MockedClock
 
 
 def test_produce() -> None:
     orig_topic = Topic("orig-topic")
     result_topic = Topic("result-topic")
-    clock = TestingClock()
+    clock = MockedClock()
     broker_storage: MemoryMessageStorage[KafkaPayload] = MemoryMessageStorage()
     broker: LocalBroker[KafkaPayload] = LocalBroker(broker_storage, clock)
     broker.create_topic(result_topic, partitions=1)

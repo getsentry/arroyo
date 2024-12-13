@@ -18,14 +18,14 @@ from arroyo.backends.local.storages.abstract import (
 )
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import Partition, Topic
-from arroyo.utils.clock import TestingClock
+from arroyo.utils.clock import MockedClock
 from tests.backends.mixins import StreamsTestMixin
 
 
 class LocalStreamsTestMixin(StreamsTestMixin[int]):
     def setUp(self) -> None:
         self.storage = self.get_message_storage()
-        self.broker = LocalBroker(self.storage, TestingClock())
+        self.broker = LocalBroker(self.storage, MockedClock())
 
     @abstractmethod
     def get_message_storage(self) -> MessageStorage[int]:

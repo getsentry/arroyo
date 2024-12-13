@@ -28,7 +28,7 @@ class SystemClock(Clock):
         time.sleep(duration)
 
 
-class TestingClock(Clock):
+class MockedClock(Clock):
     """
     A clock implementation that uses a stable time for testing. To advance
     the time, use the ``sleep`` method.
