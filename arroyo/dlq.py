@@ -315,11 +315,11 @@ class BufferedMessages(Generic[TStrategyPayload]):
 
         return None
 
-    def reset(self) -> None:
+    def remove(self, partition: Partition) -> None:
         """
-        Reset the buffer.
+        Remove a revoked partition from the buffer.
         """
-        self.__buffered_messages = defaultdict(deque)
+        self.__buffered_messages.pop(partition, None)
 
 
 class DlqPolicyWrapper(Generic[TStrategyPayload]):
@@ -343,9 +343,9 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
                 ]
             ],
         ] = defaultdict(deque)
-        self.reset_offsets({})
+        self.reset_dlq_limits({})
 
-    def reset_offsets(self, assignment: Mapping[Partition, int]) -> None:
+    def reset_dlq_limits(self, assignment: Mapping[Partition, int]) -> None:
         """
         Called on consumer assignment
         """
