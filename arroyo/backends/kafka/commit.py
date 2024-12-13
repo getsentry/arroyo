@@ -97,6 +97,6 @@ class CommitCodec(Codec[KafkaPayload, Commit]):
 
         if max_times_to_log_legacy_message > 0:
             max_times_to_log_legacy_message -= 1
-            logger.warn(f"Legacy commit message found: {commit}")
+            logger.warning("Legacy commit message found: %s", commit)
 
         return commit
