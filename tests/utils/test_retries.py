@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from arroyo.utils.clock import TestingClock
+from arroyo.utils.clock import MockedClock
 from arroyo.utils.retries import BasicRetryPolicy, RetryException, constant_delay
 
 value = object()
@@ -45,7 +45,7 @@ def setup_function() -> None:
 
 def test_basic_retry_policy_no_delay() -> None:
 
-    clock = TestingClock()
+    clock = MockedClock()
 
     policy = BasicRetryPolicy(3, clock=clock)
 
@@ -68,19 +68,19 @@ def test_basic_retry_policy_no_delay() -> None:
 
 @pytest.mark.parametrize("delay", [1, constant_delay(1)])
 def test_basic_retry_policy_with_delay(delay: int) -> None:
-    clock = TestingClock()
+    clock = MockedClock()
     policy = BasicRetryPolicy(3, delay, clock=clock)
     assert policy.call(good_function) is value
     assert good_function.call_count == 1
     assert clock.time() == 0
 
-    clock = TestingClock()
+    clock = MockedClock()
     policy = BasicRetryPolicy(3, delay, clock=clock)
     assert policy.call(flaky_function) is value
     assert flaky_function.call_count == 2
     assert clock.time() == 1  # one retry
 
-    clock = TestingClock()
+    clock = MockedClock()
     policy = BasicRetryPolicy(3, delay, clock=clock)
     try:
         policy.call(bad_function)
@@ -109,7 +109,7 @@ def test_basic_retry_policy_with_supression() -> None:
     def suppression_test(exception: Exception) -> bool:
         return isinstance(exception, ExpectedError)
 
-    clock = TestingClock()
+    clock = MockedClock()
     policy = BasicRetryPolicy(
         3, constant_delay(1), suppression_test=suppression_test, clock=clock
     )

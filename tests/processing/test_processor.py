@@ -19,7 +19,7 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategyFactory,
 )
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
-from arroyo.utils.clock import TestingClock
+from arroyo.utils.clock import MockedClock
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Increment, TestingMetricsBackend, Timing
 
@@ -531,7 +531,7 @@ def test_commit_policy_bench(
     storage: MessageStorage[int] = MemoryMessageStorage()
     storage.create_topic(topic, num_partitions)
 
-    broker = LocalBroker(storage, TestingClock())
+    broker = LocalBroker(storage, MockedClock())
 
     consumer = broker.get_consumer("test-group", enable_end_of_partition=True)
 

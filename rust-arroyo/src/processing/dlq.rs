@@ -485,9 +485,9 @@ impl<TPayload> BufferedMessages<TPayload> {
         None
     }
 
-    // Clear the buffer. Should be called on rebalance.
-    pub fn reset(&mut self) {
-        self.buffered_messages.clear();
+    /// Wipe one partition from the buffer, as part of rebalancing.
+    pub fn remove(&mut self, partition: &Partition) {
+        self.buffered_messages.remove(partition);
     }
 }
 

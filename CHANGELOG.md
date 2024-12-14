@@ -1,5 +1,17 @@
 # Changelog and versioning
 
+## 2.19.5
+
+### Various fixes & improvements
+
+- fix(dlq): Remove from buffer on partition revoke (#406) by @untitaker
+
+## 2.19.4
+
+### Various fixes & improvements
+
+- ref(dlq): Move DLQ buffer into DLQ policy (#404) by @ayirr7
+
 ## 2.19.3
 
 ### Various fixes & improvements
