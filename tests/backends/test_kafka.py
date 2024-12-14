@@ -257,6 +257,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
+    # re-test the kafka consumer with cooperative-sticky rebalancing
     incremental_rebalancing = True
 
 

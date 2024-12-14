@@ -250,7 +250,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     # ProcessingStrategyFactory that we made in Rust: Remove
                     # create_with_partitions, replace with create +
                     # update_partitions
-                    logger.error(
+                    logger.warning(
                         "Partition assignment while processing strategy active"
                     )
                     _close_strategy()
