@@ -59,6 +59,7 @@ def get_topic(
     configuration: Mapping[str, Any], partitions_count: int
 ) -> Iterator[Topic]:
     name = f"test-{uuid.uuid1().hex}"
+    configuration = dict(configuration)
     client = AdminClient(configuration)
     [[key, future]] = client.create_topics(
         [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
@@ -74,14 +75,13 @@ def get_topic(
 
 
 class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
+    kip_848 = False
+
     @property
     def configuration(self) -> KafkaBrokerConfig:
         config = {
             "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092"),
         }
-
-        if self.incremental_rebalancing:
-            config["partition.assignment.strategy"] = "cooperative-sticky"
 
         return build_kafka_configuration(config)
 
@@ -118,6 +118,16 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             # session timeout cannot be higher than max poll interval
             if max_poll_interval_ms < 45000:
                 configuration["session.timeout.ms"] = max_poll_interval_ms
+
+        if self.cooperative_sticky:
+            configuration["partition.assignment.strategy"] = "cooperative-sticky"
+
+        if self.kip_848:
+            configuration["group.protocol"] = "consumer"
+            configuration.pop("session.timeout.ms")
+            configuration.pop("max.poll.interval.ms", None)
+            assert "group.protocol.type" not in configuration
+            assert "heartbeat.interval.ms" not in configuration
 
         return KafkaConsumer(configuration)
 
@@ -258,7 +268,12 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
     # re-test the kafka consumer with cooperative-sticky rebalancing
-    incremental_rebalancing = True
+    cooperative_sticky = True
+
+
+@pytest.mark.skip("kip-848 not functional yet")
+class TestKafkaStreamsKip848(TestKafkaStreams):
+    kip_848 = True
 
 
 def test_commit_codec() -> None:

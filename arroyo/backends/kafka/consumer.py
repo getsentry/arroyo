@@ -161,7 +161,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         configuration = dict(configuration)
-        self.__assignment_strategy = configuration.get("partition.assignment.strategy")
+        self.__is_incremental = (
+            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
+            or configuration.get("group.protocol") == "consumer"
+        )
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
         # This is a special flag that controls the auto offset behavior for
@@ -270,7 +273,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         def assignment_callback(
             consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
         ) -> None:
-            if not partitions and self.__assignment_strategy == "cooperative-sticky":
+            if not partitions and self.__is_incremental:
                 logger.info("skipping empty assignment")
                 return
 
@@ -460,7 +463,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             ConfluentTopicPartition(partition.topic.name, partition.index, offset)
             for partition, offset in offsets.items()
         ]
-        if self.__assignment_strategy == "cooperative-sticky":
+        if self.__is_incremental:
             self.__consumer.incremental_assign(partitions)
         else:
             self.__consumer.assign(partitions)
