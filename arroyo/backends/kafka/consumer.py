@@ -273,7 +273,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         def assignment_callback(
             consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
         ) -> None:
-            if not partitions and self.__is_incremental:
+            if not partitions:
                 logger.info("skipping empty assignment")
                 return
 
