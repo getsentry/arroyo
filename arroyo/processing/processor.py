@@ -238,16 +238,23 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
 
-            self.__buffered_messages.reset()
+            current_partitions = dict(self.__consumer.tell())
+            current_partitions.update(partitions)
+
             if self.__dlq_policy:
-                self.__dlq_policy.reset_offsets(partitions)
-            if partitions:
+                self.__dlq_policy.reset_dlq_limits(current_partitions)
+            if current_partitions:
                 if self.__processing_strategy is not None:
-                    logger.exception(
+                    # TODO: for cooperative-sticky rebalancing this can happen
+                    # quite often. we should port the changes to
+                    # ProcessingStrategyFactory that we made in Rust: Remove
+                    # create_with_partitions, replace with create +
+                    # update_partitions
+                    logger.warning(
                         "Partition assignment while processing strategy active"
                     )
                     _close_strategy()
-                _create_strategy(partitions)
+                _create_strategy(current_partitions)
 
         @_rdkafka_callback(metrics=self.__metrics_buffer)
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
@@ -277,6 +284,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         _create_strategy(active_partitions)
                 except RuntimeError:
                     pass
+
+            for partition in partitions:
+                self.__buffered_messages.remove(partition)
 
             # Partition revocation can happen anytime during the consumer lifecycle and happen
             # multiple times. What we want to know is that the consumer is not stuck somewhere.

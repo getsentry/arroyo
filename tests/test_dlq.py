@@ -107,7 +107,7 @@ def test_dlq_policy_wrapper() -> None:
     )
     partition = Partition(topic, 0)
     wrapper = DlqPolicyWrapper(dlq_policy)
-    wrapper.reset_offsets({partition: 0})
+    wrapper.reset_dlq_limits({partition: 0})
     wrapper.MAX_PENDING_FUTURES = 1
     for i in range(10):
         message = BrokerValue(KafkaPayload(None, b"", []), partition, i, datetime.now())
@@ -123,7 +123,7 @@ def test_dlq_policy_wrapper_limit_exceeded() -> None:
     )
     partition = Partition(topic, 0)
     wrapper = DlqPolicyWrapper(dlq_policy)
-    wrapper.reset_offsets({partition: 0})
+    wrapper.reset_dlq_limits({partition: 0})
     wrapper.MAX_PENDING_FUTURES = 1
 
     message = BrokerValue(KafkaPayload(None, b"", []), partition, 1, datetime.now())

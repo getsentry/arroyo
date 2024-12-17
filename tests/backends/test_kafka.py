@@ -14,7 +14,10 @@ from confluent_kafka.admin import AdminClient, NewTopic
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
-from arroyo.backends.kafka.configuration import build_kafka_configuration
+from arroyo.backends.kafka.configuration import (
+    KafkaBrokerConfig,
+    build_kafka_configuration,
+)
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import IMMEDIATE, Commit
 from arroyo.errors import ConsumerError, EndOfPartition
@@ -56,6 +59,7 @@ def get_topic(
     configuration: Mapping[str, Any], partitions_count: int
 ) -> Iterator[Topic]:
     name = f"test-{uuid.uuid1().hex}"
+    configuration = dict(configuration)
     client = AdminClient(configuration)
     [[key, future]] = client.create_topics(
         [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
@@ -71,10 +75,15 @@ def get_topic(
 
 
 class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
+    kip_848 = False
 
-    configuration = build_kafka_configuration(
-        {"bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")}
-    )
+    @property
+    def configuration(self) -> KafkaBrokerConfig:
+        config = {
+            "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092"),
+        }
+
+        return build_kafka_configuration(config)
 
     @contextlib.contextmanager
     def get_topic(self, partitions: int = 1) -> Iterator[Topic]:
@@ -90,7 +99,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
         enable_end_of_partition: bool = True,
         auto_offset_reset: str = "earliest",
         strict_offset_reset: Optional[bool] = None,
-        max_poll_interval_ms: Optional[int] = None
+        max_poll_interval_ms: Optional[int] = None,
     ) -> KafkaConsumer:
         configuration = {
             **self.configuration,
@@ -109,6 +118,16 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             # session timeout cannot be higher than max poll interval
             if max_poll_interval_ms < 45000:
                 configuration["session.timeout.ms"] = max_poll_interval_ms
+
+        if self.cooperative_sticky:
+            configuration["partition.assignment.strategy"] = "cooperative-sticky"
+
+        if self.kip_848:
+            configuration["group.protocol"] = "consumer"
+            configuration.pop("session.timeout.ms")
+            configuration.pop("max.poll.interval.ms", None)
+            assert "group.protocol.type" not in configuration
+            assert "heartbeat.interval.ms" not in configuration
 
         return KafkaConsumer(configuration)
 
@@ -210,7 +229,9 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
         poll_interval = 6000
 
         with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer, closing(self.get_consumer(max_poll_interval_ms=poll_interval)) as consumer:
+            with closing(self.get_producer()) as producer, closing(
+                self.get_consumer(max_poll_interval_ms=poll_interval)
+            ) as consumer:
                 producer.produce(topic, next(self.get_payloads())).result(5.0)
 
                 processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
@@ -243,6 +264,16 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 strategy.submit.side_effect = None
                 processor._run_once()
                 assert consumer.paused() == []
+
+
+class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
+    # re-test the kafka consumer with cooperative-sticky rebalancing
+    cooperative_sticky = True
+
+
+@pytest.mark.skip("kip-848 not functional yet")
+class TestKafkaStreamsKip848(TestKafkaStreams):
+    kip_848 = True
 
 
 def test_commit_codec() -> None:

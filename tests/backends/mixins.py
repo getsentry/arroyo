@@ -2,7 +2,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import closing
-from typing import ContextManager, Generic, Iterator, Mapping, Optional, Sequence
+from typing import Any, ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -14,6 +14,8 @@ from tests.assertions import assert_changes, assert_does_not_change
 
 
 class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
+    cooperative_sticky = False
+
     @abstractmethod
     def get_topic(self, partitions: int = 1) -> ContextManager[Topic]:
         raise NotImplementedError
@@ -397,6 +399,11 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
     def test_pause_resume_rebalancing(self) -> None:
         payloads = self.get_payloads()
 
+        consumer_a_on_assign = mock.Mock()
+        consumer_a_on_revoke = mock.Mock()
+        consumer_b_on_assign = mock.Mock()
+        consumer_b_on_revoke = mock.Mock()
+
         with self.get_topic(2) as topic, closing(
             self.get_producer()
         ) as producer, closing(
@@ -408,10 +415,22 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
                 producer.produce(Partition(topic, i), next(payloads)).result(
                     timeout=5.0
                 )
-                for i in range(2)
+                for i in [0, 1]
             ]
 
-            consumer_a.subscribe([topic])
+            def wait_until_rebalancing(
+                from_consumer: Consumer[Any], to_consumer: Consumer[Any]
+            ) -> None:
+                for _ in range(10):
+                    assert from_consumer.poll(0) is None
+                    if to_consumer.poll(1.0) is not None:
+                        return
+
+                raise RuntimeError("no rebalancing happened")
+
+            consumer_a.subscribe(
+                [topic], on_assign=consumer_a_on_assign, on_revoke=consumer_a_on_revoke
+            )
 
             # It doesn't really matter which message is fetched first -- we
             # just want to know the assignment occurred.
@@ -428,19 +447,69 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
                 [Partition(topic, 0), Partition(topic, 1)]
             )
 
-            consumer_b.subscribe([topic])
-            for i in range(10):
-                assert consumer_a.poll(0) is None  # attempt to force session timeout
-                if consumer_b.poll(1.0) is not None:
-                    break
-            else:
-                assert False, "rebalance did not occur"
+            consumer_b.subscribe(
+                [topic], on_assign=consumer_b_on_assign, on_revoke=consumer_b_on_revoke
+            )
 
-            # The first consumer should have had its offsets rolled back, as
-            # well as should have had it's partition resumed during
-            # rebalancing.
-            assert consumer_a.paused() == []
-            assert consumer_a.poll(10.0) is not None
+            wait_until_rebalancing(consumer_a, consumer_b)
+
+            if self.cooperative_sticky:
+                # within incremental rebalancing, only one partition should have been reassigned to the consumer_b, and consumer_a should remain paused
+                assert consumer_a.paused() == [Partition(topic, 1)]
+                assert consumer_a.poll(10.0) is None
+            else:
+                # The first consumer should have had its offsets rolled back, as
+                # well as should have had it's partition resumed during
+                # rebalancing.
+                assert consumer_a.paused() == []
+                assert consumer_a.poll(10.0) is not None
 
             assert len(consumer_a.tell()) == 1
             assert len(consumer_b.tell()) == 1
+
+            (consumer_a_partition,) = consumer_a.tell()
+            (consumer_b_partition,) = consumer_b.tell()
+
+            # Pause consumer_a again.
+            consumer_a.pause(list(consumer_a.tell()))
+            # if we close consumer_a, consumer_b should get all partitions
+            producer.produce(next(iter(consumer_a.tell())), next(payloads)).result(
+                timeout=5.0
+            )
+            consumer_a.unsubscribe()
+            wait_until_rebalancing(consumer_a, consumer_b)
+
+            assert len(consumer_b.tell()) == 2
+
+            if self.cooperative_sticky:
+
+                assert consumer_a_on_assign.mock_calls == [
+                    mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
+                ]
+                assert consumer_a_on_revoke.mock_calls == [
+                    mock.call([Partition(topic, 0)]),
+                    mock.call([Partition(topic, 1)]),
+                ]
+
+                assert consumer_b_on_assign.mock_calls == [
+                    mock.call({Partition(topic, 0): 0}),
+                    mock.call({Partition(topic, 1): 0}),
+                ]
+                assert consumer_b_on_revoke.mock_calls == []
+            else:
+                assert consumer_a_on_assign.mock_calls == [
+                    mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
+                    mock.call({consumer_a_partition: 0}),
+                ]
+                assert consumer_a_on_revoke.mock_calls == [
+                    mock.call([Partition(topic, 0), Partition(topic, 1)]),
+                    mock.call([consumer_a_partition]),
+                ]
+
+                assert consumer_b_on_assign.mock_calls == [
+                    mock.call({consumer_b_partition: 0}),
+                    mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
+                ]
+                assert consumer_b_on_revoke.mock_calls == [
+                    mock.call([consumer_b_partition])
+                ]

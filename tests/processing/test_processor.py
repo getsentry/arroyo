@@ -41,6 +41,7 @@ def test_stream_processor_lifecycle() -> None:
 
     # The processor should accept heartbeat messages without an assignment or
     # active processor.
+    consumer.tell.return_value = {}
     consumer.poll.return_value = None
     processor._run_once()
 
@@ -166,6 +167,7 @@ def test_stream_processor_termination_on_error() -> None:
     offset = 0
     now = datetime.now()
 
+    consumer.tell.return_value = {}
     consumer.poll.return_value = BrokerValue(0, partition, offset, now)
 
     exception = NotImplementedError("error")
@@ -199,6 +201,7 @@ def test_stream_processor_invalid_message_from_poll() -> None:
     offset = 1
     now = datetime.now()
 
+    consumer.tell.return_value = {}
     consumer.poll.side_effect = [BrokerValue(0, partition, offset, now)]
 
     strategy = mock.Mock()
@@ -236,6 +239,7 @@ def test_stream_processor_invalid_message_from_submit() -> None:
     offset = 1
     now = datetime.now()
 
+    consumer.tell.return_value = {}
     consumer.poll.side_effect = [
         BrokerValue(0, partition, offset, now),
         BrokerValue(1, partition, offset + 1, now),
@@ -283,6 +287,7 @@ def test_stream_processor_create_with_partitions() -> None:
     topic = Topic("topic")
 
     consumer = mock.Mock()
+    consumer.tell.return_value = {}
     strategy = mock.Mock()
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
@@ -306,13 +311,15 @@ def test_stream_processor_create_with_partitions() -> None:
     assert factory.create_with_partitions.call_count == 1
     assert create_args[1] == offsets_p0
 
+    consumer.tell.return_value = {**offsets_p0}
+
     # Second partition assigned
     offsets_p1 = {Partition(topic, 1): 0}
     assignment_callback(offsets_p1)
 
     create_args, _ = factory.create_with_partitions.call_args
     assert factory.create_with_partitions.call_count == 2
-    assert create_args[1] == offsets_p1
+    assert create_args[1] == {**offsets_p1, **offsets_p0}
 
     processor._run_once()
 
@@ -376,6 +383,7 @@ def run_commit_policy_test(
 ) -> Sequence[int]:
     commit = mock.Mock()
     consumer = mock.Mock()
+    consumer.tell.return_value = {}
     consumer.commit_offsets = commit
 
     factory = CommitOffsetsFactory()
@@ -551,6 +559,7 @@ def test_dlq() -> None:
     partition = Partition(topic, 0)
     consumer = mock.Mock()
     consumer.poll.return_value = BrokerValue(0, partition, 1, datetime.now())
+    consumer.tell.return_value = {}
     strategy = mock.Mock()
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()
@@ -585,6 +594,7 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     consumer = mock.Mock()
     now = datetime.now()
     consumer.poll.return_value = BrokerValue(0, partition, 1, now)
+    consumer.tell.return_value = {}
     strategy = mock.Mock()
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()
