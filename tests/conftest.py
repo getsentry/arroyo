@@ -1,4 +1,5 @@
-from typing import Generator, Iterator, List
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Generator, Iterator, List
 
 import pytest
 
@@ -9,6 +10,7 @@ from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import TStrategyPayload
 from arroyo.utils.clock import MockedClock
 from arroyo.utils.metrics import configure_metrics
+from tests import WithStmt
 from tests.metrics import TestingMetricsBackend
 
 
@@ -40,3 +42,20 @@ def assert_no_internal_errors(
 
     for e in errors:
         raise e
+
+
+@pytest.fixture
+def with_stmt(request: pytest.FixtureRequest) -> WithStmt:
+    finalizers: List[Callable[[], Any]] = []
+
+    @request.addfinalizer
+    def _() -> None:
+        with ThreadPoolExecutor(10) as e:
+            e.map(lambda x: x(), finalizers, timeout=20)  # type: ignore
+
+    def inner(value: Any) -> Any:
+        rv = value.__enter__()
+        finalizers.append(lambda: value.__exit__(None, None, None))
+        return rv
+
+    return inner

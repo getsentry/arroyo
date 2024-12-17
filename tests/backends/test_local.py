@@ -4,7 +4,6 @@ import uuid
 from abc import abstractmethod
 from datetime import datetime
 from typing import Iterator, Optional
-from unittest import TestCase
 
 import pytest
 
@@ -19,11 +18,12 @@ from arroyo.backends.local.storages.abstract import (
 from arroyo.backends.local.storages.memory import MemoryMessageStorage
 from arroyo.types import Partition, Topic
 from arroyo.utils.clock import MockedClock
+from tests import WithStmt
 from tests.backends.mixins import StreamsTestMixin
 
 
 class LocalStreamsTestMixin(StreamsTestMixin[int]):
-    def setUp(self) -> None:
+    def setup(self) -> None:
         self.storage = self.get_message_storage()
         self.broker = LocalBroker(self.storage, MockedClock())
 
@@ -52,8 +52,8 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
         return itertools.count()
 
     @pytest.mark.xfail(strict=True, reason="rebalancing not implemented")
-    def test_pause_resume_rebalancing(self) -> None:
-        return super().test_pause_resume_rebalancing()
+    def test_pause_resume_rebalancing(self, with_stmt: WithStmt) -> None:
+        return super().test_pause_resume_rebalancing(with_stmt)
 
     def test_storage(self) -> None:
         topic = Topic(uuid.uuid1().hex)
@@ -95,6 +95,6 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
             self.storage.delete_topic(topic)
 
 
-class LocalStreamsMemoryStorageTestCase(LocalStreamsTestMixin, TestCase):
+class TestLocalStreamsMemoryStorage(LocalStreamsTestMixin):
     def get_message_storage(self) -> MessageStorage[int]:
         return MemoryMessageStorage()
