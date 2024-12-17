@@ -44,11 +44,12 @@ class InvalidMessage(Exception):
     """
 
     def __init__(
-        self, partition: Partition, offset: int, needs_commit: bool = True
+        self, partition: Partition, offset: int, needs_commit: bool = True, reason: Optional[str] = None,
     ) -> None:
         self.partition = partition
         self.offset = offset
         self.needs_commit = needs_commit
+        self.reason = reason
 
     @classmethod
     def from_value(cls, value: BrokerValue[Any]) -> InvalidMessage:
@@ -177,7 +178,7 @@ class DlqLimitState:
 class DlqProducer(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def produce(
-        self, value: BrokerValue[TStrategyPayload]
+        self, value: BrokerValue[TStrategyPayload], reason: Optional[str] = None
     ) -> Future[BrokerValue[TStrategyPayload]]:
         """
         Produce a message to DLQ.
@@ -201,7 +202,7 @@ class NoopDlqProducer(DlqProducer[Any]):
     """
 
     def produce(
-        self, value: BrokerValue[KafkaPayload]
+        self, value: BrokerValue[KafkaPayload], reason: Optional[str] = None,
     ) -> Future[BrokerValue[KafkaPayload]]:
         future: Future[BrokerValue[KafkaPayload]] = Future()
         future.set_running_or_notify_cancel()
@@ -229,7 +230,9 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
         self.__topic = topic
 
     def produce(
-        self, value: BrokerValue[KafkaPayload]
+        self,
+        value: BrokerValue[KafkaPayload],
+        reason: Optional[str] = None,
     ) -> Future[BrokerValue[KafkaPayload]]:
         value.payload.headers.append(
             ("original_partition", f"{value.partition.index}".encode("utf-8"))
@@ -353,7 +356,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
             self.__dlq_policy.limit, assignment
         )
 
-    def produce(self, message: BrokerValue[TStrategyPayload]) -> None:
+    def produce(self, message: BrokerValue[TStrategyPayload], reason: Optional[str] = None) -> None:
         """
         Removes all completed futures, then appends the given future to the list.
         Blocks if the list is full. If the DLQ limit is exceeded, an exception is raised.
@@ -371,7 +374,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
 
         should_accept = self.__dlq_limit_state.record_invalid_message(message)
         if should_accept:
-            future = self.__dlq_policy.producer.produce(message)
+            future = self.__dlq_policy.producer.produce(message, reason)
             self.__futures[message.partition].append((message, future))
         else:
             raise RuntimeError("Dlq limit exceeded")
