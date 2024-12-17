@@ -32,11 +32,6 @@ from arroyo.types import (
 logger = logging.getLogger(__name__)
 
 
-class RejectReason(Enum):
-    INVALID = "invalid"
-    STALE = "stale"
-
-
 class InvalidMessage(Exception):
     """
     InvalidMessage should be raised if a message is not valid for processing and
@@ -49,7 +44,7 @@ class InvalidMessage(Exception):
     """
 
     def __init__(
-        self, partition: Partition, offset: int, needs_commit: bool = True, reason: RejectReason = RejectReason.INVALID,
+        self, partition: Partition, offset: int, needs_commit: bool = True, reason: Optional[str] = None,
     ) -> None:
         self.partition = partition
         self.offset = offset
@@ -183,7 +178,7 @@ class DlqLimitState:
 class DlqProducer(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def produce(
-        self, value: BrokerValue[TStrategyPayload], reason: RejectReason
+        self, value: BrokerValue[TStrategyPayload], reason: Optional[str] = None
     ) -> Future[BrokerValue[TStrategyPayload]]:
         """
         Produce a message to DLQ.
@@ -207,7 +202,7 @@ class NoopDlqProducer(DlqProducer[Any]):
     """
 
     def produce(
-        self, value: BrokerValue[KafkaPayload], reason: RejectReason
+        self, value: BrokerValue[KafkaPayload], reason: Optional[str] = None,
     ) -> Future[BrokerValue[KafkaPayload]]:
         future: Future[BrokerValue[KafkaPayload]] = Future()
         future.set_running_or_notify_cancel()
@@ -237,7 +232,7 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
     def produce(
         self,
         value: BrokerValue[KafkaPayload],
-        reason: RejectReason,
+        reason: Optional[str] = None,
     ) -> Future[BrokerValue[KafkaPayload]]:
         value.payload.headers.append(
             ("original_partition", f"{value.partition.index}".encode("utf-8"))
@@ -361,7 +356,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
             self.__dlq_policy.limit, assignment
         )
 
-    def produce(self, message: BrokerValue[TStrategyPayload], reason: RejectReason) -> None:
+    def produce(self, message: BrokerValue[TStrategyPayload], reason: Optional[str] = None) -> None:
         """
         Removes all completed futures, then appends the given future to the list.
         Blocks if the list is full. If the DLQ limit is exceeded, an exception is raised.
