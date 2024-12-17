@@ -24,6 +24,7 @@ from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.processing.processor import StreamProcessor
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.types import BrokerValue, Partition, Topic
+from tests import WithStmt
 from tests.backends.mixins import StreamsTestMixin
 
 commit_codec = CommitCodec()
@@ -205,65 +206,68 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 with pytest.raises(ConsumerError):
                     consumer.poll(10.0)  # XXX: getting the subcription is slow
 
-    def test_consumer_stream_processor_shutdown(self) -> None:
+    def test_consumer_stream_processor_shutdown(self, with_stmt: WithStmt) -> None:
         strategy = mock.Mock()
         strategy.poll.side_effect = RuntimeError("goodbye")
         factory = mock.Mock()
         factory.create_with_partitions.return_value = strategy
 
-        with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer:
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
+        topic = with_stmt(self.get_topic())
 
-            with closing(self.get_consumer()) as consumer:
-                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+        producer = with_stmt(closing(self.get_producer()))
+        producer.produce(topic, next(self.get_payloads())).result(5.0)
 
-                with pytest.raises(RuntimeError):
-                    processor.run()
+        consumer = with_stmt(closing(self.get_consumer()))
+        processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
-    def test_consumer_polls_when_paused(self) -> None:
+        with pytest.raises(RuntimeError):
+            processor.run()
+
+    def test_consumer_polls_when_paused(self, with_stmt: WithStmt) -> None:
         strategy = mock.Mock()
         factory = mock.Mock()
         factory.create_with_partitions.return_value = strategy
 
         poll_interval = 6000
 
-        with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer, closing(
-                self.get_consumer(max_poll_interval_ms=poll_interval)
-            ) as consumer:
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
+        topic = with_stmt(self.get_topic())
+        producer = with_stmt(closing(self.get_producer()))
+        consumer = with_stmt(
+            closing(self.get_consumer(max_poll_interval_ms=poll_interval))
+        )
 
-                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+        producer.produce(topic, next(self.get_payloads())).result(5.0)
 
-                # Wait for the consumer to subscribe and first message to be processed
-                for _ in range(1000):
-                    processor._run_once()
-                    if strategy.submit.call_count > 0:
-                        break
-                    time.sleep(0.1)
+        processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
 
-                assert strategy.submit.call_count == 1
+        # Wait for the consumer to subscribe and first message to be processed
+        for _ in range(1000):
+            processor._run_once()
+            if strategy.submit.call_count > 0:
+                break
+            time.sleep(0.1)
 
-                # Now we start raising message rejected. the next produced message doesn't get processed
-                strategy.submit.side_effect = MessageRejected()
+        assert strategy.submit.call_count == 1
 
-                producer.produce(topic, next(self.get_payloads())).result(5.0)
-                processor._run_once()
-                assert consumer.paused() == []
-                # After ~5 seconds the consumer should be paused. On the next two calls to run_once it
-                # will pause itself, then poll the consumer.
-                time.sleep(5.0)
-                processor._run_once()
-                processor._run_once()
-                assert len(consumer.paused()) == 1
+        # Now we start raising message rejected. the next produced message doesn't get processed
+        strategy.submit.side_effect = MessageRejected()
 
-                # Now we exceed the poll interval. After that we stop raising MessageRejected and
-                # the consumer unpauses itself.
-                time.sleep(2.0)
-                strategy.submit.side_effect = None
-                processor._run_once()
-                assert consumer.paused() == []
+        producer.produce(topic, next(self.get_payloads())).result(5.0)
+        processor._run_once()
+        assert consumer.paused() == []
+        # After ~5 seconds the consumer should be paused. On the next two calls to run_once it
+        # will pause itself, then poll the consumer.
+        time.sleep(5.0)
+        processor._run_once()
+        processor._run_once()
+        assert len(consumer.paused()) == 1
+
+        # Now we exceed the poll interval. After that we stop raising MessageRejected and
+        # the consumer unpauses itself.
+        time.sleep(2.0)
+        strategy.submit.side_effect = None
+        processor._run_once()
+        assert consumer.paused() == []
 
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
