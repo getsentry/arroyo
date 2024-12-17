@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.7
+
+### Various fixes & improvements
+
+- add reject reason to dlq interfaces (#410) by @lynnagara
+
 ## 2.19.6
 
 ### Various fixes & improvements
