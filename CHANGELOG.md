@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.19.6
+
+### Various fixes & improvements
+
+- feat: Initial support for cooperative-sticky rebalancing (#407) by @untitaker
+- chore: Fix a few warnings (#408) by @untitaker
+
 ## 2.19.5
 
 ### Various fixes & improvements
