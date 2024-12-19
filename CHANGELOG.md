@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.8
+
+### Various fixes & improvements
+
+- fix: Avoid polling the consumer if it says it's paused (#412) by @untitaker
+
 ## 2.19.7
 
 ### Various fixes & improvements
