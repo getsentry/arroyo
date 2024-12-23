@@ -157,6 +157,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.REQUEST_TIMED_OUT,
                 KafkaError.NOT_COORDINATOR,
                 KafkaError._WAIT_COORD,
+                KafkaError.ILLEGAL_GENERATION,
             ),
         )
 
