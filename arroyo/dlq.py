@@ -334,7 +334,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         self,
         policy: DlqPolicy[TStrategyPayload],
     ) -> None:
-        self.MAX_PENDING_FUTURES = 1000  # This is a per partition max
+        self.MAX_PENDING_FUTURES = 2000  # This is a per partition max
         self.__dlq_policy = policy
 
         self.__futures: MutableMapping[
