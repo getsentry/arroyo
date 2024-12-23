@@ -157,6 +157,8 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.REQUEST_TIMED_OUT,
                 KafkaError.NOT_COORDINATOR,
                 KafkaError._WAIT_COORD,
+                # This error can occur at any time, including outside of
+                # rebalancing. In that case we should retry committing.
                 KafkaError.ILLEGAL_GENERATION,
             ),
         )
