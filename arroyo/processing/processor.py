@@ -365,7 +365,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         ):
             self.__message = None
 
-        logger.exception(exc)
+        if exc.log_exception:
+            logger.exception(exc)
         self.__metrics_buffer.incr_counter("arroyo.consumer.invalid_message.count", 1)
         if self.__dlq_policy:
             start_dlq = time.time()

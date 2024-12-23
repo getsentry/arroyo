@@ -44,12 +44,18 @@ class InvalidMessage(Exception):
     """
 
     def __init__(
-        self, partition: Partition, offset: int, needs_commit: bool = True, reason: Optional[str] = None,
+        self,
+        partition: Partition,
+        offset: int,
+        needs_commit: bool = True,
+        reason: Optional[str] = None,
+        log_exception: bool = True
     ) -> None:
         self.partition = partition
         self.offset = offset
         self.needs_commit = needs_commit
         self.reason = reason
+        self.log_exception = log_exception
 
     @classmethod
     def from_value(cls, value: BrokerValue[Any]) -> InvalidMessage:
