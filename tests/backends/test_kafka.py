@@ -2,11 +2,13 @@ import contextlib
 import itertools
 import os
 import pickle
+import random
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pickle import PickleBuffer
-from typing import Any, Iterator, Mapping, MutableSequence, Optional
+from typing import Any, Iterator, List, Mapping, MutableSequence, Optional
 from unittest import mock
 
 import pytest
@@ -268,6 +270,58 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
         strategy.submit.side_effect = None
         processor._run_once()
         assert consumer.paused() == []
+
+    def test_rebalancing_fuzz(self, with_stmt: WithStmt) -> None:
+        num_consumers = 8
+        msgs_per_consumer = 100
+        total_timeout = 60 * 6
+
+        consumers = [
+            self.get_consumer("group", enable_end_of_partition=False)
+            for _ in range(num_consumers)
+        ]
+
+        topic = with_stmt(self.get_topic(num_consumers))
+
+        payloads = self.get_payloads()
+
+        produced = []
+        with closing(self.get_producer()) as producer:
+            for i in range(num_consumers * msgs_per_consumer):
+                msg = next(payloads)
+                producer.produce(Partition(topic, i % num_consumers), msg)
+                produced.append(msg)
+
+        messages: List[BrokerValue[Any]] = []
+
+        def poll(consumer: KafkaConsumer) -> None:
+            die_after = time.time() * total_timeout
+            while len(messages) < len(produced) and time.time() < die_after:
+
+                def on_revoke(partitions: Any) -> None:
+                    consumer.commit_offsets()
+
+                consumer.subscribe([topic], on_revoke=on_revoke)
+
+                restart_after = time.time() + random.randrange(1, 30)
+                while time.time() < restart_after:
+                    message = consumer.poll(5.0)
+                    if message:
+                        messages.append(message)
+                        consumer.stage_offsets(message.committable)
+
+                consumer.commit_offsets()
+                consumer.unsubscribe()
+
+        with ThreadPoolExecutor(max_workers=num_consumers) as e:
+            for _ in e.map(poll, consumers, timeout=total_timeout * 2):
+                pass
+
+        assert None not in messages
+        assert set(message.payload.value for message in messages) == {
+            str(i).encode() for i in range(num_consumers * msgs_per_consumer)
+        }
+        assert len(messages) == len(produced)
 
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):

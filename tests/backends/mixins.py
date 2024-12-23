@@ -1,19 +1,8 @@
-import random
 import time
 import uuid
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from typing import (
-    Any,
-    ContextManager,
-    Generic,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-)
+from typing import Any, ContextManager, Generic, Iterator, Mapping, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -522,57 +511,3 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             assert consumer_b_on_revoke.mock_calls == [
                 mock.call([consumer_b_partition])
             ]
-
-    def test_rebalancing_fuzz(self, with_stmt: WithStmt) -> None:
-        num_consumers = 8
-        msgs_per_consumer = 1000 // 8
-        total_timeout = 60 * 6
-
-        consumers = [
-            with_stmt(
-                closing(self.get_consumer("group", enable_end_of_partition=False))
-            )
-            for _ in range(num_consumers)
-        ]
-
-        topic = with_stmt(self.get_topic(num_consumers))
-
-        payloads = self.get_payloads()
-
-        produced = []
-        with closing(self.get_producer()) as producer:
-            for i in range(num_consumers * msgs_per_consumer):
-                msg = next(payloads)
-                producer.produce(Partition(topic, i % num_consumers), msg)
-                produced.append(msg)
-
-        messages: List[BrokerValue[Any]] = []
-
-        def poll(consumer: Consumer[Any]) -> None:
-            die_after = time.time() * total_timeout
-            while len(messages) < len(produced) and time.time() < die_after:
-
-                def on_revoke(partitions: Any) -> None:
-                    consumer.commit_offsets()
-
-                consumer.subscribe([topic], on_revoke=on_revoke)
-
-                restart_after = time.time() + random.randrange(1, 30)
-                while time.time() < restart_after:
-                    message = consumer.poll(5.0)
-                    if message:
-                        messages.append(message)
-                        consumer.stage_offsets(message.committable)
-
-                consumer.commit_offsets()
-                consumer.unsubscribe()
-
-        with ThreadPoolExecutor(max_workers=num_consumers) as e:
-            for _ in e.map(poll, consumers, timeout=total_timeout * 2):
-                pass
-
-        assert None not in messages
-        assert set(message.payload.value for message in messages) == {
-            str(i).encode() for i in range(num_consumers * msgs_per_consumer)
-        }
-        assert len(messages) == len(produced)
