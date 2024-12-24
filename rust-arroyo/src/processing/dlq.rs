@@ -15,7 +15,7 @@ use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
 // This is a per-partition max
-const MAX_PENDING_FUTURES: usize = 1000;
+const MAX_PENDING_FUTURES: usize = 2000;
 
 pub trait DlqProducer<TPayload>: Send + Sync {
     // Send a message to the DLQ.
