@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.9
+
+### Various fixes & improvements
+
+- perf: invalid message logging configuration (#416) by @lynnagara
+
 ## 2.19.8
 
 ### Various fixes & improvements
