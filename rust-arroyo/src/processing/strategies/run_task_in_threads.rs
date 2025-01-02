@@ -30,6 +30,16 @@ pub trait TaskRunner<TPayload, TTransformed, TError>: Send + Sync {
     fn get_task(&self, message: Message<TPayload>) -> RunTaskFunc<TTransformed, TError>;
 }
 
+impl<F, TPayload, TTransformed, TError> TaskRunner<TPayload, TTransformed, TError> for F
+where
+    F: Fn(Message<TPayload>) -> RunTaskFunc<TTransformed, TError>,
+    F: Send + Sync,
+{
+    fn get_task(&self, message: Message<TPayload>) -> RunTaskFunc<TTransformed, TError> {
+        self(message)
+    }
+}
+
 /// This is configuration for the [`RunTaskInThreads`] strategy.
 ///
 /// It defines the runtime on which tasks are being spawned, and the number of
@@ -92,21 +102,22 @@ pub struct RunTaskInThreads<TPayload, TTransformed, TError, N> {
 }
 
 impl<TPayload, TTransformed, TError, N> RunTaskInThreads<TPayload, TTransformed, TError, N> {
-    pub fn new(
+    pub fn new<TTaskRunner>(
         next_step: N,
-        task_runner: Box<dyn TaskRunner<TPayload, TTransformed, TError>>,
+        task_runner: TTaskRunner,
         concurrency: &ConcurrencyConfig,
         // If provided, this name is used for metrics
         custom_strategy_name: Option<&'static str>,
     ) -> Self
     where
         N: ProcessingStrategy<TTransformed> + 'static,
+        TTaskRunner: TaskRunner<TPayload, TTransformed, TError> + 'static,
     {
         let strategy_name = custom_strategy_name.unwrap_or("run_task_in_threads");
 
         RunTaskInThreads {
             next_step,
-            task_runner,
+            task_runner: Box::new(task_runner),
             concurrency: concurrency.concurrency,
             runtime: concurrency.handle(),
             handles: VecDeque::new(),
@@ -263,10 +274,8 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
 
-    struct IdentityTaskRunner {}
-
-    impl<T: Send + Sync + 'static> TaskRunner<T, T, &'static str> for IdentityTaskRunner {
-        fn get_task(&self, message: Message<T>) -> RunTaskFunc<T, &'static str> {
+    fn identity_task_runner<T: Send + 'static>() -> impl TaskRunner<T, T, &'static str> {
+        |message: Message<T>| -> RunTaskFunc<T, &'static str> {
             Box::pin(async move { Ok(message) })
         }
     }
@@ -310,12 +319,8 @@ mod tests {
     #[test]
     fn test() {
         let concurrency = ConcurrencyConfig::new(1);
-        let mut strategy = RunTaskInThreads::new(
-            Mock::new(),
-            Box::new(IdentityTaskRunner {}),
-            &concurrency,
-            None,
-        );
+        let mut strategy =
+            RunTaskInThreads::new(Mock::new(), identity_task_runner(), &concurrency, None);
 
         let message = Message::new_any_message("hello_world".to_string(), BTreeMap::new());
 
@@ -331,12 +336,8 @@ mod tests {
                 let next_step = Mock::new();
                 let counts = next_step.counts();
                 let concurrency = ConcurrencyConfig::new(2);
-                let mut strategy = RunTaskInThreads::new(
-                    next_step,
-                    Box::new(IdentityTaskRunner {}),
-                    &concurrency,
-                    None,
-                );
+                let mut strategy =
+                    RunTaskInThreads::new(next_step, identity_task_runner(), &concurrency, None);
 
                 let partition = Partition::new(Topic::new("topic"), 0);
 
