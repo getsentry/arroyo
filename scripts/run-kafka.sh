@@ -1,7 +1,7 @@
 #!/bin/sh
 
 docker run \
-    --name sentry_kafka \
+    --name arroyo_kafka \
     -d --network host \
     -e KAFKA_PROCESS_ROLES=broker,controller \
     -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:9093 \
@@ -13,6 +13,6 @@ docker run \
     -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT \
     -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
     -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
-    -e GROUP_COORDINATOR_REBALANCE_PROTOCOLS=classic,consumer \
-    -e TRANSACTION_PARTITION_VERIFICATION_ENABLE=false \
+    -e KAFKA_GROUP_COORDINATOR_REBALANCE_PROTOCOLS=classic,consumer \
+    -e KAFKA_TRANSACTION_PARTITION_VERIFICATION_ENABLE=false \
     confluentinc/cp-kafka:7.8.0
