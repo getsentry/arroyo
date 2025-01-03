@@ -56,7 +56,7 @@ where
     ) -> Self {
         let inner = RunTaskInThreads::new(
             next_step,
-            Box::new(ProduceMessage::new(producer, topic)),
+            ProduceMessage::new(producer, topic),
             concurrency,
             Some("produce"),
         );
