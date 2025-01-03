@@ -317,13 +317,16 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         ) -> None:
             self.__state = KafkaConsumerState.REVOKING
 
-            partitions = [Partition(Topic(i.topic), i.partition) for i in partitions]
+            arroyo_partitions = [Partition(Topic(i.topic), i.partition) for i in partitions]
 
             try:
                 if on_revoke is not None:
-                    on_revoke(partitions)
+                    on_revoke(arroyo_partitions)
             finally:
-                for partition in partitions:
+                if self.__is_incremental:
+                    self.__consumer.incremental_unassign(partitions)
+
+                for partition in arroyo_partitions:
                     # Staged offsets are deleted during partition revocation to
                     # prevent later committing offsets for partitions that are
                     # no longer owned by this consumer.

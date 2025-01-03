@@ -124,6 +124,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
         if self.kip_848:
             configuration["group.protocol"] = "consumer"
+            configuration["group.remote.assignor"] = "range"
             configuration.pop("session.timeout.ms")
             configuration.pop("max.poll.interval.ms", None)
             assert "group.protocol.type" not in configuration
@@ -271,7 +272,6 @@ class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
     cooperative_sticky = True
 
 
-@pytest.mark.skip("kip-848 not functional yet")
 class TestKafkaStreamsKip848(TestKafkaStreams):
     kip_848 = True
 
