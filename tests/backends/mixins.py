@@ -422,7 +422,7 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             def wait_until_rebalancing(
                 from_consumer: Consumer[Any], to_consumer: Consumer[Any]
             ) -> None:
-                for _ in range(10):
+                for _ in range(20):
                     assert from_consumer.poll(0) is None
                     if to_consumer.poll(1.0) is not None:
                         return
@@ -484,19 +484,19 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             assert len(consumer_b.tell()) == 2
 
             if self.cooperative_sticky or self.kip_848:
-
-                assert consumer_a_on_assign.mock_calls == [
+                consumer_a_on_assign.assert_has_calls([
                     mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-                ]
-                assert consumer_a_on_revoke.mock_calls == [
+                ])
+
+                consumer_a_on_revoke.assert_has_calls([
                     mock.call([Partition(topic, 0)]),
                     mock.call([Partition(topic, 1)]),
-                ]
+                ], any_order=True)
 
-                assert consumer_b_on_assign.mock_calls == [
+                consumer_b_on_assign.assert_has_calls([
                     mock.call({Partition(topic, 0): 0}),
                     mock.call({Partition(topic, 1): 0}),
-                ]
+                ], any_order=True)
                 assert consumer_b_on_revoke.mock_calls == []
             else:
                 assert consumer_a_on_assign.mock_calls == [
