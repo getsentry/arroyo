@@ -101,13 +101,15 @@ def test_kip848_e2e() -> None:
         signal.signal(signal.SIGINT, handler)
         signal.signal(signal.SIGTERM, handler)
 
-        def shutdown_after_2_seconds() -> None:
-            s = 2
-            time.sleep(s)
-            print(f"shutting down after {s} seconds")
+        def shutdown() -> None:
+            for i in range(100):
+                time.sleep(0.1)
+                if counter == 30:
+                    break
+            print("shutting down")
             processor.signal_shutdown()
 
-        t = threading.Thread(target=shutdown_after_2_seconds, daemon=True)
+        t = threading.Thread(target=shutdown, daemon=True)
         t.start()
 
         processor.run()
