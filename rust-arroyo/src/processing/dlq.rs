@@ -294,7 +294,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
                 dlq_policy,
                 dlq_limit_state: DlqLimitState::default(),
                 futures: BTreeMap::new(),
-                buffered_messages: buffered_messages,
+                buffered_messages,
             }
         });
         Self { inner }
@@ -438,7 +438,7 @@ impl<TPayload> BufferedMessages<TPayload> {
         Self::report_buffered_metrics(partition_index, buffered);
     }
 
-    fn report_buffered_metrics<T>(partition_index: u16, buffered: &mut VecDeque<T>) {
+    fn report_buffered_metrics<T>(partition_index: u16, buffered: &VecDeque<T>) {
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64,
