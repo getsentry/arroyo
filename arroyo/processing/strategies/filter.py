@@ -55,9 +55,9 @@ class FilterStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__next_step = next_step
 
         if commit_policy is not None:
-            self.__commit_policy_state: Optional[
-                CommitPolicyState
-            ] = commit_policy.get_state_machine()
+            self.__commit_policy_state: Optional[CommitPolicyState] = (
+                commit_policy.get_state_machine()
+            )
         else:
             self.__commit_policy_state = None
 

@@ -625,9 +625,9 @@ class RunTaskWithMultiprocessing(
         while self.__processes:
             try:
                 self.__check_for_results_impl(
-                    timeout=max(deadline - time.time(), 0)
-                    if deadline is not None
-                    else None
+                    timeout=(
+                        max(deadline - time.time(), 0) if deadline is not None else None
+                    )
                 )
             except NextStepTimeoutError:
                 if deadline is None or deadline > time.time():
