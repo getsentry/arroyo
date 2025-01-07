@@ -435,10 +435,10 @@ impl<TPayload> BufferedMessages<TPayload> {
         }
 
         buffered.push_back(message.clone());
-        Self::report_buffered_metrics(partition_index, buffered);
+        Self::report_partition_metrics(partition_index, buffered);
     }
 
-    fn report_buffered_metrics<T>(partition_index: u16, buffered: &VecDeque<T>) {
+    fn report_partition_metrics<T>(partition_index: u16, buffered: &VecDeque<T>) {
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64,
@@ -466,7 +466,7 @@ impl<TPayload> BufferedMessages<TPayload> {
             match message.offset.cmp(&offset) {
                 Ordering::Equal => {
                     let first = messages.pop_front();
-                    Self::report_buffered_metrics(partition.index, messages);
+                    Self::report_partition_metrics(partition.index, messages);
 
                     return first;
                 }
@@ -475,7 +475,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                 }
                 Ordering::Less => {
                     messages.pop_front();
-                    Self::report_buffered_metrics(partition.index, messages);
+                    Self::report_partition_metrics(partition.index, messages);
                 }
             };
         }
