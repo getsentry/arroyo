@@ -447,7 +447,7 @@ impl<TPayload> BufferedMessages<TPayload> {
 
         gauge!(
             "arroyo.consumer.dlq_buffer.len",
-            buffered.capacity() as u64,
+            buffered.len() as u64,
             "partition_id" => partition_index
         );
     }
