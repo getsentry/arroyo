@@ -435,10 +435,18 @@ impl<TPayload> BufferedMessages<TPayload> {
         }
 
         buffered.push_back(message.clone());
+        Self::report_buffered_metrics(partition_index, buffered);
+    }
 
-        // Number of elements that can be held in buffer deque without reallocating
+    fn report_buffered_metrics<T>(partition_index: u16, buffered: &mut VecDeque<T>) {
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
+            buffered.capacity() as u64,
+            "partition_id" => partition_index
+        );
+
+        gauge!(
+            "arroyo.consumer.dlq_buffer.len",
             buffered.capacity() as u64,
             "partition_id" => partition_index
         );
@@ -458,12 +466,7 @@ impl<TPayload> BufferedMessages<TPayload> {
             match message.offset.cmp(&offset) {
                 Ordering::Equal => {
                     let first = messages.pop_front();
-
-                    gauge!(
-                        "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64,
-                        "partition_id" => partition.index
-                    );
+                    Self::report_buffered_metrics(partition.index, messages);
 
                     return first;
                 }
@@ -472,12 +475,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                 }
                 Ordering::Less => {
                     messages.pop_front();
-
-                    gauge!(
-                        "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64,
-                        "partition_id" => partition.index
-                    );
+                    Self::report_buffered_metrics(partition.index, messages);
                 }
             };
         }
