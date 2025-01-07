@@ -52,7 +52,6 @@ def test_kip848_e2e() -> None:
         counter += 1
         return message
 
-
     class Strat(RunTask[Any, Any]):
         def join(self, *args: Any, **kwargs: Any) -> None:
             print("joining strategy, sleeping 5 seconds")
