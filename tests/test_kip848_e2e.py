@@ -69,7 +69,6 @@ def test_kip848_e2e() -> None:
         "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")
     }
 
-    # Produce 100 of messages for our consumer
     with get_topic(default_config, 2) as topic:
         producer = KafkaProducer(default_config)
 
