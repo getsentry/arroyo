@@ -84,7 +84,7 @@ def test_kip848_e2e() -> None:
         )
 
         consumer_config["group.protocol"] = "consumer"
-        consumer_config["partition.assignment.strategy"] = "cooperative-sticky"
+        consumer_config["group.remote.assignor"] = "range"
         consumer_config.pop("session.timeout.ms", None)
         consumer_config.pop("max.poll.interval.ms", None)
         consumer_config.pop("partition.assignment.strategy", None)
