@@ -11,10 +11,10 @@ import logging
 from typing import Iterator, Mapping
 
 from confluent_kafka.admin import AdminClient, NewTopic
-from arroyo.types import Message, Topic
+from arroyo.types import Commit, Message, Partition, Topic
 from arroyo.backends.kafka.configuration import build_kafka_consumer_configuration
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload
-from arroyo.processing.strategies import RunTask, CommitOffsets
+from arroyo.processing.strategies import RunTask, CommitOffsets, ProcessingStrategy
 from arroyo.processing.strategies.abstract import ProcessingStrategyFactory
 from arroyo.processing.processor import StreamProcessor
 from arroyo.backends.kafka import KafkaProducer
@@ -49,14 +49,14 @@ def print_msg(message: Message[Any]) -> Message[Any]:
     return message
 
 
-class Factory(ProcessingStrategyFactory):
-    def create_with_partitions(self, commit, partitions):
+class Factory(ProcessingStrategyFactory[KafkaPayload]):
+    def create_with_partitions(self, commit: Commit, partitions: Mapping[Partition, int]) -> ProcessingStrategy[KafkaPayload]:
         print("assign: ", [p.index for p in partitions])
         return Strat(print_msg, CommitOffsets(commit))
 
 
-class Strat(RunTask):
-    def join(self, *args, **kwargs):
+class Strat(RunTask[Any, Any]):
+    def join(self, *args: Any, **kwargs: Any) -> None:
         print("joining strategy, sleeping 5 seconds")
         time.sleep(5)
         print("joining strategy, sleeping 5 seconds -- DONE")
@@ -75,7 +75,7 @@ def test_kip848_e2e() -> None:
 
         with closing(producer):
             for i in range(100):
-                message = KafkaPayload(None, f"{i}", [])
+                message = KafkaPayload(None, i.to_bytes(1, "big"), [])
                 producer.produce(topic, message).result()
 
         consumer_config = build_kafka_consumer_configuration(
@@ -103,7 +103,7 @@ def test_kip848_e2e() -> None:
         signal.signal(signal.SIGINT, handler)
         signal.signal(signal.SIGTERM, handler)
 
-        def shutdown_randomly():
+        def shutdown_randomly() -> None:
             # s = random.randint(30, 120)
             s = 5  # tmp: shutdown after 5 seconds
             time.sleep(s)
