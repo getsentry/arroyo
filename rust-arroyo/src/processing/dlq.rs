@@ -15,7 +15,7 @@ use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
 // This is a per-partition max
-const MAX_PENDING_FUTURES: usize = 1000;
+const MAX_PENDING_FUTURES: usize = 2000;
 
 pub trait DlqProducer<TPayload>: Send + Sync {
     // Send a message to the DLQ.
@@ -294,7 +294,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
                 dlq_policy,
                 dlq_limit_state: DlqLimitState::default(),
                 futures: BTreeMap::new(),
-                buffered_messages: buffered_messages,
+                buffered_messages,
             }
         });
         Self { inner }
@@ -435,11 +435,19 @@ impl<TPayload> BufferedMessages<TPayload> {
         }
 
         buffered.push_back(message.clone());
+        Self::report_partition_metrics(partition_index, buffered);
+    }
 
-        // Number of elements that can be held in buffer deque without reallocating
+    fn report_partition_metrics<T>(partition_index: u16, buffered: &VecDeque<T>) {
         gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
             buffered.capacity() as u64,
+            "partition_id" => partition_index
+        );
+
+        gauge!(
+            "arroyo.consumer.dlq_buffer.len",
+            buffered.len() as u64,
             "partition_id" => partition_index
         );
     }
@@ -458,12 +466,7 @@ impl<TPayload> BufferedMessages<TPayload> {
             match message.offset.cmp(&offset) {
                 Ordering::Equal => {
                     let first = messages.pop_front();
-
-                    gauge!(
-                        "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64,
-                        "partition_id" => partition.index
-                    );
+                    Self::report_partition_metrics(partition.index, messages);
 
                     return first;
                 }
@@ -472,12 +475,7 @@ impl<TPayload> BufferedMessages<TPayload> {
                 }
                 Ordering::Less => {
                     messages.pop_front();
-
-                    gauge!(
-                        "arroyo.consumer.dlq_buffer.capacity",
-                        messages.capacity() as u64,
-                        "partition_id" => partition.index
-                    );
+                    Self::report_partition_metrics(partition.index, messages);
                 }
             };
         }

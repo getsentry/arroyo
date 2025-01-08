@@ -49,7 +49,7 @@ class InvalidMessage(Exception):
         offset: int,
         needs_commit: bool = True,
         reason: Optional[str] = None,
-        log_exception: bool = True
+        log_exception: bool = True,
     ) -> None:
         self.partition = partition
         self.offset = offset
@@ -208,7 +208,9 @@ class NoopDlqProducer(DlqProducer[Any]):
     """
 
     def produce(
-        self, value: BrokerValue[KafkaPayload], reason: Optional[str] = None,
+        self,
+        value: BrokerValue[KafkaPayload],
+        reason: Optional[str] = None,
     ) -> Future[BrokerValue[KafkaPayload]]:
         future: Future[BrokerValue[KafkaPayload]] = Future()
         future.set_running_or_notify_cancel()
@@ -340,7 +342,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
         self,
         policy: DlqPolicy[TStrategyPayload],
     ) -> None:
-        self.MAX_PENDING_FUTURES = 1000  # This is a per partition max
+        self.MAX_PENDING_FUTURES = 2000  # This is a per partition max
         self.__dlq_policy = policy
 
         self.__futures: MutableMapping[
@@ -362,7 +364,9 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
             self.__dlq_policy.limit, assignment
         )
 
-    def produce(self, message: BrokerValue[TStrategyPayload], reason: Optional[str] = None) -> None:
+    def produce(
+        self, message: BrokerValue[TStrategyPayload], reason: Optional[str] = None
+    ) -> None:
         """
         Removes all completed futures, then appends the given future to the list.
         Blocks if the list is full. If the DLQ limit is exceeded, an exception is raised.
