@@ -4,6 +4,8 @@ import time
 import contextlib
 from contextlib import closing
 import os
+import signal
+import threading
 import logging
 from typing import Iterator, Mapping
 
@@ -92,4 +94,23 @@ def test_kip848_e2e() -> None:
             consumer=consumer, topic=Topic(TOPIC), processor_factory=Factory()
         )
 
+        def handler(signum: int, frame: Any) -> None:
+            processor.signal_shutdown()
+
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
+        def shutdown() -> None:
+            for i in range(100):
+                time.sleep(0.1)
+                if counter == 30:
+                    break
+            print("shutting down")
+            processor.signal_shutdown()
+
+        t = threading.Thread(target=shutdown, daemon=True)
+        t.start()
+
         processor.run()
+
+        assert counter == 30
