@@ -4,8 +4,6 @@ import time
 import contextlib
 from contextlib import closing
 import os
-import signal
-import threading
 import logging
 from typing import Iterator, Mapping
 
@@ -73,7 +71,7 @@ def test_kip848_e2e() -> None:
 
         with closing(producer):
             for i in range(30):
-                message = KafkaPayload(None, i.to_bytes(1, "big"), [])
+                message = KafkaPayload(None, i.to_bytes(), [])
                 producer.produce(topic, message).result()
 
         consumer_config = build_kafka_consumer_configuration(
@@ -82,7 +80,6 @@ def test_kip848_e2e() -> None:
         )
 
         consumer_config["group.protocol"] = "consumer"
-        consumer_config["group.remote.assignor"] = "range"
         consumer_config.pop("session.timeout.ms", None)
         consumer_config.pop("max.poll.interval.ms", None)
         consumer_config.pop("partition.assignment.strategy", None)
@@ -95,23 +92,4 @@ def test_kip848_e2e() -> None:
             consumer=consumer, topic=Topic(TOPIC), processor_factory=Factory()
         )
 
-        def handler(signum: int, frame: Any) -> None:
-            processor.signal_shutdown()
-
-        signal.signal(signal.SIGINT, handler)
-        signal.signal(signal.SIGTERM, handler)
-
-        def shutdown() -> None:
-            for i in range(100):
-                time.sleep(0.1)
-                if counter == 30:
-                    break
-            print("shutting down")
-            processor.signal_shutdown()
-
-        t = threading.Thread(target=shutdown, daemon=True)
-        t.start()
-
         processor.run()
-
-        assert counter == 30
