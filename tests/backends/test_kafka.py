@@ -124,7 +124,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
         if self.kip_848:
             configuration["group.protocol"] = "consumer"
-            configuration["group.remote.assignor"] = "range"
             configuration.pop("session.timeout.ms")
             configuration.pop("max.poll.interval.ms", None)
             assert "group.protocol.type" not in configuration
