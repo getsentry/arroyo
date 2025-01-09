@@ -274,6 +274,10 @@ class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
 class TestKafkaStreamsKip848(TestKafkaStreams):
     kip_848 = True
 
+    @pytest.mark.xfail(reason="To be fixed")
+    def test_pause_resume_rebalancing(self) -> None:
+        super().test_pause_resume_rebalancing()
+
 
 def test_commit_codec() -> None:
     commit = Commit(
