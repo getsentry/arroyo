@@ -73,7 +73,7 @@ def test_kip848_e2e() -> None:
 
         with closing(producer):
             for i in range(30):
-                message = KafkaPayload(None, i.to_bytes(), [])
+                message = KafkaPayload(None, i.to_bytes(1), [])
                 producer.produce(topic, message).result()
 
         consumer_config = build_kafka_consumer_configuration(
