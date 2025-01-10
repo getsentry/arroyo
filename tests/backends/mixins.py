@@ -484,19 +484,27 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             assert len(consumer_b.tell()) == 2
 
             if self.cooperative_sticky or self.kip_848:
-                consumer_a_on_assign.assert_has_calls([
-                    mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-                ])
+                consumer_a_on_assign.assert_has_calls(
+                    [
+                        mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
+                    ]
+                )
 
-                consumer_a_on_revoke.assert_has_calls([
-                    mock.call([Partition(topic, 0)]),
-                    mock.call([Partition(topic, 1)]),
-                ], any_order=True)
+                consumer_a_on_revoke.assert_has_calls(
+                    [
+                        mock.call([Partition(topic, 0)]),
+                        mock.call([Partition(topic, 1)]),
+                    ],
+                    any_order=True,
+                )
 
-                consumer_b_on_assign.assert_has_calls([
-                    mock.call({Partition(topic, 0): 0}),
-                    mock.call({Partition(topic, 1): 0}),
-                ], any_order=True)
+                consumer_b_on_assign.assert_has_calls(
+                    [
+                        mock.call({Partition(topic, 0): 0}),
+                        mock.call({Partition(topic, 1): 0}),
+                    ],
+                    any_order=True,
+                )
                 assert consumer_b_on_revoke.mock_calls == []
             else:
                 assert consumer_a_on_assign.mock_calls == [

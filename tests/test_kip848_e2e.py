@@ -4,7 +4,6 @@ import time
 import contextlib
 from contextlib import closing
 import os
-import signal
 import threading
 import logging
 from typing import Iterator, Mapping
@@ -17,11 +16,11 @@ from arroyo.processing.strategies import RunTask, CommitOffsets, ProcessingStrat
 from arroyo.processing.strategies.abstract import ProcessingStrategyFactory
 from arroyo.processing.processor import StreamProcessor
 from arroyo.backends.kafka import KafkaProducer
-import pytest
 
 logging.basicConfig(level=logging.INFO)
 
 TOPIC = "test-kip848"
+
 
 @contextlib.contextmanager
 def get_topic(
@@ -61,7 +60,9 @@ def test_kip848_e2e() -> None:
             return super().join(*args, **kwargs)
 
     class Factory(ProcessingStrategyFactory[KafkaPayload]):
-        def create_with_partitions(self, commit: Commit, partitions: Mapping[Partition, int]) -> ProcessingStrategy[KafkaPayload]:
+        def create_with_partitions(
+            self, commit: Commit, partitions: Mapping[Partition, int]
+        ) -> ProcessingStrategy[KafkaPayload]:
             print("assign: ", [p.index for p in partitions])
             return Strat(print_msg, CommitOffsets(commit))
 
@@ -95,12 +96,6 @@ def test_kip848_e2e() -> None:
             consumer=consumer, topic=Topic(TOPIC), processor_factory=Factory()
         )
 
-        def handler(signum: int, frame: Any) -> None:
-            processor.signal_shutdown()
-
-        signal.signal(signal.SIGINT, handler)
-        signal.signal(signal.SIGTERM, handler)
-
         def shutdown() -> None:
             for i in range(100):
                 time.sleep(0.1)
@@ -109,7 +104,7 @@ def test_kip848_e2e() -> None:
             print("shutting down")
             processor.signal_shutdown()
 
-        t = threading.Thread(target=shutdown, daemon=True)
+        t = threading.Thread(target=shutdown)
         t.start()
 
         processor.run()

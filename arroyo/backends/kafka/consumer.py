@@ -157,12 +157,14 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.REQUEST_TIMED_OUT,
                 KafkaError.NOT_COORDINATOR,
                 KafkaError._WAIT_COORD,
-                KafkaError.STALE_MEMBER_EPOCH  # kip-848
+                KafkaError.STALE_MEMBER_EPOCH,  # kip-848
             ),
         )
 
         configuration = dict(configuration)
-        self.__is_cooperative_sticky = configuration.get("partition.assignment.strategy") == "cooperative-sticky"
+        self.__is_cooperative_sticky = (
+            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
+        )
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
         # This is a special flag that controls the auto offset behavior for
