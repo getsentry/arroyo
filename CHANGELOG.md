@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.19.10
+
+### Various fixes & improvements
+
+- fix: Rebalancing fixes for kip-848 (#419) by @lynnagara
+- update python versions (#421) by @lynnagara
+- ref(dlq): Report dlq buffer length as well (#420) by @untitaker
+- feat(run_task_in_threads): Allow passing closures, remove forced boxing (#418) by @untitaker
+- fix: increase dlq buffer size (#417) by @lynnagara
+
 ## 2.19.9
 
 ### Various fixes & improvements
