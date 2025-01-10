@@ -43,7 +43,6 @@ def get_topic(
         assert future.result() is None
 
 
-@pytest.mark.skip(reason="testing")
 def test_kip848_e2e() -> None:
     counter = 0
 
