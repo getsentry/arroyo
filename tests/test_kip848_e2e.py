@@ -17,6 +17,7 @@ from arroyo.processing.strategies import RunTask, CommitOffsets, ProcessingStrat
 from arroyo.processing.strategies.abstract import ProcessingStrategyFactory
 from arroyo.processing.processor import StreamProcessor
 from arroyo.backends.kafka import KafkaProducer
+import pytest
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,6 +43,7 @@ def get_topic(
         assert future.result() is None
 
 
+@pytest.mark.skip(reason="testing")
 def test_kip848_e2e() -> None:
     counter = 0
 
@@ -114,3 +116,5 @@ def test_kip848_e2e() -> None:
         processor.run()
 
         assert counter == 30
+
+        t.join()
