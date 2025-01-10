@@ -157,13 +157,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.REQUEST_TIMED_OUT,
                 KafkaError.NOT_COORDINATOR,
                 KafkaError._WAIT_COORD,
+                KafkaError.STALE_MEMBER_EPOCH,  # kip-848
             ),
         )
 
         configuration = dict(configuration)
-        self.__is_incremental = (
+        self.__is_cooperative_sticky = (
             configuration.get("partition.assignment.strategy") == "cooperative-sticky"
-            or configuration.get("group.protocol") == "consumer"
         )
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
@@ -463,7 +463,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             ConfluentTopicPartition(partition.topic.name, partition.index, offset)
             for partition, offset in offsets.items()
         ]
-        if self.__is_incremental:
+        if self.__is_cooperative_sticky:
             self.__consumer.incremental_assign(partitions)
         else:
             self.__consumer.assign(partitions)

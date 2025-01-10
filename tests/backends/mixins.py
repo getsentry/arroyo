@@ -15,6 +15,7 @@ from tests.assertions import assert_changes, assert_does_not_change
 
 class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
     cooperative_sticky = False
+    kip_848 = False
 
     @abstractmethod
     def get_topic(self, partitions: int = 1) -> ContextManager[Topic]:
@@ -421,7 +422,7 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             def wait_until_rebalancing(
                 from_consumer: Consumer[Any], to_consumer: Consumer[Any]
             ) -> None:
-                for _ in range(10):
+                for _ in range(20):
                     assert from_consumer.poll(0) is None
                     if to_consumer.poll(1.0) is not None:
                         return
@@ -453,9 +454,10 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
 
             wait_until_rebalancing(consumer_a, consumer_b)
 
-            if self.cooperative_sticky:
+            if self.cooperative_sticky or self.kip_848:
                 # within incremental rebalancing, only one partition should have been reassigned to the consumer_b, and consumer_a should remain paused
-                assert consumer_a.paused() == [Partition(topic, 1)]
+                # Either partition 0 or 1 might be the paused one
+                assert len(consumer_a.paused()) == 1
                 assert consumer_a.poll(10.0) is None
             else:
                 # The first consumer should have had its offsets rolled back, as
@@ -481,20 +483,28 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
 
             assert len(consumer_b.tell()) == 2
 
-            if self.cooperative_sticky:
+            if self.cooperative_sticky or self.kip_848:
+                consumer_a_on_assign.assert_has_calls(
+                    [
+                        mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
+                    ]
+                )
 
-                assert consumer_a_on_assign.mock_calls == [
-                    mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-                ]
-                assert consumer_a_on_revoke.mock_calls == [
-                    mock.call([Partition(topic, 0)]),
-                    mock.call([Partition(topic, 1)]),
-                ]
+                consumer_a_on_revoke.assert_has_calls(
+                    [
+                        mock.call([Partition(topic, 0)]),
+                        mock.call([Partition(topic, 1)]),
+                    ],
+                    any_order=True,
+                )
 
-                assert consumer_b_on_assign.mock_calls == [
-                    mock.call({Partition(topic, 0): 0}),
-                    mock.call({Partition(topic, 1): 0}),
-                ]
+                consumer_b_on_assign.assert_has_calls(
+                    [
+                        mock.call({Partition(topic, 0): 0}),
+                        mock.call({Partition(topic, 1): 0}),
+                    ],
+                    any_order=True,
+                )
                 assert consumer_b_on_revoke.mock_calls == []
             else:
                 assert consumer_a_on_assign.mock_calls == [

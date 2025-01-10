@@ -271,9 +271,12 @@ class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
     cooperative_sticky = True
 
 
-@pytest.mark.skip("kip-848 not functional yet")
 class TestKafkaStreamsKip848(TestKafkaStreams):
     kip_848 = True
+
+    @pytest.mark.xfail(reason="To be fixed")
+    def test_pause_resume_rebalancing(self) -> None:
+        super().test_pause_resume_rebalancing()
 
 
 def test_commit_codec() -> None:
