@@ -427,10 +427,10 @@ impl<TPayload> BufferedMessages<TPayload> {
         let buffered = self.buffered_messages.entry(message.partition).or_default();
         if let Some(max) = self.max_per_partition {
             if buffered.len() >= max {
-                // replace this logline with a metric, use a counter, add message.partition.index as a label
                 counter!(
                     "arroyo.consumer.dlq_buffer.exceeded",
                     1,
+
                     "partition_id" => message.partition.index
                 );
                 buffered.pop_front();
