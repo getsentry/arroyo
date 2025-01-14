@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.11
+
+### Various fixes & improvements
+
+- fix(inc-1003): use a metric instead of a logline (#422) by @volokluev
+
 ## 2.19.10
 
 ### Various fixes & improvements
