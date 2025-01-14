@@ -11,8 +11,8 @@ use tokio::task::JoinHandle;
 use crate::backends::kafka::producer::KafkaProducer;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
-use crate::gauge;
 use crate::counter;
+use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
 // This is a per-partition max
