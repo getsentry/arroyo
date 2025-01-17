@@ -100,5 +100,5 @@ MetricName = Literal[
     "arroyo.strategies.filter.dropped_messages",
     # Time: e2e time it takes to produce a message. Tagged by
     # physical topic name.
-    "arroyo.producer.produce_time",
+    "arroyo.producer.max_produce_time",
 ]

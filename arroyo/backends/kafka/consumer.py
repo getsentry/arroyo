@@ -658,6 +658,8 @@ class KafkaProducer(Producer[KafkaPayload]):
         # ``produce(...).result()`` could result in a deadlock.
         self.__result = execute(self.__worker, daemon=True)
         self.__metrics = get_metrics()
+        self.__last_produce_time_record = 0.0
+        self.__max_produce_time = 0.0
 
     def __worker(self) -> None:
         """
@@ -671,6 +673,23 @@ class KafkaProducer(Producer[KafkaPayload]):
             self.__producer.poll(0.1)
         self.__producer.flush()
 
+    def __record_produce_time(self, topic: str, start_time: float) -> None:
+        now = time.time()
+        duration = now - start_time
+        self.__max_produce_time = max(self.__max_produce_time, duration)
+
+        if now - self.__last_produce_time_record <= 0.1:
+            return
+
+        self.__metrics.timing(
+            "arroyo.producer.max_produce_time",
+            self.__max_produce_time,
+            tags={"topic": topic},
+        )
+
+        self.__max_produce_time = 0.0
+        self.__last_produce_time_record = now
+
     def __delivery_callback(
         self,
         future: Future[BrokerValue[KafkaPayload]],
@@ -679,11 +698,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         message: ConfluentMessage,
         start_produce_time: float,
     ) -> None:
-        self.__metrics.timing(
-            "arroyo.producer.produce_time",
-            time.time() - start_produce_time,
-            tags={"topic": message.topic()},
-        )
+        self.__record_produce_time(message.topic(), start_produce_time)
 
         if error is not None:
             future.set_exception(TransportError(error))
