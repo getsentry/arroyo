@@ -98,4 +98,7 @@ MetricName = Literal[
     "arroyo.processing.strategies.healthcheck.touch",
     # Counter: Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
+    # Time: e2e time it takes to produce a message. Tagged by
+    # physical topic name.
+    "arroyo.producer.produce_time",
 ]

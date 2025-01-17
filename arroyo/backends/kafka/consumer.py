@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import Future
 from datetime import datetime
 from enum import Enum
@@ -45,6 +46,7 @@ from arroyo.errors import (
 )
 from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
+from arroyo.utils.metrics import get_metrics
 from arroyo.utils.retries import BasicRetryPolicy
 
 logger = logging.getLogger(__name__)
@@ -655,6 +657,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         # are fired -- otherwise trying to produce "synchronously" via
         # ``produce(...).result()`` could result in a deadlock.
         self.__result = execute(self.__worker, daemon=True)
+        self.__metrics = get_metrics()
 
     def __worker(self) -> None:
         """
@@ -674,7 +677,14 @@ class KafkaProducer(Producer[KafkaPayload]):
         payload: KafkaPayload,
         error: KafkaError,
         message: ConfluentMessage,
+        start_produce_time: float,
     ) -> None:
+        self.__metrics.timing(
+            "arroyo.producer.produce_time",
+            time.time() - start_produce_time,
+            tags={"topic": message.topic()},
+        )
+
         if error is not None:
             future.set_exception(TransportError(error))
         else:
@@ -699,6 +709,8 @@ class KafkaProducer(Producer[KafkaPayload]):
         destination: Union[Topic, Partition],
         payload: KafkaPayload,
     ) -> Future[BrokerValue[KafkaPayload]]:
+        start_produce_time = time.time()
+
         if self.__shutdown_requested.is_set():
             raise RuntimeError("producer has been closed")
 
@@ -719,7 +731,9 @@ class KafkaProducer(Producer[KafkaPayload]):
             value=payload.value,
             key=payload.key,
             headers=payload.headers,
-            on_delivery=partial(self.__delivery_callback, future, payload),
+            on_delivery=partial(
+                self.__delivery_callback, future, payload, start_produce_time
+            ),
         )
         return future
 
