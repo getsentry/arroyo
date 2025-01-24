@@ -583,6 +583,7 @@ def test_dlq() -> None:
     assert dlq_policy.producer.produce.call_count == 1
 
 
+
 def test_healthcheck(tmpdir: py.path.local) -> None:
     """
     Test healthcheck strategy e2e with StreamProcessor, to ensure the
