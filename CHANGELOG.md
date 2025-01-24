@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.19.12
+
+### Various fixes & improvements
+
+- fix(inc-1013): Don't fail the consumer when the DLQ produce fails (#425) by @volokluev
+
 ## 2.19.11
 
 ### Various fixes & improvements
