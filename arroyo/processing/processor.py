@@ -84,6 +84,7 @@ ConsumerCounter = Literal[
     "arroyo.consumer.invalid_message.count",
     "arroyo.consumer.pause",
     "arroyo.consumer.resume",
+    "arroyo.consumer.dlq.dropped_messages",
 ]
 
 
@@ -377,7 +378,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 ) from None
 
             # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
-            self.__dlq_policy.produce(invalid_message, exc.reason)
+            try:
+                self.__dlq_policy.produce(invalid_message, exc.reason)
+            except Exception:
+                logger.exception(f"Failed to produce message (partition: {exc.partition} offset: {exc.offset}) to DLQ topic, dropping")
+                self.__metrics_buffer.incr_counter("arroyo.consumer.dlq.dropped_messages", 1)
 
             self.__metrics_buffer.incr_timing(
                 "arroyo.consumer.dlq.time", time.time() - start_dlq
