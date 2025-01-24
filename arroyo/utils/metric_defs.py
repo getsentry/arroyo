@@ -98,8 +98,7 @@ MetricName = Literal[
     "arroyo.processing.strategies.healthcheck.touch",
     # Counter: Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
-
-    # how many messages are dropped due to errors producing to the dlq
+    # Counter: how many messages are dropped due to errors producing to the dlq
     "arroyo.consumer.dlq.dropped_messages",
 
 ]
