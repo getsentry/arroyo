@@ -101,6 +101,5 @@ MetricName = Literal[
     # Counter: how many messages are dropped due to errors producing to the dlq
     "arroyo.consumer.dlq.dropped_messages",
     # Gauge: Current length of the DLQ buffer deque
-    "arroyo.consumer.dlq_buffer.len"
-
+    "arroyo.consumer.dlq_buffer.len",
 ]
