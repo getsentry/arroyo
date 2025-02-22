@@ -310,7 +310,7 @@ class BufferedMessages(Generic[TStrategyPayload]):
                 buffered.popleft()
 
         self.__buffered_messages[message.partition].append(message)
-        self.report_partition_metrics(message.partition)
+        self.report_partition_metrics(self.__buffered_messages[message.partition])
 
     def pop(
         self, partition: Partition, offset: int
