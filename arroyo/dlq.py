@@ -290,7 +290,7 @@ class BufferedMessages(Generic[TStrategyPayload]):
         ] = defaultdict(deque)
         self.__metrics = get_metrics()
 
-    def report_partition_metrics(self, buffered: Deque[BrokerValue[TStrategyPayload]]):
+    def report_partition_metrics(self, buffered: Deque[BrokerValue[TStrategyPayload]]) -> None:
 
         self.__metrics.gauge("arroyo.consumer.dlq_buffer.len", len(buffered))
 
