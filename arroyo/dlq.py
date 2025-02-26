@@ -28,6 +28,7 @@ from arroyo.types import (
     TStrategyPayload,
     Value,
 )
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,11 @@ class BufferedMessages(Generic[TStrategyPayload]):
         self.__buffered_messages: MutableMapping[
             Partition, Deque[BrokerValue[TStrategyPayload]]
         ] = defaultdict(deque)
+        self.__metrics = get_metrics()
+
+    def report_partition_metrics(self, buffered: Deque[BrokerValue[TStrategyPayload]]) -> None:
+
+        self.__metrics.gauge("arroyo.consumer.dlq_buffer.len", len(buffered))
 
     def append(self, message: BrokerValue[TStrategyPayload]) -> None:
         """
@@ -304,6 +310,7 @@ class BufferedMessages(Generic[TStrategyPayload]):
                 buffered.popleft()
 
         self.__buffered_messages[message.partition].append(message)
+        self.report_partition_metrics(self.__buffered_messages[message.partition])
 
     def pop(
         self, partition: Partition, offset: int
@@ -317,9 +324,14 @@ class BufferedMessages(Generic[TStrategyPayload]):
 
             while buffered:
                 if buffered[0].offset == offset:
-                    return buffered.popleft()
+                    msg = buffered.popleft()
+                    self.report_partition_metrics(buffered)
+                    return msg
                 if buffered[0].offset > offset:
+                    self.report_partition_metrics(buffered)
                     break
+
+                self.report_partition_metrics(buffered)
                 self.__buffered_messages[partition].popleft()
 
             return None
