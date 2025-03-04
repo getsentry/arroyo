@@ -3,7 +3,7 @@ from collections import deque
 from typing import Callable, Deque, Generic, Iterable, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
-from arroyo.types import BaseValue, FilteredPayload, Message
+from arroyo.types import BaseValue, FilteredPayload, Message, Value
 
 TInput = TypeVar("TInput")
 TOutput = TypeVar("TOutput")
@@ -17,8 +17,19 @@ class Unfold(
     messages submitting them one by one to the next step. The generated
     messages are created according to the generator function provided by the user.
 
+    ::
+
+        def generator(num: int) -> Sequence[Value[int]]:
+            return [Value(i, {}, None) for i in range(num)]
+
+        unfold = Unfold(generator, next_step)
+
     The generator function provided must return an iterable (i.e. a class that
     implements `__iter__` ).
+
+    The generator can choose to set its own committable on the return value. If
+    the `committable` is empty, `Unfold` will use the offsets of the
+    original message.
 
     If this step receives a `MessageRejected` exception from the next
     step it keeps the remaining messages and attempts to submit
@@ -53,6 +64,16 @@ class Unfold(
 
         for value in iterable:
             next_message = Message(value=value)
+            # If generator did not provide committable, patch our own
+            # committable onto it
+            if not next_message.committable:
+                next_message = Message(
+                    Value(
+                        next_message.payload,
+                        message.committable,
+                        next_message.timestamp,
+                    )
+                )
 
             if store_remaining_messages == False:
                 try:
