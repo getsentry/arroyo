@@ -58,15 +58,16 @@ class Unfold(
             )
             return
 
-        iterable = self.__generator(message.payload)
+        iterable = list(self.__generator(message.payload))
+        num_messages = len(iterable)
 
         store_remaining_messages = False
 
-        for value in iterable:
+        for i, value in enumerate(iterable):
             next_message = Message(value=value)
             # If generator did not provide committable, patch our own
             # committable onto it
-            if not next_message.committable:
+            if i == num_messages - 1 and not next_message.committable:
                 next_message = Message(
                     Value(
                         next_message.payload,

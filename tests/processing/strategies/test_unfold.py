@@ -23,7 +23,9 @@ def test_unfold() -> None:
     strategy.submit(message)
 
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, {PARTITION: 1}, NOW))),
+        # first message has no committable since the original message has not fully been processed
+        call(Message(Value(0, {}, NOW))),
+        # second message is last message from batch, so we can say the original msg was fully processed
         call(Message(Value(1, {PARTITION: 1}, NOW))),
     ]
 
@@ -44,7 +46,7 @@ def test_message_rejected() -> None:
 
     # Message doesn't actually go through since it was rejected
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, {PARTITION: 1}, NOW))),
+        call(Message(Value(0, {}, NOW))),
     ]
 
     # clear the side effect, both messages should be submitted now
@@ -53,7 +55,7 @@ def test_message_rejected() -> None:
     strategy.poll()
 
     assert next_step.submit.call_args_list == [
-        call(Message(Value(0, {PARTITION: 1}, NOW))),
+        call(Message(Value(0, {}, NOW))),
         call(Message(Value(1, {PARTITION: 1}, NOW))),
     ]
 
