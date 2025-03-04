@@ -17,7 +17,7 @@ repos:
       - id: fix-encoding-pragma
         args: ["--remove"]
   - repo: https://github.com/pycqa/flake8
-    rev: 3.8.4
+    rev: 5.0.4
     hooks:
       - id: flake8
         language_version: python3.12
@@ -42,4 +42,4 @@ repos:
         entry: rustfmt --edition 2021
         files: ^rust-arroyo/.*\.rs$
 default_language_version:
-  python: python3.12
+  python: python3.13
