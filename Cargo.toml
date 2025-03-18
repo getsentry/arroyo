@@ -1,6 +1,6 @@
 [package]
 name = "sentry_arroyo"
-version = "2.19.12"
+version = "2.20.0"
 authors = ["Sentry <oss@sentry.io>"]
 description = "A library for working with streaming data."
 repository = "https://github.com/getsentry/arroyo"

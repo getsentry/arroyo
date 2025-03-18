@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.20.0
+
+### Various fixes & improvements
+
+- fix(unfold): Do not forward empty committable (#427) by @untitaker
+- dlq: Add metrics on DLQ buffer to python-arroyo (#426) by @ayirr7
+
 ## 2.19.12
 
 ### Various fixes & improvements
