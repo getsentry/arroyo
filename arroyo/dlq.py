@@ -290,9 +290,15 @@ class BufferedMessages(Generic[TStrategyPayload]):
         ] = defaultdict(deque)
         self.__metrics = get_metrics()
 
-    def report_partition_metrics(self, buffered: Deque[BrokerValue[TStrategyPayload]]) -> None:
+    def report_partition_metrics(
+        self, buffered: Deque[BrokerValue[TStrategyPayload]], partition_index: int
+    ) -> None:
 
-        self.__metrics.gauge("arroyo.consumer.dlq_buffer.len", len(buffered))
+        self.__metrics.gauge(
+            "arroyo.consumer.dlq_buffer.len",
+            len(buffered),
+            tags={"partition_index": str(partition_index)},
+        )
 
     def append(self, message: BrokerValue[TStrategyPayload]) -> None:
         """
@@ -310,7 +316,9 @@ class BufferedMessages(Generic[TStrategyPayload]):
                 buffered.popleft()
 
         self.__buffered_messages[message.partition].append(message)
-        self.report_partition_metrics(self.__buffered_messages[message.partition])
+        self.report_partition_metrics(
+            self.__buffered_messages[message.partition], message.partition.index
+        )
 
     def pop(
         self, partition: Partition, offset: int
@@ -325,13 +333,13 @@ class BufferedMessages(Generic[TStrategyPayload]):
             while buffered:
                 if buffered[0].offset == offset:
                     msg = buffered.popleft()
-                    self.report_partition_metrics(buffered)
+                    self.report_partition_metrics(buffered, partition.index)
                     return msg
                 if buffered[0].offset > offset:
-                    self.report_partition_metrics(buffered)
+                    self.report_partition_metrics(buffered, partition.index)
                     break
 
-                self.report_partition_metrics(buffered)
+                self.report_partition_metrics(buffered, partition.index)
                 self.__buffered_messages[partition].popleft()
 
             return None
