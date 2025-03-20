@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.3
+
+### Various fixes & improvements
+
+- fix: fix logging for dlq buffer exceeded (#429) by @kylemumma
+
 ## 2.20.2
 
 ### Various fixes & improvements
