@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.2
+
+### Various fixes & improvements
+
+- feat: add partition_index tag to dlq metric (#428) by @kylemumma
+
 ## 2.20.0
 
 ### Various fixes & improvements
