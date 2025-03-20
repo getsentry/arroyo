@@ -310,8 +310,9 @@ class BufferedMessages(Generic[TStrategyPayload]):
         if self.__dlq_policy.max_buffered_messages_per_partition is not None:
             buffered = self.__buffered_messages[message.partition]
             if len(buffered) >= self.__dlq_policy.max_buffered_messages_per_partition:
-                logger.warning(
-                    f"DLQ buffer exceeded, dropping message on partition {message.partition.index}",
+                self.__metrics.increment(
+                    "arroyo.consumer.dlq_buffer.exceeded",
+                    tags={"partition_id": str(message.partition.index)},
                 )
                 buffered.popleft()
 
