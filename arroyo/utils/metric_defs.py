@@ -102,4 +102,6 @@ MetricName = Literal[
     "arroyo.consumer.dlq.dropped_messages",
     # Gauge: Current length of the DLQ buffer deque
     "arroyo.consumer.dlq_buffer.len",
+    # Counter: Number of times the DLQ buffer size has been exceeded, causing messages to be dropped
+    "arroyo.consumer.dlq_buffer.exceeded",
 ]
