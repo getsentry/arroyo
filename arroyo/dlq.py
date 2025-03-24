@@ -307,6 +307,11 @@ class BufferedMessages(Generic[TStrategyPayload]):
         if self.__dlq_policy is None:
             return
 
+        self.__metrics.gauge(
+            "arroyo.consumer.dlq_buffer.assigned_partitions",
+            len(self.__buffered_messages),
+        )
+
         if self.__dlq_policy.max_buffered_messages_per_partition is not None:
             buffered = self.__buffered_messages[message.partition]
             if len(buffered) >= self.__dlq_policy.max_buffered_messages_per_partition:
@@ -330,6 +335,11 @@ class BufferedMessages(Generic[TStrategyPayload]):
         """
         if self.__dlq_policy is not None:
             buffered = self.__buffered_messages[partition]
+
+            self.__metrics.gauge(
+                "arroyo.consumer.dlq_buffer.assigned_partitions",
+                len(self.__buffered_messages),
+            )
 
             while buffered:
                 if buffered[0].offset == offset:
