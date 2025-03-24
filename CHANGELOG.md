@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.4
+
+### Various fixes & improvements
+
+- metric: Track the number of partitions in the DLQ buffer (#430) by @ayirr7
+
 ## 2.20.3
 
 ### Various fixes & improvements
