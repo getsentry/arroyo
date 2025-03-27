@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.5
+
+### Various fixes & improvements
+
+- logger.warn is deprecated (#432) by @asottile-sentry
+
 ## 2.20.4
 
 ### Various fixes & improvements
