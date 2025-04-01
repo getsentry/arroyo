@@ -94,7 +94,7 @@ class Unfold(
                 self.__next_step.submit(message)
                 self.__pending.popleft()
             except MessageRejected:
-                pass
+                break
 
     def poll(self) -> None:
         self.__flush()

@@ -49,6 +49,13 @@ def test_message_rejected() -> None:
         call(Message(Value(0, {}, NOW))),
     ]
 
+    # poll again, to show that it does not block (regression)
+    strategy.poll()
+    assert next_step.submit.call_args_list == [
+        call(Message(Value(0, {}, NOW))),
+        call(Message(Value(0, {}, NOW))),
+    ]
+
     # clear the side effect, both messages should be submitted now
     next_step.submit.reset_mock(side_effect=True)
 
