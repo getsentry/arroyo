@@ -22,7 +22,7 @@ class _StrategyGuardAfter(BasicStrategy[TStrategyPayload]):
     def submit(self, message: BasicMessage[TStrategyPayload]) -> None:
         for partition, offset in message.committable.items():
             if self.__committable.setdefault(partition, offset) > offset:
-                logger.warn(
+                logger.warning(
                     "Submitted a message with committable {%s: %s}, "
                     "but we already submitted a message with a higher offset before.\n\n"
                     "Either Arroyo has a bug, or you are writing a custom "

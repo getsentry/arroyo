@@ -1,5 +1,42 @@
 # Changelog and versioning
 
+## 2.20.5
+
+### Various fixes & improvements
+
+- logger.warn is deprecated (#432) by @asottile-sentry
+
+## 2.20.4
+
+### Various fixes & improvements
+
+- metric: Track the number of partitions in the DLQ buffer (#430) by @ayirr7
+
+## 2.20.3
+
+### Various fixes & improvements
+
+- fix: fix logging for dlq buffer exceeded (#429) by @kylemumma
+
+## 2.20.2
+
+### Various fixes & improvements
+
+- feat: add partition_index tag to dlq metric (#428) by @kylemumma
+
+## 2.20.0
+
+### Various fixes & improvements
+
+- fix(unfold): Do not forward empty committable (#427) by @untitaker
+- dlq: Add metrics on DLQ buffer to python-arroyo (#426) by @ayirr7
+
+## 2.19.12
+
+### Various fixes & improvements
+
+- fix(inc-1013): Don't fail the consumer when the DLQ produce fails (#425) by @volokluev
+
 ## 2.19.11
 
 ### Various fixes & improvements

@@ -28,6 +28,7 @@ from arroyo.types import (
     TStrategyPayload,
     Value,
 )
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,17 @@ class BufferedMessages(Generic[TStrategyPayload]):
         self.__buffered_messages: MutableMapping[
             Partition, Deque[BrokerValue[TStrategyPayload]]
         ] = defaultdict(deque)
+        self.__metrics = get_metrics()
+
+    def report_partition_metrics(
+        self, buffered: Deque[BrokerValue[TStrategyPayload]], partition_index: int
+    ) -> None:
+
+        self.__metrics.gauge(
+            "arroyo.consumer.dlq_buffer.len",
+            len(buffered),
+            tags={"partition_index": str(partition_index)},
+        )
 
     def append(self, message: BrokerValue[TStrategyPayload]) -> None:
         """
@@ -295,15 +307,24 @@ class BufferedMessages(Generic[TStrategyPayload]):
         if self.__dlq_policy is None:
             return
 
+        self.__metrics.gauge(
+            "arroyo.consumer.dlq_buffer.assigned_partitions",
+            len(self.__buffered_messages),
+        )
+
         if self.__dlq_policy.max_buffered_messages_per_partition is not None:
             buffered = self.__buffered_messages[message.partition]
             if len(buffered) >= self.__dlq_policy.max_buffered_messages_per_partition:
-                logger.warning(
-                    f"DLQ buffer exceeded, dropping message on partition {message.partition.index}",
+                self.__metrics.increment(
+                    "arroyo.consumer.dlq_buffer.exceeded",
+                    tags={"partition_id": str(message.partition.index)},
                 )
                 buffered.popleft()
 
         self.__buffered_messages[message.partition].append(message)
+        self.report_partition_metrics(
+            self.__buffered_messages[message.partition], message.partition.index
+        )
 
     def pop(
         self, partition: Partition, offset: int
@@ -315,11 +336,21 @@ class BufferedMessages(Generic[TStrategyPayload]):
         if self.__dlq_policy is not None:
             buffered = self.__buffered_messages[partition]
 
+            self.__metrics.gauge(
+                "arroyo.consumer.dlq_buffer.assigned_partitions",
+                len(self.__buffered_messages),
+            )
+
             while buffered:
                 if buffered[0].offset == offset:
-                    return buffered.popleft()
+                    msg = buffered.popleft()
+                    self.report_partition_metrics(buffered, partition.index)
+                    return msg
                 if buffered[0].offset > offset:
+                    self.report_partition_metrics(buffered, partition.index)
                     break
+
+                self.report_partition_metrics(buffered, partition.index)
                 self.__buffered_messages[partition].popleft()
 
             return None

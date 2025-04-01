@@ -98,6 +98,14 @@ MetricName = Literal[
     "arroyo.processing.strategies.healthcheck.touch",
     # Counter: Number of messages dropped in the FilterStep strategy
     "arroyo.strategies.filter.dropped_messages",
+    # Counter: how many messages are dropped due to errors producing to the dlq
+    "arroyo.consumer.dlq.dropped_messages",
+    # Gauge: Current length of the DLQ buffer deque
+    "arroyo.consumer.dlq_buffer.len",
+    # Counter: Number of times the DLQ buffer size has been exceeded, causing messages to be dropped
+    "arroyo.consumer.dlq_buffer.exceeded",
+    # Gauge: Number of partitions being tracked in the DLQ buffer
+    "arroyo.consumer.dlq_buffer.assigned_partitions",
     # Time: e2e time it takes to produce a message. Tagged by
     # physical topic name.
     "arroyo.producer.max_produce_time",
