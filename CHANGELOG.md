@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.20.6
+
+### Various fixes & improvements
+
+- fix(unfold): Do not block forever on backpressure (#433) by @untitaker
+- chore: Add streaming-platform to CODEOWNERS (#436) by @untitaker
+- fix(devenv): Allow run-kafka.sh to run on macos (#424) by @untitaker
+
 ## 2.20.5
 
 ### Various fixes & improvements
