@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 BACKPRESSURE_THRESHOLD = 5.0  # In seconds
+LOGGING_FREQUENCY_SEC = 60.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -168,6 +169,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__dlq_policy: Optional[DlqPolicyWrapper[TStrategyPayload]] = (
             DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
+
+        self.__last_run_log_ts = time.time()
+        self.__last_pause_ts = time.time()
+        self.__last_empty_msg_ts = time.time()
 
         def _close_strategy() -> None:
             start_close = time.time()
@@ -395,6 +400,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
 
+        if time.time() - self.__last_run_log_ts >= LOGGING_FREQUENCY_SEC:
+            logger.info("Arroyo consumer _run_once loop started")
+            self.__last_run_log_ts = time.time()
+
         message_carried_over = self.__message is not None
 
         if not message_carried_over:
@@ -408,6 +417,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 self.__metrics_buffer.incr_timing(
                     "arroyo.consumer.poll.time", time.time() - start_poll
                 )
+
+                if self.__message is None and not self.__is_paused:
+                    if time.time() - self.__last_empty_msg_ts >= LOGGING_FREQUENCY_SEC:
+                        logger.info("Consumer is not paused, but did not receive a message from underlying consumer")
+                        self.__last_empty_msg_ts = time.time()
+
             except RecoverableError:
                 return
 
@@ -477,6 +492,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
                             assert self.__consumer.poll(0.1) is None
+
+                            if time.time() - self.__last_pause_ts >= LOGGING_FREQUENCY_SEC:
+                                logger.info("Consumer is paused, polling")
+                                self.__last_pause_ts = time.time()
                     else:
                         time.sleep(0.01)
 
