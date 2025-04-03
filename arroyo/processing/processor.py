@@ -144,9 +144,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
-            None
-        )
+        self.__processing_strategy: Optional[
+            ProcessingStrategy[TStrategyPayload]
+        ] = None
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
@@ -381,8 +381,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
             try:
                 self.__dlq_policy.produce(invalid_message, exc.reason)
             except Exception:
-                logger.exception(f"Failed to produce message (partition: {exc.partition} offset: {exc.offset}) to DLQ topic, dropping")
-                self.__metrics_buffer.incr_counter("arroyo.consumer.dlq.dropped_messages", 1)
+                logger.exception(
+                    f"Failed to produce message (partition: {exc.partition} offset: {exc.offset}) to DLQ topic, dropping"
+                )
+                self.__metrics_buffer.incr_counter(
+                    "arroyo.consumer.dlq.dropped_messages", 1
+                )
 
             self.__metrics_buffer.incr_timing(
                 "arroyo.consumer.dlq.time", time.time() - start_dlq
