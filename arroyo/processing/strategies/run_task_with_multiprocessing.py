@@ -581,7 +581,7 @@ class RunTaskWithMultiprocessing(
                 self.__metrics.increment("sigchld.detected")
                 raise ChildProcessTerminated(signum)
 
-        signal.signal(signal.SIGCHLD, handle_sigchld)
+        self.original_sigchld = signal.signal(signal.SIGCHLD, handle_sigchld)
 
     def __submit_batch(self, input_block_too_small: bool) -> None:
         assert self.__batch_builder is not None
@@ -839,14 +839,19 @@ class RunTaskWithMultiprocessing(
             # compression.)
             self.__batch_builder.append(message)
 
-    def close(self) -> None:
+    def _do_close(self) -> None:
         self.__closed = True
+
+        signal.signal(signal.SIGCHLD, self.original_sigchld)
+
+    def close(self) -> None:
+        self._do_close()
 
         if self.__batch_builder is not None and len(self.__batch_builder) > 0:
             self.__submit_batch(False)
 
     def terminate(self) -> None:
-        self.__closed = True
+        self._do_close()
 
         logger.info("Terminating %r...", self.__pool)
 

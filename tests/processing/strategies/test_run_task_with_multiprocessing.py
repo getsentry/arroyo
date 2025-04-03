@@ -1,8 +1,9 @@
 import multiprocessing
+import signal
 import time
 from datetime import datetime
 from multiprocessing.managers import SharedMemoryManager
-from typing import Any
+from typing import Any, Generator
 from unittest.mock import Mock, call
 
 import pytest
@@ -23,6 +24,12 @@ from tests.metrics import Gauge as GaugeCall
 from tests.metrics import Increment as IncrementCall
 from tests.metrics import TestingMetricsBackend
 from tests.metrics import Timing as TimingCall
+
+
+@pytest.fixture(autouse=True)
+def does_not_leak_sigchild_handler() -> Generator[None, None, None]:
+    yield
+    assert isinstance(signal.getsignal(signal.SIGCHLD), int)
 
 
 def test_message_batch() -> None:
