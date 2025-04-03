@@ -418,6 +418,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     "arroyo.consumer.poll.time", time.time() - start_poll
                 )
 
+                # Records a log if the consumer has been active but receiving no message from poll() for longer than a threshold duration
                 if self.__message is None and not self.__is_paused:
                     if time.time() - self.__last_empty_msg_ts >= LOGGING_FREQUENCY_SEC:
                         logger.info("Consumer is not paused, but did not receive a message from underlying consumer")
@@ -438,6 +439,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 "arroyo.consumer.processing.time", time.time() - start_poll
             )
             if self.__message is not None:
+
+                # Reset the timer
+                self.__last_empty_msg_ts = time.time()
                 try:
                     start_submit = time.time()
                     message = (
@@ -482,6 +486,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 paused_partitions,
                             )
                             self.__is_paused = False
+
+                            # Reset if we unpause
+                            self.__last_pause_ts = time.time()
                             # unpause paused partitions... just in case a subset is paused
                             self.__metrics_buffer.incr_counter(
                                 "arroyo.consumer.resume", 1
@@ -493,6 +500,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # Polling a paused consumer should never yield a message.
                             assert self.__consumer.poll(0.1) is None
 
+                            # Records a log if the consumer has been paused for longer than a threshold duration
                             if time.time() - self.__last_pause_ts >= LOGGING_FREQUENCY_SEC:
                                 logger.info("Consumer is paused, polling")
                                 self.__last_pause_ts = time.time()
@@ -508,6 +516,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__metrics_buffer.incr_counter("arroyo.consumer.resume", 1)
                         self.__consumer.resume([*self.__consumer.tell().keys()])
                         self.__is_paused = False
+                        # Reset the timer since we unpaused
+                        self.__last_pause_ts = time.time()
 
                     # Clear backpressure timestamp if it is set
                     self._clear_backpressure()
