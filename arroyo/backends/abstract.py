@@ -220,7 +220,7 @@ class SimpleProducerFuture(Generic[T]):
         self.result_exception: Exception | None = None
 
     def done(self) -> bool:
-        return self.result_value is not None
+        return self.result_value is not None and self.result_exception is not None
 
     def result(self, timeout: float | None = None) -> T:
         if self.result_exception is not None:
@@ -231,6 +231,10 @@ class SimpleProducerFuture(Generic[T]):
         else:
             deadline = None
 
+        # This implementation is bogus and shouldn't be used in production,
+        # only in tests at most. It is only here for the sake of implementing
+        # the contract. If you really need result with timeout>0, you should
+        # use the stdlib future.
         while deadline is None or time.time() < deadline:
             if self.result_value is not None:
                 return self.result_value
