@@ -223,9 +223,6 @@ class SimpleProducerFuture(Generic[T]):
         return self.result_value is not None or self.result_exception is not None
 
     def result(self, timeout: float | None = None) -> T:
-        if self.result_exception is not None:
-            raise self.result_exception
-
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -236,6 +233,8 @@ class SimpleProducerFuture(Generic[T]):
         # the contract. If you really need result with timeout>0, you should
         # use the stdlib future.
         while deadline is None or time.time() < deadline:
+            if self.result_exception is not None:
+                raise self.result_exception
             if self.result_value is not None:
                 return self.result_value
             time.sleep(0.1)

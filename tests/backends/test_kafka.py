@@ -132,7 +132,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
         return KafkaConsumer(configuration)
 
     def get_producer(self) -> KafkaProducer:
-        return KafkaProducer(self.configuration)
+        return KafkaProducer(self.configuration, use_simple_futures=True)
 
     def get_payloads(self) -> Iterator[KafkaPayload]:
         for i in itertools.count():
