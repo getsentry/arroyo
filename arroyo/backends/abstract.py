@@ -220,7 +220,7 @@ class SimpleProducerFuture(Generic[T]):
         self.result_exception: Exception | None = None
 
     def done(self) -> bool:
-        return self.result_value is not None and self.result_exception is not None
+        return self.result_value is not None or self.result_exception is not None
 
     def result(self, timeout: float | None = None) -> T:
         if self.result_exception is not None:
