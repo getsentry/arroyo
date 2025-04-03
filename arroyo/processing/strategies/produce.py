@@ -1,10 +1,9 @@
 import logging
 import time
 from collections import deque
-from concurrent.futures import Future
 from typing import Deque, Optional, Tuple, Union
 
-from arroyo.backends.abstract import Producer
+from arroyo.backends.abstract import Producer, ProducerFuture
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import (
     BrokerValue,
@@ -52,7 +51,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         self.__queue: Deque[
             Tuple[
                 Message[Union[FilteredPayload, TStrategyPayload]],
-                Optional[Future[BrokerValue[TStrategyPayload]]],
+                Optional[ProducerFuture[BrokerValue[TStrategyPayload]]],
             ]
         ] = deque()
 
@@ -92,7 +91,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         if len(self.__queue) >= self.__max_buffer_size:
             raise MessageRejected
 
-        future: Optional[Future[BrokerValue[TStrategyPayload]]] = None
+        future: Optional[ProducerFuture[BrokerValue[TStrategyPayload]]] = None
 
         if not isinstance(message.payload, FilteredPayload):
             try:

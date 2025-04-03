@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
-from typing import Callable, Generic, Mapping, Optional, Sequence, Union
+from typing import (
+    Callable,
+    Generic,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    TypeVar,
+    Union,
+)
 
 from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -175,11 +187,72 @@ class Consumer(Generic[TStrategyPayload], ABC):
         raise NotImplementedError
 
 
+class ProducerFuture(Protocol, Generic[T]):
+    """
+    An abstract interface for a kind of Future. Stdlib futures are too slow to
+    construct, so we use these.
+    """
+
+    def done(self) -> bool:
+        ...
+
+    def result(self, timeout: float | None = None) -> T:
+        """
+        Return result or raise exception. May block, but does not have to.
+        """
+        ...
+
+    def set_result(self, result: T) -> None:
+        ...
+
+    def set_exception(self, exception: Exception) -> None:
+        ...
+
+
+class SimpleProducerFuture(Generic[T]):
+    """
+    A stub for concurrent.futures.Future that does not construct any Condition
+    variables, therefore is faster to construct.
+    """
+
+    def __init__(self) -> None:
+        self.result_value: T | None = None
+        self.result_exception: Exception | None = None
+
+    def done(self) -> bool:
+        return self.result_value is not None or self.result_exception is not None
+
+    def result(self, timeout: float | None = None) -> T:
+        if timeout is not None:
+            deadline = time.time() + timeout
+        else:
+            deadline = None
+
+        # This implementation is bogus and shouldn't be used in production,
+        # only in tests at most. It is only here for the sake of implementing
+        # the contract. If you really need result with timeout>0, you should
+        # use the stdlib future.
+        while deadline is None or time.time() < deadline:
+            if self.result_exception is not None:
+                raise self.result_exception
+            if self.result_value is not None:
+                return self.result_value
+            time.sleep(0.1)
+
+        raise TimeoutError()
+
+    def set_result(self, result: T) -> None:
+        self.result_value = result
+
+    def set_exception(self, exception: Exception) -> None:
+        self.result_exception = exception
+
+
 class Producer(Generic[TStrategyPayload], ABC):
     @abstractmethod
     def produce(
         self, destination: Union[Topic, Partition], payload: TStrategyPayload
-    ) -> Future[BrokerValue[TStrategyPayload]]:
+    ) -> ProducerFuture[BrokerValue[TStrategyPayload]]:
         """
         Produce to a topic or partition.
         """
