@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.7
+
+### Various fixes & improvements
+
+- ref(produce): Add faster way to produce (#438) by @untitaker
+
 ## 2.20.6
 
 ### Various fixes & improvements
