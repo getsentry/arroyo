@@ -421,7 +421,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 # Records a log if the consumer has been active but receiving no message from poll() for longer than a threshold duration
                 if self.__message is None and not self.__is_paused:
                     if time.time() - self.__last_empty_msg_ts >= LOGGING_FREQUENCY_SEC:
-                        logger.info("Consumer is not paused, but did not receive a message from underlying consumer")
+                        logger.info(f"Consumer is not paused and did not receive a message from underlying consumer for {LOGGING_FREQUENCY_SEC} seconds")
                         self.__last_empty_msg_ts = time.time()
 
             except RecoverableError:
@@ -502,7 +502,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
                             # Records a log if the consumer has been paused for longer than a threshold duration
                             if time.time() - self.__last_pause_ts >= LOGGING_FREQUENCY_SEC:
-                                logger.info("Consumer is paused, polling")
+                                logger.info(f"Consumer has been paused for {LOGGING_FREQUENCY_SEC} seconds")
                                 self.__last_pause_ts = time.time()
                     else:
                         time.sleep(0.01)
