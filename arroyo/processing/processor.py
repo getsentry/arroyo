@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 BACKPRESSURE_THRESHOLD = 5.0  # In seconds
-LOGGING_FREQUENCY_SEC = 60.0  # In seconds
+LOGGING_FREQUENCY_SEC = 180.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -170,9 +170,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
             DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
 
-        self.__last_run_log_ts = time.time()
-        self.__last_pause_ts = time.time()
-        self.__last_empty_msg_ts = time.time()
+        self.__last_run_log_ts = time.time()  # This is for throttling the logging of each run loop per-consumer
+        self.__last_pause_ts = None
+        self.__last_empty_msg_ts = None
 
         def _close_strategy() -> None:
             start_close = time.time()
@@ -418,11 +418,24 @@ class StreamProcessor(Generic[TStrategyPayload]):
                     "arroyo.consumer.poll.time", time.time() - start_poll
                 )
 
-                # Records a log if the consumer has been active but receiving no message from poll() for longer than a threshold duration
-                if self.__message is None and not self.__is_paused:
-                    if time.time() - self.__last_empty_msg_ts >= LOGGING_FREQUENCY_SEC:
-                        logger.info(f"Consumer is not paused and did not receive a message from underlying consumer for {LOGGING_FREQUENCY_SEC} seconds")
-                        self.__last_empty_msg_ts = time.time()
+                if self.__message is None:
+                    if not self.__is_paused:
+                        if self.__last_empty_msg_ts is None:
+                            self.__last_empty_msg_ts = time.time()
+
+                        # Records a log if the consumer has been active but receiving no message from poll() for longer than a threshold duration
+                        if time.time() - self.__last_empty_msg_ts >= LOGGING_FREQUENCY_SEC:
+                            logger.info(f"Consumer is not paused but did not receive a message from underlying consumer for {LOGGING_FREQUENCY_SEC} seconds")
+                            self.__last_empty_msg_ts = time.time()
+
+                    else:
+                        if self.__last_pause_ts is None:
+                            self.__last_pause_ts = time.time()
+
+                        # Records a log if the consumer has been paused for longer than a threshold duration
+                        if time.time() - self.__last_pause_ts >= LOGGING_FREQUENCY_SEC:
+                            logger.info(f"Consumer has been paused for {LOGGING_FREQUENCY_SEC} seconds")
+                            self.__last_pause_ts = time.time()
 
             except RecoverableError:
                 return
@@ -441,7 +454,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             if self.__message is not None:
 
                 # Reset the timer
-                self.__last_empty_msg_ts = time.time()
+                self.__last_empty_msg_ts = None
                 try:
                     start_submit = time.time()
                     message = (
@@ -488,7 +501,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             self.__is_paused = False
 
                             # Reset if we unpause
-                            self.__last_pause_ts = time.time()
+                            self.__last_pause_ts = None
                             # unpause paused partitions... just in case a subset is paused
                             self.__metrics_buffer.incr_counter(
                                 "arroyo.consumer.resume", 1
@@ -499,11 +512,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
                             assert self.__consumer.poll(0.1) is None
-
-                            # Records a log if the consumer has been paused for longer than a threshold duration
-                            if time.time() - self.__last_pause_ts >= LOGGING_FREQUENCY_SEC:
-                                logger.info(f"Consumer has been paused for {LOGGING_FREQUENCY_SEC} seconds")
-                                self.__last_pause_ts = time.time()
                     else:
                         time.sleep(0.01)
 
@@ -517,7 +525,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__consumer.resume([*self.__consumer.tell().keys()])
                         self.__is_paused = False
                         # Reset the timer since we unpaused
-                        self.__last_pause_ts = time.time()
+                        self.__last_pause_ts = None
 
                     # Clear backpressure timestamp if it is set
                     self._clear_backpressure()
