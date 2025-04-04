@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.8
+
+### Various fixes & improvements
+
+- avoid leaking SIGCHLD handler in RunTaskWithMultiprocessing (#440) by @asottile-sentry
+
 ## 2.20.7
 
 ### Various fixes & improvements
