@@ -678,8 +678,8 @@ def test_processor_pause_with_invalid_message() -> None:
     # The next poll returns nothing, but we are still carrying over the rejected message
     processor._run_once()
     assert consumer.poll.return_value is None
-    assert processor._StreamProcessor__is_paused is True
-    assert processor._StreamProcessor__message is not None
+    assert processor.__is_paused is True
+    assert processor.__message is not None
 
     # At this point, let's say the message carried over is invalid (e.g. it could be stale)
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
