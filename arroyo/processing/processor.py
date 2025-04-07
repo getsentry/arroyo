@@ -171,8 +171,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         self.__last_run_log_ts = time.time()  # This is for throttling the logging of each run loop per-consumer
-        self.__last_pause_ts = None
-        self.__last_empty_msg_ts = None
+        self.__last_pause_ts: Optional[float] = None
+        self.__last_empty_msg_ts: Optional[float] = None
 
         def _close_strategy() -> None:
             start_close = time.time()
