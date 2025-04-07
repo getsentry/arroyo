@@ -657,15 +657,15 @@ def test_processor_pause_with_invalid_message() -> None:
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
-        assert processor._StreamProcessor__message == message.value
+        assert processor.__message == message.value
 
         with mock.patch("time.time", return_value=time.time() + 5):
             processor._run_once()  # Should pause now
 
     # Consumer is in paused state
-    assert processor._StreamProcessor__is_paused is True
+    assert processor.__is_paused is True
     # The same rejected message should be carried over
-    assert processor._StreamProcessor__message is not None
+    assert processor.__message is not None
 
     # All partitions are paused
     consumer.paused.return_value = set(p for p in offsets)
@@ -685,24 +685,24 @@ def test_processor_pause_with_invalid_message() -> None:
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
 
     processor._run_once()
-    assert processor._StreamProcessor__is_paused is True
+    assert processor.__is_paused is True
     assert consumer.resume.call_count == 0
 
     # The processor no longer has a message to keep track of
     # Now we have no message being carried over
-    assert processor._StreamProcessor__message is None
+    assert processor.__message is None
 
     # Nothing gets submitted, processor is stuck
     # We ran the processor loop 4 times up to this point
     with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
         processor._run_once()
 
-    assert processor._StreamProcessor__message is None
-    assert processor._StreamProcessor__is_paused is True
+    assert processor.__message is None
+    assert processor.__is_paused is True
     assert consumer.resume.call_count == 0
 
     # Nothing gets submitted, processor is stuck
     with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
         processor._run_once()
 
-    assert processor._StreamProcessor__is_paused == True
+    assert processor.__is_paused == True
