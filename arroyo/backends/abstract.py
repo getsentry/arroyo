@@ -4,16 +4,7 @@ import logging
 import time
 from abc import ABC, abstractmethod, abstractproperty
 from concurrent.futures import Future
-from typing import (
-    Callable,
-    Generic,
-    Mapping,
-    Optional,
-    Protocol,
-    Sequence,
-    TypeVar,
-    Union,
-)
+from typing import Callable, Generic, Mapping, Optional, Sequence, TypeVar, Union
 
 from arroyo.types import BrokerValue, Partition, Topic, TStrategyPayload
 
@@ -187,32 +178,11 @@ class Consumer(Generic[TStrategyPayload], ABC):
         raise NotImplementedError
 
 
-class ProducerFuture(Protocol, Generic[T]):
-    """
-    An abstract interface for a kind of Future. Stdlib futures are too slow to
-    construct, so we use these.
-    """
-
-    def done(self) -> bool:
-        ...
-
-    def result(self, timeout: float | None = None) -> T:
-        """
-        Return result or raise exception. May block, but does not have to.
-        """
-        ...
-
-    def set_result(self, result: T) -> None:
-        ...
-
-    def set_exception(self, exception: Exception) -> None:
-        ...
-
-
 class SimpleProducerFuture(Generic[T]):
     """
     A stub for concurrent.futures.Future that does not construct any Condition
-    variables, therefore is faster to construct.
+    variables, therefore is faster to construct. However, some methods are
+    missing, and result() in particular is not efficient with timeout > 0.
     """
 
     def __init__(self) -> None:
@@ -232,6 +202,10 @@ class SimpleProducerFuture(Generic[T]):
         # only in tests at most. It is only here for the sake of implementing
         # the contract. If you really need result with timeout>0, you should
         # use the stdlib future.
+        #
+        # If this becomes performance sensitive, we can potentially implement
+        # something more sophisticated such as lazily creating the condition
+        # variable, and synchronizing the creation of that using a global lock.
         while deadline is None or time.time() < deadline:
             if self.result_exception is not None:
                 raise self.result_exception
@@ -246,6 +220,9 @@ class SimpleProducerFuture(Generic[T]):
 
     def set_exception(self, exception: Exception) -> None:
         self.result_exception = exception
+
+
+ProducerFuture = SimpleProducerFuture[T] | Future[T]
 
 
 class Producer(Generic[TStrategyPayload], ABC):
