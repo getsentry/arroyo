@@ -763,3 +763,48 @@ def test_processor_poll_while_paused() -> None:
 
     processor._run_once()
     assert strategy.submit.call_args_list[-1] == mock.call(new_message)
+
+
+def test_stuck_detector() -> None:
+    """Test that stuck detector emits a metric when strategy blocks."""
+    import threading
+
+    topic = Topic("topic")
+    partition = Partition(topic, 0)
+
+    consumer = mock.Mock()
+    consumer.tell.return_value = {}
+
+    strategy = mock.Mock()
+    real_sleep = time.sleep
+    strategy.submit.side_effect = lambda msg: real_sleep(0.5)
+
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    TestingMetricsBackend.calls.clear()
+
+    with mock.patch("time.sleep", side_effect=lambda s: real_sleep(0.01)):
+        processor: StreamProcessor[int] = StreamProcessor(
+            consumer, topic, factory, IMMEDIATE, stuck_detector_timeout=2
+        )
+
+        assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
+        assignment_callback({partition: 0})
+
+        consumer.poll.return_value = BrokerValue(0, partition, 0, datetime.now())
+
+        run_thread = threading.Thread(target=processor._run_once)
+        run_thread.start()
+
+        real_sleep(0.5)
+
+        stuck_metrics = [
+            call
+            for call in TestingMetricsBackend.calls
+            if isinstance(call, Increment) and call.name == "arroyo.consumer.stuck"
+        ]
+        assert len(stuck_metrics) == 1
+        assert stuck_metrics[0].value == 1
+
+        run_thread.join(timeout=2)
