@@ -222,7 +222,7 @@ class SimpleProducerFuture(Generic[T]):
         self.result_exception = exception
 
 
-ProducerFuture = SimpleProducerFuture[T] | Future[T]
+ProducerFuture = Union[SimpleProducerFuture[T], Future[T]]
 
 
 class Producer(Generic[TStrategyPayload], ABC):
