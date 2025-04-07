@@ -657,7 +657,7 @@ def test_processor_pause_with_invalid_message() -> None:
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
-        assert processor.StreamProcessor__message == message.value
+        assert processor.StreamProcessor__message == message.value  # type: ignore
 
         with mock.patch("time.time", return_value=time.time() + 5):
             processor._run_once()  # Should pause now
