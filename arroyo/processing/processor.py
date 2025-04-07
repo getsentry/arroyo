@@ -483,6 +483,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 except InvalidMessage as e:
                     self._handle_invalid_message(e)
 
+                    if self.__is_paused:
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.resume", 1)
+                        self.__consumer.resume([*self.__consumer.tell().keys()])
+                        self.__is_paused = False
+
                 else:
                     # Resume if we are currently in a paused state
                     if self.__is_paused:
