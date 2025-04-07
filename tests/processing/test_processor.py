@@ -684,14 +684,16 @@ def test_processor_pause_with_invalid_message() -> None:
     # At this point, let's say the message carried over is invalid (e.g. it could be stale)
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
 
-    # Once the message is accepted by the processing strategy, the consumer
-    # should be resumed.
+    # Handles the invalid message and unpauses the consumer
     with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
         processor._run_once()
 
-    assert processor._StreamProcessor__is_paused is False # type: ignore
+    assert processor._StreamProcessor__is_paused is False  # type: ignore
+
+    # Handling the invalid message also means clearing the tracking of current message in the processor
     assert processor._StreamProcessor__message is None
 
+    # Poll for the next message from Kafka
     new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
     consumer.poll.return_value = new_message.value
     strategy.submit.return_value = None
