@@ -689,7 +689,7 @@ def test_processor_pause_with_invalid_message() -> None:
     with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
         processor._run_once()
 
-    assert processor._StreamProcessor__is_paused is False
+    assert processor._StreamProcessor__is_paused is False # type: ignore
     assert processor._StreamProcessor__message is None
 
     new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
