@@ -425,9 +425,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             if self.__message is not None:
                 try:
                     start_submit = time.time()
-                    message = (
-                        Message(self.__message)
-                    )
+                    message = Message(self.__message)
                     self.__processing_strategy.submit(message)
 
                     self.__metrics_buffer.incr_timing(
