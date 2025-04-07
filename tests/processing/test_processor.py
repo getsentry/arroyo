@@ -684,25 +684,18 @@ def test_processor_pause_with_invalid_message() -> None:
     # At this point, let's say the message carried over is invalid (e.g. it could be stale)
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
 
+    # Once the message is accepted by the processing strategy, the consumer
+    # should be resumed.
+    with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
+        processor._run_once()
+
+    assert processor._StreamProcessor__is_paused is False
+    assert processor._StreamProcessor__message is None
+
+    new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
+    consumer.poll.return_value = new_message.value
+    strategy.submit.return_value = None
+    strategy.submit.side_effect = None
+
     processor._run_once()
-    assert processor._StreamProcessor__is_paused is True  # type: ignore
-    assert consumer.resume.call_count == 0
-
-    # The processor no longer has a message to keep track of
-    # Now we have no message being carried over
-    assert processor._StreamProcessor__message is None  # type: ignore
-
-    # Nothing gets submitted, processor is stuck
-    # We ran the processor loop 4 times up to this point
-    with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
-        processor._run_once()
-
-    assert processor._StreamProcessor__message is None  # type: ignore
-    assert processor._StreamProcessor__is_paused is True  # type: ignore
-    assert consumer.resume.call_count == 0
-
-    # Nothing gets submitted, processor is stuck
-    with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
-        processor._run_once()
-
-    assert processor._StreamProcessor__is_paused == True  # type: ignore
+    assert strategy.submit.call_args_list[-1] == mock.call(new_message)
