@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.20.10
+
+### Various fixes & improvements
+
+- Revert "ref(producer): Simplify typing, add more tests (#441)" (#446) by @ayirr7
+
 ## 2.20.9
 
 ### Various fixes & improvements
