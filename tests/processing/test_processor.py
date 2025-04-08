@@ -697,3 +697,4 @@ def test_processor_pause_with_invalid_message() -> None:
         processor._run_once()
 
     # And the consumer is still paused
+    assert consumer.resume.call_count == 0
