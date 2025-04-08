@@ -1,7 +1,6 @@
 name: Arroyo Docs
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -15,14 +14,13 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.13'
+          python-version: '3.8'
 
       - name: Build docs
         run: |
           pip install virtualenv
           make docs
       - uses: peaceiris/actions-gh-pages@v3.7.3
-        if: ${{ (github.ref_name == 'main') }}
         name: Publish to GitHub Pages
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
