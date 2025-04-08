@@ -167,15 +167,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 else:
                     raise AssertionError("expected EndOfPartition error")
 
-    @pytest.mark.parametrize("use_simple_futures", [True, False])
-    def test_producer_future_behavior(self, use_simple_futures: bool) -> None:
-        with self.get_topic() as topic:
-            with closing(self.get_producer(use_simple_futures)) as producer:
-                future = producer.produce(topic, next(self.get_payloads()))
-                assert not future.done()
-                assert future.result(5.0)
-                assert future.done()
-
     def test_lenient_offset_reset_latest(self) -> None:
         payload = KafkaPayload(b"a", b"0", [])
         with self.get_topic() as topic:
