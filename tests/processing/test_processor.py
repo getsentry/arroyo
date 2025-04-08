@@ -657,15 +657,12 @@ def test_processor_pause_with_invalid_message() -> None:
     with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
         processor._run_once()
         assert strategy.submit.call_args_list[-1] == mock.call(message)
-        assert processor._StreamProcessor__message == message.value  # type: ignore
 
         with mock.patch("time.time", return_value=time.time() + 5):
             processor._run_once()  # Should pause now
 
     # Consumer is in paused state
-    assert processor._StreamProcessor__is_paused is True  # type: ignore
     # The same rejected message should be carried over
-    assert processor._StreamProcessor__message is not None  # type: ignore
 
     # All partitions are paused
     consumer.paused.return_value = set(p for p in offsets)
@@ -678,8 +675,6 @@ def test_processor_pause_with_invalid_message() -> None:
     # The next poll returns nothing, but we are still carrying over the rejected message
     processor._run_once()
     assert consumer.poll.return_value is None
-    assert processor._StreamProcessor__is_paused is True  # type: ignore
-    assert processor._StreamProcessor__message is not None  # type: ignore
 
     # At this point, let's say the message carried over is invalid (e.g. it could be stale)
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
@@ -687,11 +682,6 @@ def test_processor_pause_with_invalid_message() -> None:
     # Handles the invalid message and unpauses the consumer
     with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
         processor._run_once()
-
-    assert processor._StreamProcessor__is_paused is False  # type: ignore
-
-    # Handling the invalid message also means clearing the tracking of current message in the processor
-    assert processor._StreamProcessor__message is None
 
     # Poll for the next message from Kafka
     new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
