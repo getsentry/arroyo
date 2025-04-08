@@ -679,22 +679,15 @@ def test_processor_pause_with_invalid_message() -> None:
     # At this point, let's say the message carried over is invalid (e.g. it could be stale)
     strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
 
+    # Handles the invalid message and unpauses the consumer
+    with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
+        processor._run_once()
+
+    # Poll for the next message from Kafka
+    new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
+    consumer.poll.return_value = new_message.value
+    strategy.submit.return_value = None
+    strategy.submit.side_effect = None
+
     processor._run_once()
-    assert consumer.resume.call_count == 0
-
-    # The processor no longer has a message to keep track of
-    # Now we have no message being carried over (self.__message = None)
-
-    # Nothing gets submitted, processor is stuck
-    # We ran the processor loop 4 times up to this point
-    with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
-        processor._run_once()
-
-    assert consumer.resume.call_count == 0
-
-    # Nothing gets submitted, processor is stuck
-    with assert_does_not_change(lambda: int(strategy.submit.call_count), 4):
-        processor._run_once()
-
-    # And the consumer is still paused
-    assert consumer.resume.call_count == 0
+    assert strategy.submit.call_args_list[-1] == mock.call(new_message)

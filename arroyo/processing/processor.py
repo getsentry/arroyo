@@ -425,9 +425,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             if self.__message is not None:
                 try:
                     start_submit = time.time()
-                    message = (
-                        Message(self.__message) if self.__message is not None else None
-                    )
+                    message = Message(self.__message)
                     self.__processing_strategy.submit(message)
 
                     self.__metrics_buffer.incr_timing(
@@ -482,6 +480,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
                 except InvalidMessage as e:
                     self._handle_invalid_message(e)
+
+                    if self.__is_paused:
+                        self.__metrics_buffer.incr_counter("arroyo.consumer.resume", 1)
+                        self.__consumer.resume([*self.__consumer.tell().keys()])
+                        self.__is_paused = False
 
                 else:
                     # Resume if we are currently in a paused state
