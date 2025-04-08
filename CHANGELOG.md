@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.20.9
+
+### Various fixes & improvements
+
+- inc-fix: Don't make a paused consumer stuck when dealing with InvalidMessage (#445) by @ayirr7
+- inc: Add a unit test that demonstrates InvalidMessage failure mode (#444) by @ayirr7
+- ref(producer): Simplify typing, add more tests (#441) by @untitaker
+
 ## 2.20.8
 
 ### Various fixes & improvements
