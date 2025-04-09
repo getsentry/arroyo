@@ -196,7 +196,7 @@ class BatchBuilder(Generic[TBatchValue]):
 
 
 def parallel_worker_initializer(
-    custom_initialize_func: Optional[Callable[[], None]] = None
+    custom_initialize_func: Optional[Callable[[], None]] = None,
 ) -> None:
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
@@ -525,18 +525,24 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
 
+        # Allocate twice as many blocks as processes to ensure that every
+        # process can immediately continue to handle another batch while the
+        # main strategy is busy to submit the transformed messages to the next
+        # step.
+        block_count = num_processes * 2
+
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(
                 input_block_size or DEFAULT_INPUT_BLOCK_SIZE
             )
-            for _ in range(num_processes)
+            for _ in range(block_count)
         ]
 
         self.__output_blocks = [
             self.__shared_memory_manager.SharedMemory(
                 output_block_size or DEFAULT_OUTPUT_BLOCK_SIZE
             )
-            for _ in range(num_processes)
+            for _ in range(block_count)
         ]
 
         self.__batch_builder: Optional[
