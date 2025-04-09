@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.21.0
+
+### Various fixes & improvements
+
+- Reapply "ref(producer): Simplify typing, add more tests (#441)" (#448) by @untitaker
+
 ## 2.20.10
 
 ### Various fixes & improvements
