@@ -563,7 +563,7 @@ def test_input_block_resizing_max_size() -> None:
     )
 
     with pytest.raises(MessageRejected):
-        for _ in range(NUM_MESSAGES):
+        for _ in range(NUM_MESSAGES * 2):
             strategy.submit(Message(Value(KafkaPayload(None, b"x" * MSG_SIZE, []), {})))
 
     strategy.close()
@@ -595,7 +595,7 @@ def test_input_block_resizing_without_limits() -> None:
     )
 
     with pytest.raises(MessageRejected):
-        for _ in range(NUM_MESSAGES):
+        for _ in range(NUM_MESSAGES * 2):
             strategy.submit(Message(Value(KafkaPayload(None, b"x" * MSG_SIZE, []), {})))
 
     strategy.close()
