@@ -12,6 +12,9 @@ edition = "2021"
 [lib]
 path = "rust-arroyo/src/lib.rs"
 
+[features]
+ssl = ["rdkafka/ssl"]
+
 [dependencies]
 chrono = "0.4.26"
 coarsetime = "0.1.33"
