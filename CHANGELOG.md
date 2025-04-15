@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.22.0
+
+### Various fixes & improvements
+
+- ref(multi-process): Double block count to saturate sub processes (#447) by @jan-auer
+- ref(arroyo): Re-expose arroyo feature from rdkafka (#449) by @untitaker
+
 ## 2.21.0
 
 ### Various fixes & improvements
