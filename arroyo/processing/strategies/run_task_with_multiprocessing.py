@@ -196,7 +196,7 @@ class BatchBuilder(Generic[TBatchValue]):
 
 
 def parallel_worker_initializer(
-    custom_initialize_func: Optional[Callable[[], None]] = None
+    custom_initialize_func: Optional[Callable[[], None]] = None,
 ) -> None:
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
@@ -468,6 +468,20 @@ class RunTaskWithMultiprocessing(
     is applying backpressure. You can likely reduce ``num_processes`` and won't
     notice a performance regression.
 
+    Prefetching
+    ~~~~~~~~~~~
+
+    If you set ``prefetch_batches`` to `True`, Arroyo will allocate twice as
+    many input blocks as processes, and will prefetch the next batch while the
+    current batch is being processed. This can help saturate the process pool to
+    increase throughput, but it also increases memory usage.
+
+    Use this option if your consumer is bottlenecked on the multiprocessing step
+    but also runs time-consuming tasks in the other steps, like ``Produce`` or
+    ``Unfold``. By prefetching batches, the pool can immediately start working
+    on the next batch while the current batch is being sent through the next
+    steps.
+
     How to tune your consumer
     ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -507,6 +521,7 @@ class RunTaskWithMultiprocessing(
         output_block_size: Optional[int] = None,
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
+        prefetch_batches: bool = False,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
@@ -525,18 +540,26 @@ class RunTaskWithMultiprocessing(
         self.__shared_memory_manager = SharedMemoryManager()
         self.__shared_memory_manager.start()
 
+        block_count = num_processes
+        if prefetch_batches:
+            # Allocate twice as many blocks as processes to ensure that every
+            # process can immediately continue to handle another batch while the
+            # main strategy is busy to submit the transformed messages to the
+            # next step.
+            block_count *= 2
+
         self.__input_blocks = [
             self.__shared_memory_manager.SharedMemory(
                 input_block_size or DEFAULT_INPUT_BLOCK_SIZE
             )
-            for _ in range(num_processes)
+            for _ in range(block_count)
         ]
 
         self.__output_blocks = [
             self.__shared_memory_manager.SharedMemory(
                 output_block_size or DEFAULT_OUTPUT_BLOCK_SIZE
             )
-            for _ in range(num_processes)
+            for _ in range(block_count)
         ]
 
         self.__batch_builder: Optional[
