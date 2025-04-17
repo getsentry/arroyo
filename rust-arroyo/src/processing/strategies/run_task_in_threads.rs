@@ -208,6 +208,7 @@ where
         }
 
         if self.handles.len() > self.concurrency {
+            counter!("arroyo.strategies.run_task_in_threads.too_many_handles", 1, "strategy_name" => self.metric_strategy_name);
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
