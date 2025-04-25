@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.22.1
+
+### Various fixes & improvements
+
+- INC-1119: add more metrics for back pressure (#450) by @MeredithAnya
+
 ## 2.22.0
 
 ### Various fixes & improvements
