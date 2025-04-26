@@ -73,7 +73,7 @@ async fn main() {
         topic: Topic::new("test_out"),
     };
 
-    let processor = StreamProcessor::with_kafka(config, factory, Topic::new("test_in"), None);
+    let processor = StreamProcessor::with_kafka(config, factory, Topic::new("test_in"), None, None);
     println!("running processor. transforming from test_in to test_out");
     processor.run().unwrap();
 }

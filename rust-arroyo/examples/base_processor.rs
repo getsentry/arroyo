@@ -30,7 +30,7 @@ fn main() {
     );
 
     let mut processor =
-        StreamProcessor::with_kafka(config, TestFactory {}, Topic::new("test_static"), None);
+        StreamProcessor::with_kafka(config, TestFactory {}, Topic::new("test_static"), None, None);
 
     for _ in 0..20 {
         processor.run_once().unwrap();
