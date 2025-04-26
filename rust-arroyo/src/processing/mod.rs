@@ -214,11 +214,8 @@ impl StreamProcessor<KafkaPayload> {
         dlq_policy: Option<DlqPolicy<KafkaPayload>>,
         backpressure_timelimit: Option<Duration>,
     ) -> Self {
-        let consumer_state = ConsumerState::new(
-            Box::new(factory),
-            dlq_policy,
-            backpressure_timelimit,
-        );
+        let consumer_state =
+            ConsumerState::new(Box::new(factory), dlq_policy, backpressure_timelimit);
         let callbacks = Callbacks(consumer_state.clone());
 
         // TODO: Can this fail?
@@ -511,7 +508,7 @@ mod tests {
     fn test_processor() {
         let broker = build_broker();
 
-        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None);
+        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None, None);
 
         let consumer = Box::new(LocalConsumer::new(
             Uuid::nil(),
@@ -535,7 +532,7 @@ mod tests {
         let _ = broker.produce(&partition, "message1".to_string());
         let _ = broker.produce(&partition, "message2".to_string());
 
-        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None);
+        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None, None);
 
         let consumer = Box::new(LocalConsumer::new(
             Uuid::nil(),
