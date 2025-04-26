@@ -55,6 +55,7 @@ struct ConsumerStateInner<TPayload> {
     processing_factory: Box<dyn ProcessingStrategyFactory<TPayload>>,
     strategy: Option<Box<dyn ProcessingStrategy<TPayload>>>,
     backpressure_deadline: Option<Deadline>,
+    backpressure_timelimit: Option<Duration>,
     metrics_buffer: metrics_buffer::MetricsBuffer,
     dlq_policy: DlqPolicyWrapper<TPayload>,
 }
@@ -63,11 +64,13 @@ impl<TPayload: Send + Sync + 'static> ConsumerState<TPayload> {
     pub fn new(
         processing_factory: Box<dyn ProcessingStrategyFactory<TPayload>>,
         dlq_policy: Option<DlqPolicy<TPayload>>,
+        backpressure_timelimit: Option<Duration>,
     ) -> Self {
         let inner = ConsumerStateInner {
             processing_factory,
             strategy: None,
             backpressure_deadline: None,
+            backpressure_timelimit,
             metrics_buffer: metrics_buffer::MetricsBuffer::new(),
             dlq_policy: DlqPolicyWrapper::new(dlq_policy),
         };
@@ -209,8 +212,13 @@ impl StreamProcessor<KafkaPayload> {
         factory: F,
         topic: Topic,
         dlq_policy: Option<DlqPolicy<KafkaPayload>>,
+        backpressure_timelimit: Option<Duration>,
     ) -> Self {
-        let consumer_state = ConsumerState::new(Box::new(factory), dlq_policy);
+        let consumer_state = ConsumerState::new(
+            Box::new(factory),
+            dlq_policy,
+            backpressure_timelimit,
+        );
         let callbacks = Callbacks(consumer_state.clone());
 
         // TODO: Can this fail?
@@ -358,6 +366,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                 // Resume if we are currently in a paused state
                 if consumer_is_paused {
                     let partitions = self.consumer.tell().unwrap().into_keys().collect();
+                    counter!("arroyo.consumer.resume", 1);
 
                     match self.consumer.resume(partitions) {
                         Ok(()) => {
@@ -402,6 +411,17 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                             let error: &dyn std::error::Error = &err;
                             tracing::error!(error, "pause error");
                             return Err(RunError::Pause(err));
+                        }
+                    }
+                }
+
+                if consumer_is_paused {
+                    if let Some(backpressure_timelimit) = consumer_state.backpressure_timelimit {
+                        if deadline.elapsed() > backpressure_timelimit {
+                            panic!(
+                                "Consumer is in backpressure state for more than {} seconds, pausing",
+                                backpressure_timelimit.as_secs()
+                            );
                         }
                     }
                 }
@@ -591,7 +611,7 @@ mod tests {
             broker: LocalBroker<String>,
             panic_on: &'static str,
         ) -> StreamProcessor<String> {
-            let consumer_state = ConsumerState::new(Box::new(TestFactory { panic_on }), None);
+            let consumer_state = ConsumerState::new(Box::new(TestFactory { panic_on }), None, None);
 
             let consumer = Box::new(LocalConsumer::new(
                 Uuid::nil(),
