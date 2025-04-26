@@ -415,14 +415,12 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
                     }
                 }
 
-                if consumer_is_paused {
-                    if let Some(backpressure_timelimit) = consumer_state.backpressure_timelimit {
-                        if deadline.elapsed() > backpressure_timelimit {
-                            panic!(
-                                "Consumer is in backpressure state for more than {} seconds, pausing",
-                                backpressure_timelimit.as_secs()
-                            );
-                        }
+                if let Some(backpressure_timelimit) = consumer_state.backpressure_timelimit {
+                    if deadline.elapsed() > backpressure_timelimit {
+                        panic!(
+                            "Consumer is in backpressure state for more than {} seconds, pausing",
+                            backpressure_timelimit.as_secs()
+                        );
                     }
                 }
             }
