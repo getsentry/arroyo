@@ -212,8 +212,7 @@ impl StreamProcessor<KafkaPayload> {
         topic: Topic,
         dlq_policy: Option<DlqPolicy<KafkaPayload>>,
     ) -> Self {
-        let consumer_state =
-            ConsumerState::new(Box::new(factory), dlq_policy);
+        let consumer_state = ConsumerState::new(Box::new(factory), dlq_policy);
         let callbacks = Callbacks(consumer_state.clone());
 
         // TODO: Can this fail?
