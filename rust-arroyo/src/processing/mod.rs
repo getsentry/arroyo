@@ -64,13 +64,12 @@ impl<TPayload: Send + Sync + 'static> ConsumerState<TPayload> {
     pub fn new(
         processing_factory: Box<dyn ProcessingStrategyFactory<TPayload>>,
         dlq_policy: Option<DlqPolicy<TPayload>>,
-        backpressure_timelimit: Option<Duration>,
     ) -> Self {
         let inner = ConsumerStateInner {
             processing_factory,
             strategy: None,
             backpressure_deadline: None,
-            backpressure_timelimit,
+            backpressure_timelimit: None,
             metrics_buffer: metrics_buffer::MetricsBuffer::new(),
             dlq_policy: DlqPolicyWrapper::new(dlq_policy),
         };
@@ -212,16 +211,20 @@ impl StreamProcessor<KafkaPayload> {
         factory: F,
         topic: Topic,
         dlq_policy: Option<DlqPolicy<KafkaPayload>>,
-        backpressure_timelimit: Option<Duration>,
     ) -> Self {
         let consumer_state =
-            ConsumerState::new(Box::new(factory), dlq_policy, backpressure_timelimit);
+            ConsumerState::new(Box::new(factory), dlq_policy);
         let callbacks = Callbacks(consumer_state.clone());
 
         // TODO: Can this fail?
         let consumer = Box::new(KafkaConsumer::new(config, &[topic], callbacks).unwrap());
 
         Self::new(consumer, consumer_state)
+    }
+
+    pub fn with_backpressure_timelimit(self, backpressure_timelimit: Duration) -> Self {
+        self.consumer_state.locked_state().backpressure_timelimit = Some(backpressure_timelimit);
+        self
     }
 }
 
@@ -508,7 +511,7 @@ mod tests {
     fn test_processor() {
         let broker = build_broker();
 
-        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None, None);
+        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None);
 
         let consumer = Box::new(LocalConsumer::new(
             Uuid::nil(),
@@ -532,7 +535,7 @@ mod tests {
         let _ = broker.produce(&partition, "message1".to_string());
         let _ = broker.produce(&partition, "message2".to_string());
 
-        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None, None);
+        let consumer_state = ConsumerState::new(Box::new(TestFactory {}), None);
 
         let consumer = Box::new(LocalConsumer::new(
             Uuid::nil(),
@@ -606,7 +609,7 @@ mod tests {
             broker: LocalBroker<String>,
             panic_on: &'static str,
         ) -> StreamProcessor<String> {
-            let consumer_state = ConsumerState::new(Box::new(TestFactory { panic_on }), None, None);
+            let consumer_state = ConsumerState::new(Box::new(TestFactory { panic_on }), None);
 
             let consumer = Box::new(LocalConsumer::new(
                 Uuid::nil(),

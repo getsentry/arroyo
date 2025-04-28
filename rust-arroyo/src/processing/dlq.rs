@@ -717,7 +717,7 @@ mod tests {
             Some(6),
         ));
 
-        let state = ConsumerState::new(Box::new(TestFactory {}), policy, None);
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
         // ConsumerState creates a new DLQPolicyWrapper
         let mut consumer_state = state.locked_state();
         let consumer_state = &mut consumer_state;
@@ -768,7 +768,7 @@ mod tests {
             None,
         ));
 
-        let state = ConsumerState::new(Box::new(TestFactory {}), policy, None);
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
         // ConsumerState creates a new DLQPolicyWrapper
         let mut consumer_state = state.locked_state();
         let consumer_state = &mut consumer_state;
@@ -806,7 +806,7 @@ mod tests {
     fn test_state_with_no_policy() {
         let policy = None;
 
-        let state = ConsumerState::new(Box::new(TestFactory {}), policy, None);
+        let state = ConsumerState::new(Box::new(TestFactory {}), policy);
         // ConsumerState creates a new DLQPolicyWrapper
         let mut consumer_state = state.locked_state();
         let consumer_state = &mut consumer_state;

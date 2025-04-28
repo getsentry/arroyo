@@ -34,7 +34,6 @@ fn main() {
         TestFactory {},
         Topic::new("test_static"),
         None,
-        None,
     );
 
     for _ in 0..20 {
