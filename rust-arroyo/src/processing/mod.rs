@@ -58,7 +58,7 @@ struct ConsumerStateInner<TPayload> {
     metrics_buffer: metrics_buffer::MetricsBuffer,
     dlq_policy: DlqPolicyWrapper<TPayload>,
 }
-
+// test
 impl<TPayload: Send + Sync + 'static> ConsumerState<TPayload> {
     pub fn new(
         processing_factory: Box<dyn ProcessingStrategyFactory<TPayload>>,
