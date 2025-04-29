@@ -63,4 +63,4 @@ jobs:
           python -m pip install --upgrade pip
           make install
       - name: Run tests
-        run: pytest -vv
+        run: pytest -vv --timeout=300
