@@ -1,5 +1,52 @@
 # Changelog and versioning
 
+## 2.22.0
+
+### Various fixes & improvements
+
+- ref(multi-process): Double block count to saturate sub processes (#447) by @jan-auer
+- ref(arroyo): Re-expose arroyo feature from rdkafka (#449) by @untitaker
+
+## 2.21.0
+
+### Various fixes & improvements
+
+- Reapply "ref(producer): Simplify typing, add more tests (#441)" (#448) by @untitaker
+
+## 2.20.10
+
+### Various fixes & improvements
+
+- Revert "ref(producer): Simplify typing, add more tests (#441)" (#446) by @ayirr7
+
+## 2.20.9
+
+### Various fixes & improvements
+
+- inc-fix: Don't make a paused consumer stuck when dealing with InvalidMessage (#445) by @ayirr7
+- inc: Add a unit test that demonstrates InvalidMessage failure mode (#444) by @ayirr7
+- ref(producer): Simplify typing, add more tests (#441) by @untitaker
+
+## 2.20.8
+
+### Various fixes & improvements
+
+- avoid leaking SIGCHLD handler in RunTaskWithMultiprocessing (#440) by @asottile-sentry
+
+## 2.20.7
+
+### Various fixes & improvements
+
+- ref(produce): Add faster way to produce (#438) by @untitaker
+
+## 2.20.6
+
+### Various fixes & improvements
+
+- fix(unfold): Do not block forever on backpressure (#433) by @untitaker
+- chore: Add streaming-platform to CODEOWNERS (#436) by @untitaker
+- fix(devenv): Allow run-kafka.sh to run on macos (#424) by @untitaker
+
 ## 2.20.5
 
 ### Various fixes & improvements

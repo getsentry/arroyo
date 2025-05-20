@@ -16,7 +16,7 @@ from typing import (
     Tuple,
 )
 
-from arroyo.backends.abstract import Producer
+from arroyo.backends.abstract import Producer, ProducerFuture
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.types import (
     FILTERED_PAYLOAD,
@@ -186,7 +186,7 @@ class DlqProducer(ABC, Generic[TStrategyPayload]):
     @abstractmethod
     def produce(
         self, value: BrokerValue[TStrategyPayload], reason: Optional[str] = None
-    ) -> Future[BrokerValue[TStrategyPayload]]:
+    ) -> ProducerFuture[BrokerValue[TStrategyPayload]]:
         """
         Produce a message to DLQ.
         """
@@ -212,7 +212,7 @@ class NoopDlqProducer(DlqProducer[Any]):
         self,
         value: BrokerValue[KafkaPayload],
         reason: Optional[str] = None,
-    ) -> Future[BrokerValue[KafkaPayload]]:
+    ) -> ProducerFuture[BrokerValue[KafkaPayload]]:
         future: Future[BrokerValue[KafkaPayload]] = Future()
         future.set_running_or_notify_cancel()
         future.set_result(value)
@@ -242,7 +242,7 @@ class KafkaDlqProducer(DlqProducer[KafkaPayload]):
         self,
         value: BrokerValue[KafkaPayload],
         reason: Optional[str] = None,
-    ) -> Future[BrokerValue[KafkaPayload]]:
+    ) -> ProducerFuture[BrokerValue[KafkaPayload]]:
         value.payload.headers.append(
             ("original_partition", f"{value.partition.index}".encode("utf-8"))
         )
@@ -381,7 +381,7 @@ class DlqPolicyWrapper(Generic[TStrategyPayload]):
             Deque[
                 Tuple[
                     BrokerValue[TStrategyPayload],
-                    Future[BrokerValue[TStrategyPayload]],
+                    ProducerFuture[BrokerValue[TStrategyPayload]],
                 ]
             ],
         ] = defaultdict(deque)

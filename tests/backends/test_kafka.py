@@ -131,8 +131,8 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
         return KafkaConsumer(configuration)
 
-    def get_producer(self) -> KafkaProducer:
-        return KafkaProducer(self.configuration)
+    def get_producer(self, use_simple_futures: bool = False) -> KafkaProducer:
+        return KafkaProducer(self.configuration, use_simple_futures=use_simple_futures)
 
     def get_payloads(self) -> Iterator[KafkaPayload]:
         for i in itertools.count():
@@ -150,9 +150,10 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 assert isinstance(value, BrokerValue)
                 assert value.payload.value == b"0"
 
-    def test_auto_offset_reset_latest(self) -> None:
+    @pytest.mark.parametrize("use_simple_futures", [True, False])
+    def test_auto_offset_reset_latest(self, use_simple_futures: bool) -> None:
         with self.get_topic() as topic:
-            with closing(self.get_producer()) as producer:
+            with closing(self.get_producer(use_simple_futures)) as producer:
                 producer.produce(topic, next(self.get_payloads())).result(5.0)
 
             with closing(self.get_consumer(auto_offset_reset="latest")) as consumer:
@@ -165,6 +166,15 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     assert error.offset == 1
                 else:
                     raise AssertionError("expected EndOfPartition error")
+
+    @pytest.mark.parametrize("use_simple_futures", [True, False])
+    def test_producer_future_behavior(self, use_simple_futures: bool) -> None:
+        with self.get_topic() as topic:
+            with closing(self.get_producer(use_simple_futures)) as producer:
+                future = producer.produce(topic, next(self.get_payloads()))
+                assert not future.done()
+                assert future.result(5.0)
+                assert future.done()
 
     def test_lenient_offset_reset_latest(self) -> None:
         payload = KafkaPayload(b"a", b"0", [])

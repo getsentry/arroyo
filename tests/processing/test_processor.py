@@ -583,7 +583,6 @@ def test_dlq() -> None:
     assert dlq_policy.producer.produce.call_count == 1
 
 
-
 def test_healthcheck(tmpdir: py.path.local) -> None:
     """
     Test healthcheck strategy e2e with StreamProcessor, to ensure the
@@ -623,3 +622,72 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
 
     processor._run_once()
     assert tmpdir.join("health.txt").mtime() == health_mtime
+
+
+def test_processor_pause_with_invalid_message() -> None:
+
+    topic = Topic("topic")
+
+    consumer = mock.Mock()
+    strategy = mock.Mock()
+    factory = mock.Mock()
+    factory.create_with_partitions.return_value = strategy
+
+    processor: StreamProcessor[int] = StreamProcessor(
+        consumer, topic, factory, IMMEDIATE
+    )
+
+    # Subscribe to topic
+    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
+    assert subscribe_args[0] == [topic]
+
+    # Partition assignment
+    partition = Partition(topic, 0)
+    consumer.tell.return_value = {}
+    assignment_callback = subscribe_kwargs["on_assign"]
+    offsets = {partition: 0}
+    assignment_callback(offsets)
+
+    # Message that we will get from polling
+    message = Message(BrokerValue(0, partition, 0, datetime.now()))
+
+    # Message will be rejected
+    consumer.poll.return_value = message.value
+    strategy.submit.side_effect = MessageRejected()
+    with assert_changes(lambda: int(consumer.pause.call_count), 0, 1):
+        processor._run_once()
+        assert strategy.submit.call_args_list[-1] == mock.call(message)
+
+        with mock.patch("time.time", return_value=time.time() + 5):
+            processor._run_once()  # Should pause now
+
+    # Consumer is in paused state
+    # The same rejected message should be carried over
+
+    # All partitions are paused
+    consumer.paused.return_value = set(p for p in offsets)
+    # Simulate a continuous backpressure state where messages are being rejected
+    strategy.submit.side_effect = MessageRejected()
+
+    # Simulate Kafka returning nothing since the consumer is paused
+    consumer.poll.return_value = None
+
+    # The next poll returns nothing, but we are still carrying over the rejected message
+    processor._run_once()
+    assert consumer.poll.return_value is None
+
+    # At this point, let's say the message carried over is invalid (e.g. it could be stale)
+    strategy.submit.side_effect = InvalidMessage(partition, 0, needs_commit=False)
+
+    # Handles the invalid message and unpauses the consumer
+    with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
+        processor._run_once()
+
+    # Poll for the next message from Kafka
+    new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
+    consumer.poll.return_value = new_message.value
+    strategy.submit.return_value = None
+    strategy.submit.side_effect = None
+
+    processor._run_once()
+    assert strategy.submit.call_args_list[-1] == mock.call(new_message)

@@ -37,7 +37,12 @@ from confluent_kafka import Message as ConfluentMessage
 from confluent_kafka import Producer as ConfluentProducer
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
-from arroyo.backends.abstract import Consumer, Producer
+from arroyo.backends.abstract import (
+    Consumer,
+    Producer,
+    ProducerFuture,
+    SimpleProducerFuture,
+)
 from arroyo.errors import (
     ConsumerError,
     EndOfPartition,
@@ -647,7 +652,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
 
 class KafkaProducer(Producer[KafkaPayload]):
-    def __init__(self, configuration: Mapping[str, Any]) -> None:
+    def __init__(
+        self, configuration: Mapping[str, Any], use_simple_futures: bool = False
+    ) -> None:
         self.__configuration = configuration
 
         self.__producer = ConfluentProducer(configuration)
@@ -660,6 +667,8 @@ class KafkaProducer(Producer[KafkaPayload]):
         self.__metrics = get_metrics()
         self.__last_produce_time_record = 0.0
         self.__max_produce_time = 0.0
+
+        self.use_simple_futures = use_simple_futures
 
     def __worker(self) -> None:
         """
@@ -692,7 +701,7 @@ class KafkaProducer(Producer[KafkaPayload]):
 
     def __delivery_callback(
         self,
-        future: Future[BrokerValue[KafkaPayload]],
+        future: ProducerFuture[BrokerValue[KafkaPayload]],
         payload: KafkaPayload,
         error: KafkaError,
         message: ConfluentMessage,
@@ -723,7 +732,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         self,
         destination: Union[Topic, Partition],
         payload: KafkaPayload,
-    ) -> Future[BrokerValue[KafkaPayload]]:
+    ) -> ProducerFuture[BrokerValue[KafkaPayload]]:
         start_produce_time = time.time()
 
         if self.__shutdown_requested.is_set():
@@ -740,8 +749,13 @@ class KafkaProducer(Producer[KafkaPayload]):
         else:
             raise TypeError("invalid destination type")
 
-        future: Future[BrokerValue[KafkaPayload]] = Future()
-        future.set_running_or_notify_cancel()
+        future: ProducerFuture[BrokerValue[KafkaPayload]]
+        if self.use_simple_futures:
+            future = SimpleProducerFuture()
+        else:
+            future = Future()
+            future.set_running_or_notify_cancel()
+
         produce(
             value=payload.value,
             key=payload.key,
