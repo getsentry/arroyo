@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.23.0
+
+### Various fixes & improvements
+
+- add consumer_member_id tag to partitions assign / revoked metrics (#358) by @mwarkentin
+- Add documentation for no-strict-offset-reset (#459) by @untitaker
+- Limit the confluent library version (#456) by @fpacifici
+- INC-1119: add more metrics for back pressure (#450) by @MeredithAnya
+
 ## 2.22.0
 
 ### Various fixes & improvements
