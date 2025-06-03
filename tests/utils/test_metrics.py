@@ -43,18 +43,18 @@ def test_consumer_metrics_wrapper() -> None:
     consumer_metrics = get_consumer_metrics(consumer_member_id)
 
     # Test increment
-    consumer_metrics.increment("test.counter", 5, tags={"extra": "tag"})
+    consumer_metrics.increment("arroyo.consumer.run.count", 5, tags={"extra": "tag"})
 
     # Test gauge
-    consumer_metrics.gauge("test.gauge", 10.5)
+    consumer_metrics.gauge("arroyo.consumer.librdkafka.total_queue_size", 10.5)
 
     # Test timing
-    consumer_metrics.timing("test.timer", 100, tags={"another": "tag"})
+    consumer_metrics.timing("arroyo.consumer.poll.time", 100, tags={"another": "tag"})
 
     expected_calls = [
-        Increment("test.counter", 5, {"consumer_member_id": consumer_member_id, "extra": "tag"}),
-        GaugeCall("test.gauge", 10.5, {"consumer_member_id": consumer_member_id}),
-        Timing("test.timer", 100, {"consumer_member_id": consumer_member_id, "another": "tag"}),
+        Increment("arroyo.consumer.run.count", 5, {"consumer_member_id": consumer_member_id, "extra": "tag"}),
+        GaugeCall("arroyo.consumer.librdkafka.total_queue_size", 10.5, {"consumer_member_id": consumer_member_id}),
+        Timing("arroyo.consumer.poll.time", 100, {"consumer_member_id": consumer_member_id, "another": "tag"}),
     ]
 
     assert backend.calls == expected_calls

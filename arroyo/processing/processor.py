@@ -29,7 +29,7 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
-from arroyo.utils.metrics import get_consumer_metrics, Tags
+from arroyo.utils.metrics import get_consumer_metrics, Tags, MetricName
 
 logger = logging.getLogger(__name__)
 
@@ -123,15 +123,15 @@ class MetricsBuffer:
         if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
             self.flush()
 
-    def record_timing(self, metric: str, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
+    def record_timing(self, metric: MetricName, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
         """Record a timing metric with default tags automatically included."""
         self.metrics.timing(metric, value, tags=additional_tags)
 
-    def record_increment(self, metric: str, value: Union[int, float] = 1, additional_tags: Optional[Tags] = None) -> None:
+    def record_increment(self, metric: MetricName, value: Union[int, float] = 1, additional_tags: Optional[Tags] = None) -> None:
         """Record an increment metric with default tags automatically included."""
         self.metrics.increment(metric, value, tags=additional_tags)
 
-    def record_gauge(self, metric: str, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
+    def record_gauge(self, metric: MetricName, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
         """Record a gauge metric with default tags automatically included."""
         self.metrics.gauge(metric, value, tags=additional_tags)
 
