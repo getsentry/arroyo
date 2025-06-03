@@ -29,7 +29,7 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
-from arroyo.utils.metrics import get_metrics
+from arroyo.utils.metrics import get_consumer_metrics, Tags
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,10 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 raise
             finally:
                 value = time.time() - start_time
-                metrics.metrics.timing(
+                metrics.record_timing(
                     "arroyo.consumer.run.callback",
                     value,
-                    tags={"callback_name": f.__name__},
+                    additional_tags={"callback_name": f.__name__},
                 )
                 metrics.incr_timing("arroyo.consumer.callback.time", value)
 
@@ -89,8 +89,9 @@ ConsumerCounter = Literal[
 
 
 class MetricsBuffer:
-    def __init__(self) -> None:
-        self.metrics = get_metrics()
+    def __init__(self, consumer: Consumer[Any]) -> None:
+        self.metrics = get_consumer_metrics(consumer.member_id)
+        self.__consumer = consumer
         self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
         self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
         self.__reset()
@@ -122,6 +123,18 @@ class MetricsBuffer:
         if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
             self.flush()
 
+    def record_timing(self, metric: str, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
+        """Record a timing metric with default tags automatically included."""
+        self.metrics.timing(metric, value, tags=additional_tags)
+
+    def record_increment(self, metric: str, value: Union[int, float] = 1, additional_tags: Optional[Tags] = None) -> None:
+        """Record an increment metric with default tags automatically included."""
+        self.metrics.increment(metric, value, tags=additional_tags)
+
+    def record_gauge(self, metric: str, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
+        """Record a gauge metric with default tags automatically included."""
+        self.metrics.gauge(metric, value, tags=additional_tags)
+
 
 class StreamProcessor(Generic[TStrategyPayload]):
     """
@@ -142,7 +155,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
-        self.__metrics_buffer = MetricsBuffer()
+        self.__metrics_buffer = MetricsBuffer(consumer)
 
         self.__processing_strategy: Optional[
             ProcessingStrategy[TStrategyPayload]
@@ -208,7 +221,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             value = time.time() - start_close
 
-            self.__metrics_buffer.metrics.timing(
+            self.__metrics_buffer.record_timing(
                 "arroyo.consumer.run.close_strategy", value
             )
 
@@ -223,7 +236,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 )
             )
 
-            self.__metrics_buffer.metrics.timing(
+            self.__metrics_buffer.record_timing(
                 "arroyo.consumer.run.create_strategy", time.time() - start_create
             )
 
@@ -235,8 +248,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             logger.info("Member id: %r", self.__consumer.member_id)
-            self.__metrics_buffer.metrics.increment(
-                "arroyo.consumer.partitions_assigned.count", len(partitions), tags={"consumer_member_id": self.__consumer.member_id}
+            self.__metrics_buffer.record_increment(
+                "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
 
             current_partitions = dict(self.__consumer.tell())
@@ -261,8 +274,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions to revoke: %r", partitions)
 
-            self.__metrics_buffer.metrics.increment(
-                "arroyo.consumer.partitions_revoked.count", len(partitions), tags={"consumer_member_id": self.__consumer.member_id}
+            self.__metrics_buffer.record_increment(
+                "arroyo.consumer.partitions_revoked.count", len(partitions)
             )
 
             if partitions:
