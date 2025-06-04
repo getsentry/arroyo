@@ -52,10 +52,10 @@ def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
                 raise
             finally:
                 value = time.time() - start_time
-                metrics.record_timing(
+                metrics.metrics.timing(
                     "arroyo.consumer.run.callback",
                     value,
-                    additional_tags={"callback_name": f.__name__},
+                    tags={"callback_name": f.__name__},
                 )
                 metrics.incr_timing("arroyo.consumer.callback.time", value)
 
@@ -122,18 +122,6 @@ class MetricsBuffer:
     def __throttled_record(self) -> None:
         if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
             self.flush()
-
-    def record_timing(self, metric: MetricName, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
-        """Record a timing metric with default tags automatically included."""
-        self.metrics.timing(metric, value, tags=additional_tags)
-
-    def record_increment(self, metric: MetricName, value: Union[int, float] = 1, additional_tags: Optional[Tags] = None) -> None:
-        """Record an increment metric with default tags automatically included."""
-        self.metrics.increment(metric, value, tags=additional_tags)
-
-    def record_gauge(self, metric: MetricName, value: Union[int, float], additional_tags: Optional[Tags] = None) -> None:
-        """Record a gauge metric with default tags automatically included."""
-        self.metrics.gauge(metric, value, tags=additional_tags)
 
 
 class StreamProcessor(Generic[TStrategyPayload]):
@@ -221,7 +209,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             value = time.time() - start_close
 
-            self.__metrics_buffer.record_timing(
+            self.__metrics_buffer.metrics.timing(
                 "arroyo.consumer.run.close_strategy", value
             )
 
@@ -236,7 +224,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                 )
             )
 
-            self.__metrics_buffer.record_timing(
+            self.__metrics_buffer.metrics.timing(
                 "arroyo.consumer.run.create_strategy", time.time() - start_create
             )
 
@@ -248,7 +236,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             logger.info("Member id: %r", self.__consumer.member_id)
-            self.__metrics_buffer.record_increment(
+            self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
 
@@ -274,7 +262,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_revoked(partitions: Sequence[Partition]) -> None:
             logger.info("Partitions to revoke: %r", partitions)
 
-            self.__metrics_buffer.record_increment(
+            self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_revoked.count", len(partitions)
             )
 
