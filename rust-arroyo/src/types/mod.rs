@@ -273,14 +273,14 @@ impl<T> Message<T> {
     pub fn take(self) -> (Message<()>, T) {
         match self.inner_message {
             InnerMessage::BrokerMessage(bm) => (
-                Message::new_broker_message((), bm.partition, bm.offset, bm.timestamp), bm.payload),
-            InnerMessage::AnyMessage(am) => (
-                Message::new_any_message((), am.committable),
-                am.payload,
-            )
+                Message::new_broker_message((), bm.partition, bm.offset, bm.timestamp),
+                bm.payload,
+            ),
+            InnerMessage::AnyMessage(am) => {
+                (Message::new_any_message((), am.committable), am.payload)
+            }
         }
     }
-
 
     /// Returns an iterator over this message's committable offsets.
     pub fn committable(&self) -> Committable {
@@ -398,9 +398,9 @@ impl Iterator for Committable<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use super::{BrokerMessage, Message, Partition, Topic, InnerMessage};
+    use super::{BrokerMessage, InnerMessage, Message, Partition, Topic};
     use chrono::Utc;
+    use std::collections::BTreeMap;
 
     #[test]
     fn message() {
@@ -416,17 +416,12 @@ mod tests {
         assert_eq!(message.timestamp, now);
     }
 
-
     #[test]
     fn broker_message_take() {
         let now = Utc::now();
         let topic = Topic::new("test");
         let part = Partition { topic, index: 10 };
-        let committable: BTreeMap<Partition, u64> = vec![
-            (part, 42069)
-        ].into_iter().collect();
-
-
+        let committable: BTreeMap<Partition, u64> = vec![(part, 42069)].into_iter().collect();
 
         let b_message = Message::new_broker_message("payload".to_string(), part, 10, now);
         let a_message = Message::new_any_message("payload".to_string(), committable.clone());
@@ -441,24 +436,21 @@ mod tests {
                 InnerMessage::BrokerMessage(bm) => {
                     assert_eq!(bm.offset, 10);
                     assert_eq!(bm.partition, part);
-                },
+                }
                 InnerMessage::AnyMessage(am) => {
                     assert_eq!(am.committable, committable);
                 }
             }
         };
 
-        let transformed_broker_msg= transform_func(b_message);
-        let transformed_any_msg= transform_func(a_message);
+        let transformed_broker_msg = transform_func(b_message);
+        let transformed_any_msg = transform_func(a_message);
         assert_eq!(transformed_any_msg.payload().clone(), "payload".len());
         assert_eq!(transformed_broker_msg.payload().clone(), "payload".len());
 
-
         validate_msg(transformed_broker_msg);
         validate_msg(transformed_any_msg);
-
     }
-
 
     #[test]
     fn fmt_display() {
