@@ -246,6 +246,42 @@ impl<T> Message<T> {
         }
     }
 
+    /// Consumes the message, returns an empty message with committables and the payload without
+    /// copying
+    /// # Examples:
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use sentry_arroyo::types::Message;
+    /// use sentry_arroyo::types::{Partition, Topic};
+    ///
+    /// // Create the message with the committable structure we want to preserve
+    /// let topic = Topic::new("test");
+    /// let part = Partition { topic, index: 10 };
+    /// let committable: BTreeMap<Partition, u64> = vec![
+    ///        (part, 42069)
+    /// ].into_iter().collect();
+    /// let message = Message::new_any_message("my_payload".to_string(), committable);
+    ///
+    /// fn transform_msg(msg: Message<String>) -> Message<usize> {
+    ///     // transform_msg takes ownership of the Message object
+    ///     let (empty_message_with_commitable, payload) = msg.take();
+    ///     empty_message_with_commitable.replace(payload.len())
+    /// }
+    ///
+    /// let transformed_msg = transform_msg(message);
+    /// ```
+    pub fn take(self) -> (Message<()>, T) {
+        match self.inner_message {
+            InnerMessage::BrokerMessage(bm) => (
+                Message::new_broker_message((), bm.partition, bm.offset, bm.timestamp),
+                bm.payload,
+            ),
+            InnerMessage::AnyMessage(am) => {
+                (Message::new_any_message((), am.committable), am.payload)
+            }
+        }
+    }
+
     /// Returns an iterator over this message's committable offsets.
     pub fn committable(&self) -> Committable {
         match &self.inner_message {
@@ -362,8 +398,9 @@ impl Iterator for Committable<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{BrokerMessage, Partition, Topic};
+    use super::{BrokerMessage, InnerMessage, Message, Partition, Topic};
     use chrono::Utc;
+    use std::collections::BTreeMap;
 
     #[test]
     fn message() {
@@ -377,6 +414,42 @@ mod tests {
         assert_eq!(message.offset, 10);
         assert_eq!(message.payload, "payload");
         assert_eq!(message.timestamp, now);
+    }
+
+    #[test]
+    fn broker_message_take() {
+        let now = Utc::now();
+        let topic = Topic::new("test");
+        let part = Partition { topic, index: 10 };
+        let committable: BTreeMap<Partition, u64> = vec![(part, 42069)].into_iter().collect();
+
+        let b_message = Message::new_broker_message("payload".to_string(), part, 10, now);
+        let a_message = Message::new_any_message("payload".to_string(), committable.clone());
+
+        // need something to take ownership of the message
+        let transform_func = |bm: Message<String>| -> Message<usize> {
+            let (empty_message, payload) = bm.take();
+            return empty_message.replace(payload.len());
+        };
+        let validate_msg = |msg: Message<usize>| -> () {
+            match msg.inner_message {
+                InnerMessage::BrokerMessage(bm) => {
+                    assert_eq!(bm.offset, 10);
+                    assert_eq!(bm.partition, part);
+                }
+                InnerMessage::AnyMessage(am) => {
+                    assert_eq!(am.committable, committable);
+                }
+            }
+        };
+
+        let transformed_broker_msg = transform_func(b_message);
+        let transformed_any_msg = transform_func(a_message);
+        assert_eq!(transformed_any_msg.payload().clone(), "payload".len());
+        assert_eq!(transformed_broker_msg.payload().clone(), "payload".len());
+
+        validate_msg(transformed_broker_msg);
+        validate_msg(transformed_any_msg);
     }
 
     #[test]
