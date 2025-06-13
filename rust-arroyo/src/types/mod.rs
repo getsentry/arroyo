@@ -246,6 +246,19 @@ impl<T> Message<T> {
         }
     }
 
+    /// Consumes the message, returns commitables and the payload
+    pub fn take(self) -> (Message<()>, T) {
+        match self.inner_message {
+            InnerMessage::BrokerMessage(bm) => (
+                Message::new_broker_message((), bm.partition, bm.offset, bm.timestamp), bm.payload),
+            InnerMessage::AnyMessage(am) => (
+                Messsage::new_any_message((), bm.commitables),
+                payload,
+            )
+        }
+    }
+
+
     /// Returns an iterator over this message's committable offsets.
     pub fn committable(&self) -> Committable {
         match &self.inner_message {
