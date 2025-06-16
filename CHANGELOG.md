@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.24.0
+
+### Various fixes & improvements
+
+- feat(usability): add a message take method (#463) by @volokluev
+
 ## 2.23.0
 
 ### Various fixes & improvements
