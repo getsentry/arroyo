@@ -66,6 +66,16 @@ def producer_stats_callback(stats_json: str) -> None:
                 tags={"broker_id": str(broker_id)},
             )
 
+        outbuf_latency = broker_stats.get("outbuf_latency", {})
+        if outbuf_latency:
+            # Use p99 latency as the primary metric (microseconds -> milliseconds)
+            p99_latency_ms = outbuf_latency.get("p99", 0) / 1000.0
+            metrics.timing(
+                "arroyo.producer.librdkafka.p99_outbuf_latency",
+                p99_latency_ms,
+                tags={"broker_id": str(broker_id)},
+            )
+
 
 def build_kafka_producer_configuration(
     default_config: Mapping[str, Any],

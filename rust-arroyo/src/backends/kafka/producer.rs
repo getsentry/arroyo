@@ -27,6 +27,15 @@ impl ClientContext for ProducerContext {
                     "broker_id" => broker_id.to_string()
                 );
             }
+            if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
+                // Use p99 latency as the primary metric (microseconds -> milliseconds)
+                let p99_latency_ms = outbuf_latency.p99 as f64 / 1000.0;
+                timer!(
+                    "arroyo.producer.librdkafka.p99_outbuf_latency",
+                    Duration::from_millis(p99_latency_ms as u64),
+                    "broker_id" => broker_id.to_string()
+                );
+            }
         }
     }
 }
