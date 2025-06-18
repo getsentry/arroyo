@@ -6,7 +6,9 @@ use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
-use rdkafka::producer::ThreadedProducer;
+use rdkafka::producer::{
+    DeliveryResult, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
+};
 use rdkafka::Statistics;
 use std::time::Duration;
 
@@ -26,6 +28,17 @@ impl ClientContext for ProducerContext {
                 );
             }
         }
+    }
+}
+
+impl RdkafkaProducerContext for ProducerContext {
+    type DeliveryOpaque = ();
+
+    fn delivery(
+        &self,
+        _delivery_result: &DeliveryResult<'_>,
+        _delivery_opaque: Self::DeliveryOpaque,
+    ) {
     }
 }
 
