@@ -684,7 +684,6 @@ class KafkaProducer(Producer[KafkaPayload]):
         error: KafkaError,
         message: ConfluentMessage,
     ) -> None:
-
         if error is not None:
             future.set_exception(TransportError(error))
         else:
