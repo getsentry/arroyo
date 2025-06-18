@@ -106,7 +106,7 @@ MetricName = Literal[
     "arroyo.consumer.dlq_buffer.exceeded",
     # Gauge: Number of partitions being tracked in the DLQ buffer
     "arroyo.consumer.dlq_buffer.assigned_partitions",
-    # Time: e2e time it takes to produce a message. Tagged by
-    # physical topic name.
-    "arroyo.producer.max_produce_time",
+    # Time: Internal producer queue latency from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.p99_int_latency",
 ]

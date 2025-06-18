@@ -2,18 +2,43 @@ use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer as ArroyoProducer;
 use crate::backends::ProducerError;
+use crate::timer;
 use crate::types::TopicOrPartition;
+use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
-use rdkafka::producer::{DefaultProducerContext, ThreadedProducer};
+use rdkafka::producer::ThreadedProducer;
+use rdkafka::Statistics;
+use std::time::Duration;
+
+pub struct ProducerContext;
+
+impl ClientContext for ProducerContext {
+    fn stats(&self, stats: Statistics) {
+        // Extract broker-level int_latency metrics
+        for (broker_id, broker_stats) in &stats.brokers {
+            if let Some(int_latency) = &broker_stats.int_latency {
+                // Use p99 latency as the primary metric (microseconds -> milliseconds)
+                let p99_latency_ms = int_latency.p99 as f64 / 1000.0;
+                timer!(
+                    "arroyo.producer.librdkafka.p99_int_latency",
+                    Duration::from_millis(p99_latency_ms as u64),
+                    "broker_id" => broker_id.to_string()
+                );
+            }
+        }
+    }
+}
 
 pub struct KafkaProducer {
-    producer: ThreadedProducer<DefaultProducerContext>,
+    producer: ThreadedProducer<ProducerContext>,
 }
 
 impl KafkaProducer {
     pub fn new(config: KafkaConfig) -> Self {
+        let context = ProducerContext;
         let config_obj: ClientConfig = config.into();
-        let threaded_producer: ThreadedProducer<_> = config_obj.create().unwrap();
+        let threaded_producer: ThreadedProducer<_> =
+            config_obj.create_with_context(context).unwrap();
 
         Self {
             producer: threaded_producer,

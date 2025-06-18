@@ -49,6 +49,42 @@ def stats_callback(stats_json: str) -> None:
     )
 
 
+def producer_stats_callback(stats_json: str) -> None:
+    stats = json.loads(stats_json)
+    metrics = get_metrics()
+
+    # Extract broker-level int_latency metrics
+    brokers = stats.get("brokers", {})
+    for broker_id, broker_stats in brokers.items():
+        int_latency = broker_stats.get("int_latency", {})
+        if int_latency:
+            # Use p99 latency as the primary metric (microseconds -> milliseconds)
+            p99_latency_ms = int_latency.get("p99", 0) / 1000.0
+            metrics.timing(
+                "arroyo.producer.librdkafka.p99_int_latency",
+                p99_latency_ms,
+                tags={"broker_id": str(broker_id)},
+            )
+
+
+def build_kafka_producer_configuration(
+    default_config: Mapping[str, Any],
+    bootstrap_servers: Optional[Sequence[str]] = None,
+    override_params: Optional[Mapping[str, Any]] = None,
+) -> KafkaBrokerConfig:
+    broker_config = build_kafka_configuration(
+        default_config, bootstrap_servers, override_params
+    )
+
+    broker_config.update(
+        {
+            "statistics.interval.ms": STATS_COLLECTION_FREQ_MS,
+            "stats_cb": producer_stats_callback,
+        }
+    )
+    return broker_config
+
+
 def build_kafka_consumer_configuration(
     default_config: Mapping[str, Any],
     group_id: str,
