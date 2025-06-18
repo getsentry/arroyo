@@ -77,7 +77,11 @@ impl KafkaConfig {
         bootstrap_servers: Vec<String>,
         override_params: Option<HashMap<String, String>>,
     ) -> Self {
-        let config = KafkaConfig::new_config(bootstrap_servers, None);
+        let mut config = KafkaConfig::new_config(bootstrap_servers, None);
+        config.config_map.insert(
+            "statistics.interval.ms".to_string(),
+            STATS_COLLECTION_FREQ_MS.to_string(),
+        );
 
         apply_override_params(config, override_params)
     }
