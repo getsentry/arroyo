@@ -45,42 +45,6 @@ class Metrics(Protocol):
         raise NotImplementedError
 
 
-class ConsumerMetricsWrapper(Metrics):
-    """
-    A wrapper around a metrics backend that automatically adds consumer_member_id
-    to all metrics calls.
-    """
-
-    def __init__(self, metrics: Metrics, consumer_member_id: str) -> None:
-        self.__metrics = metrics
-        self.__consumer_member_id = consumer_member_id
-
-    def _add_consumer_tag(self, tags: Optional[Tags]) -> Tags:
-        """Add consumer_member_id to the provided tags."""
-        consumer_tags = {"consumer_member_id": self.__consumer_member_id}
-        if tags:
-            return {**consumer_tags, **tags}
-        return consumer_tags
-
-    def increment(
-        self,
-        name: MetricName,
-        value: Union[int, float] = 1,
-        tags: Optional[Tags] = None,
-    ) -> None:
-        self.__metrics.increment(name, value, tags=self._add_consumer_tag(tags))
-
-    def gauge(
-        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
-    ) -> None:
-        self.__metrics.gauge(name, value, tags=self._add_consumer_tag(tags))
-
-    def timing(
-        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
-    ) -> None:
-        self.__metrics.timing(name, value, tags=self._add_consumer_tag(tags))
-
-
 class DummyMetricsBackend(Metrics):
     """
     Default metrics backend that does not record anything.
@@ -169,12 +133,4 @@ def get_metrics() -> Metrics:
     return _metrics_backend
 
 
-def get_consumer_metrics(consumer_member_id: str) -> Metrics:
-    """
-    Get a metrics backend that automatically adds consumer_member_id to all metrics.
-    """
-    base_metrics = get_metrics()
-    return ConsumerMetricsWrapper(base_metrics, consumer_member_id)
-
-
-__all__ = ["configure_metrics", "Metrics", "MetricName", "Tags", "get_consumer_metrics"]
+__all__ = ["configure_metrics", "Metrics", "MetricName"]
