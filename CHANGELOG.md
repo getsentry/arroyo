@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.25.0
+
+### Various fixes & improvements
+
+- feat: add consumer_member_id to metrics by default (#462) by @mwarkentin
+- chore(producer): Add produce time by topic (#423) by @untitaker
+
 ## 2.24.0
 
 ### Various fixes & improvements
