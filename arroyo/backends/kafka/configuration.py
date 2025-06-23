@@ -76,6 +76,16 @@ def producer_stats_callback(stats_json: str) -> None:
                 tags={"broker_id": str(broker_id)},
             )
 
+        rtt = broker_stats.get("rtt", {})
+        if rtt:
+            # Use p99 RTT as the primary metric (microseconds -> milliseconds)
+            p99_rtt_ms = rtt.get("p99", 0) / 1000.0
+            metrics.timing(
+                "arroyo.producer.librdkafka.p99_rtt",
+                p99_rtt_ms,
+                tags={"broker_id": str(broker_id)},
+            )
+
 
 def build_kafka_producer_configuration(
     default_config: Mapping[str, Any],

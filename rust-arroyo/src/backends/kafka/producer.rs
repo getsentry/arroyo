@@ -36,6 +36,15 @@ impl ClientContext for ProducerContext {
                     "broker_id" => broker_id.to_string()
                 );
             }
+            if let Some(rtt) = &broker_stats.rtt {
+                // Use p99 RTT as the primary metric (microseconds -> milliseconds)
+                let p99_rtt_ms = rtt.p99 as f64 / 1000.0;
+                timer!(
+                    "arroyo.producer.librdkafka.p99_rtt",
+                    Duration::from_millis(p99_rtt_ms as u64),
+                    "broker_id" => broker_id.to_string()
+                );
+            }
         }
     }
 }
@@ -86,11 +95,12 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
 #[cfg(test)]
 mod tests {
-    use super::KafkaProducer;
+    use super::{KafkaProducer, ProducerContext};
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::types::KafkaPayload;
     use crate::backends::Producer;
     use crate::types::{Topic, TopicOrPartition};
+
     #[test]
     fn test_producer() {
         let topic = Topic::new("test");

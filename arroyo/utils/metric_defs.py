@@ -112,4 +112,7 @@ MetricName = Literal[
     # Time: Output buffer latency from librdkafka statistics.
     # Tagged by broker_id.
     "arroyo.producer.librdkafka.p99_outbuf_latency",
+    # Time: Round-trip time to brokers from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.p99_rtt",
 ]
