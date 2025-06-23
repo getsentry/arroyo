@@ -29,7 +29,7 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
-from arroyo.utils.metrics import get_consumer_metrics, Tags, MetricName
+from arroyo.utils.metrics import get_consumer_metrics
 
 logger = logging.getLogger(__name__)
 
