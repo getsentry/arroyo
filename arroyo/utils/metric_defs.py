@@ -106,4 +106,22 @@ MetricName = Literal[
     "arroyo.consumer.dlq_buffer.exceeded",
     # Gauge: Number of partitions being tracked in the DLQ buffer
     "arroyo.consumer.dlq_buffer.assigned_partitions",
+    # Time: Internal producer queue latency from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.p99_int_latency",
+    # Time: Output buffer latency from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.p99_outbuf_latency",
+    # Time: Round-trip time to brokers from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.p99_rtt",
+    # Time: Average internal producer queue latency from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.avg_int_latency",
+    # Time: Average output buffer latency from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.avg_outbuf_latency",
+    # Time: Average round-trip time to brokers from librdkafka statistics.
+    # Tagged by broker_id.
+    "arroyo.producer.librdkafka.avg_rtt",
 ]
