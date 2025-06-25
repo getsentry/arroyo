@@ -89,9 +89,8 @@ ConsumerCounter = Literal[
 
 
 class MetricsBuffer:
-    def __init__(self, consumer: Consumer[Any]) -> None:
-        self.metrics = get_consumer_metrics(consumer.member_id)
-        self.__consumer = consumer
+    def __init__(self) -> None:
+        self.metrics = get_consumer_metrics()
         self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
         self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
         self.__reset()
@@ -143,7 +142,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
-        self.__metrics_buffer = MetricsBuffer(consumer)
+        self.__metrics_buffer = MetricsBuffer()
 
         self.__processing_strategy: Optional[
             ProcessingStrategy[TStrategyPayload]
@@ -236,6 +235,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             logger.info("Member id: %r", self.__consumer.member_id)
+            self.__metrics_buffer.metrics.consumer_member_id = self.__consumer.member_id
+
             self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
             )
@@ -245,6 +246,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
             if self.__dlq_policy:
                 self.__dlq_policy.reset_dlq_limits(current_partitions)
+
             if current_partitions:
                 if self.__processing_strategy is not None:
                     # TODO: for cooperative-sticky rebalancing this can happen

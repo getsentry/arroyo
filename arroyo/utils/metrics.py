@@ -49,18 +49,21 @@ class ConsumerMetricsWrapper(Metrics):
     """
     A wrapper around a metrics backend that automatically adds consumer_member_id
     to all metrics calls.
+
+    Right now we only use this to add tags to the metrics emitted by
+    StreamProcessor, but ideally all metrics, even those emitted by strategies
+    and application code, would get this tag. The metrics abstraction in arroyo
+    is not sufficient for this. We'd have to add a "add_global_tags" method
+    (similar to the concept of global tags in sentry) and users would have to
+    implement it.
     """
 
-    def __init__(self, metrics: Metrics, consumer_member_id: str) -> None:
+    def __init__(self, metrics: Metrics) -> None:
         self.__metrics = metrics
-        self.__consumer_member_id = consumer_member_id
+        self.consumer_member_id = ""
 
     def _add_consumer_tag(self, tags: Optional[Tags]) -> Tags:
-        """Add consumer_member_id to the provided tags."""
-        consumer_tags = {"consumer_member_id": self.__consumer_member_id}
-        if tags:
-            return {**consumer_tags, **tags}
-        return consumer_tags
+        return {**(tags or {}), "consumer_member_id": self.consumer_member_id}
 
     def increment(
         self,
@@ -169,12 +172,12 @@ def get_metrics() -> Metrics:
     return _metrics_backend
 
 
-def get_consumer_metrics(consumer_member_id: str) -> Metrics:
+def get_consumer_metrics() -> ConsumerMetricsWrapper:
     """
     Get a metrics backend that automatically adds consumer_member_id to all metrics.
     """
     base_metrics = get_metrics()
-    return ConsumerMetricsWrapper(base_metrics, consumer_member_id)
+    return ConsumerMetricsWrapper(base_metrics)
 
 
 __all__ = ["configure_metrics", "Metrics", "MetricName", "Tags", "get_consumer_metrics"]
