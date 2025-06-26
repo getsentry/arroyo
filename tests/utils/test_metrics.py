@@ -1,8 +1,19 @@
 import pytest
 
-from arroyo.utils.metrics import Gauge, MetricName, configure_metrics, get_metrics, get_consumer_metrics
+from arroyo.utils.metrics import (
+    Gauge,
+    MetricName,
+    configure_metrics,
+    get_consumer_metrics,
+    get_metrics,
+)
 from tests.metrics import Gauge as GaugeCall
-from tests.metrics import Increment, Timing, TestingMetricsBackend, _TestingMetricsBackend
+from tests.metrics import (
+    Increment,
+    TestingMetricsBackend,
+    Timing,
+    _TestingMetricsBackend,
+)
 
 
 def test_gauge_simple() -> None:
@@ -40,7 +51,8 @@ def test_consumer_metrics_wrapper() -> None:
     configure_metrics(backend, force=True)
 
     consumer_member_id = "test-consumer-123"
-    consumer_metrics = get_consumer_metrics(consumer_member_id)
+    consumer_metrics = get_consumer_metrics()
+    consumer_metrics.consumer_member_id = consumer_member_id
 
     # Test increment
     consumer_metrics.increment("arroyo.consumer.run.count", 5, tags={"extra": "tag"})
@@ -52,9 +64,21 @@ def test_consumer_metrics_wrapper() -> None:
     consumer_metrics.timing("arroyo.consumer.poll.time", 100, tags={"another": "tag"})
 
     expected_calls = [
-        Increment("arroyo.consumer.run.count", 5, {"consumer_member_id": consumer_member_id, "extra": "tag"}),
-        GaugeCall("arroyo.consumer.librdkafka.total_queue_size", 10.5, {"consumer_member_id": consumer_member_id}),
-        Timing("arroyo.consumer.poll.time", 100, {"consumer_member_id": consumer_member_id, "another": "tag"}),
+        Increment(
+            "arroyo.consumer.run.count",
+            5,
+            {"consumer_member_id": consumer_member_id, "extra": "tag"},
+        ),
+        GaugeCall(
+            "arroyo.consumer.librdkafka.total_queue_size",
+            10.5,
+            {"consumer_member_id": consumer_member_id},
+        ),
+        Timing(
+            "arroyo.consumer.poll.time",
+            100,
+            {"consumer_member_id": consumer_member_id, "another": "tag"},
+        ),
     ]
 
     assert backend.calls == expected_calls
