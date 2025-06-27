@@ -173,49 +173,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         def _close_strategy() -> None:
-            start_close = time.time()
-
-            if self.__processing_strategy is None:
-                # Partitions are revoked when the consumer is shutting down, at
-                # which point we already have closed the consumer.
-                return
-
-            logger.info("Closing %r...", self.__processing_strategy)
-            self.__processing_strategy.close()
-
-            logger.info("Waiting for %r to exit...", self.__processing_strategy)
-
-            while True:
-                start_join = time.time()
-
-                try:
-                    self.__processing_strategy.join(self.__join_timeout)
-                    self.__metrics_buffer.incr_timing(
-                        "arroyo.consumer.join.time", time.time() - start_join
-                    )
-                    break
-                except InvalidMessage as e:
-                    self.__metrics_buffer.incr_timing(
-                        "arroyo.consumer.join.time", time.time() - start_join
-                    )
-                    self._handle_invalid_message(e)
-
-            logger.info(
-                "%r exited successfully, releasing assignment.",
-                self.__processing_strategy,
-            )
-            self.__processing_strategy = None
-            self.__message = None  # avoid leaking buffered messages across assignments
-            self.__is_paused = False
-            self._clear_backpressure()
-
-            value = time.time() - start_close
-
-            self.__metrics_buffer.metrics.timing(
-                "arroyo.consumer.run.close_strategy", value
-            )
-
-            self.__metrics_buffer.incr_timing("arroyo.consumer.shutdown.time", value)
+            self._close_processing_strategy()
 
         def _create_strategy(partitions: Mapping[Partition, int]) -> None:
             start_create = time.time()
@@ -301,6 +259,47 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__consumer.subscribe(
             [topic], on_assign=on_partitions_assigned, on_revoke=on_partitions_revoked
         )
+
+    def _close_processing_strategy(self) -> None:
+        """Close the processing strategy and wait for it to exit."""
+        start_close = time.time()
+
+        if self.__processing_strategy is None:
+            # Partitions are revoked when the consumer is shutting down, at
+            # which point we already have closed the consumer.
+            return
+
+        logger.info("Closing %r...", self.__processing_strategy)
+        self.__processing_strategy.close()
+
+        logger.info("Waiting for %r to exit...", self.__processing_strategy)
+
+        while True:
+            start_join = time.time()
+
+            try:
+                self.__processing_strategy.join(self.__join_timeout)
+                self.__metrics_buffer.incr_timing(
+                    "arroyo.consumer.join.time", time.time() - start_join
+                )
+                break
+            except InvalidMessage as e:
+                self.__metrics_buffer.incr_timing(
+                    "arroyo.consumer.join.time", time.time() - start_join
+                )
+                self._handle_invalid_message(e)
+
+        logger.info("%r exited successfully", self.__processing_strategy)
+        self.__processing_strategy = None
+        self.__message = None
+        self.__is_paused = False
+        self._clear_backpressure()
+
+        value = time.time() - start_close
+        self.__metrics_buffer.metrics.timing(
+            "arroyo.consumer.run.close_strategy", value
+        )
+        self.__metrics_buffer.incr_timing("arroyo.consumer.shutdown.time", value)
 
     def __commit(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
         """
@@ -522,31 +521,8 @@ class StreamProcessor(Generic[TStrategyPayload]):
         # where rdkafka would revoke our partition, but then also immediately
         # revoke our member ID as well, causing join() of the CommitStrategy
         # (that is running in the partition revocation callback) to crash.
-        if (
-            self.__shutdown_strategy_before_consumer
-            and self.__processing_strategy is not None
-        ):
-            logger.info(
-                "Closing %r before consumer shutdown...", self.__processing_strategy
-            )
-            self.__processing_strategy.close()
-
-            logger.info(
-                "Waiting for %r to exit before consumer shutdown...",
-                self.__processing_strategy,
-            )
-            while True:
-                try:
-                    self.__processing_strategy.join(self.__join_timeout)
-                    break
-                except InvalidMessage as e:
-                    self._handle_invalid_message(e)
-
-            logger.info("%r exited successfully", self.__processing_strategy)
-            self.__processing_strategy = None
-            self.__message = None
-            self.__is_paused = False
-            self._clear_backpressure()
+        if self.__shutdown_strategy_before_consumer:
+            self._close_processing_strategy()
 
         # close the consumer
         logger.info("Stopping consumer")
