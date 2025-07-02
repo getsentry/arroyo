@@ -272,6 +272,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             return
 
         logger.info("Closing %r...", self.__processing_strategy)
+        logger.info("Member id: %r", self.__consumer.member_id)
         self.__processing_strategy.close()
 
         logger.info("Waiting for %r to exit...", self.__processing_strategy)
