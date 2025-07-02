@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.26.0
+
+### Various fixes & improvements
+
+- fix: Add member id log to processing strategy close (#468) by @untitaker
+- Add shutdown_strategy_before_consumer flag (#467) by @untitaker
+- fix(metrics): Re-set consumer member ID tag after every partition assignment (#466) by @untitaker
+
 ## 2.25.0
 
 ### Various fixes & improvements
