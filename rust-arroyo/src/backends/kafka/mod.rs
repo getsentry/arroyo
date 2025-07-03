@@ -18,7 +18,7 @@ use rdkafka::message::{BorrowedMessage, Message};
 use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use rdkafka::types::{RDKafkaErrorCode, RDKafkaRespErr};
 use rdkafka::Statistics;
-use sentry::Hub;
+use sentry_core::Hub;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
