@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.27.0
+
+### Various fixes & improvements
+
+- chore(deps): depend on sentry-core >=0.32 (#465) by @lcian
+
 ## 2.26.0
 
 ### Various fixes & improvements
