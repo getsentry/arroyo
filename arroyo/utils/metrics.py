@@ -45,45 +45,6 @@ class Metrics(Protocol):
         raise NotImplementedError
 
 
-class ConsumerMetricsWrapper(Metrics):
-    """
-    A wrapper around a metrics backend that automatically adds consumer_member_id
-    to all metrics calls.
-
-    Right now we only use this to add tags to the metrics emitted by
-    StreamProcessor, but ideally all metrics, even those emitted by strategies
-    and application code, would get this tag. The metrics abstraction in arroyo
-    is not sufficient for this. We'd have to add a "add_global_tags" method
-    (similar to the concept of global tags in sentry) and users would have to
-    implement it.
-    """
-
-    def __init__(self, metrics: Metrics) -> None:
-        self.__metrics = metrics
-        self.consumer_member_id = ""
-
-    def _add_consumer_tag(self, tags: Optional[Tags]) -> Tags:
-        return {**(tags or {}), "consumer_member_id": self.consumer_member_id}
-
-    def increment(
-        self,
-        name: MetricName,
-        value: Union[int, float] = 1,
-        tags: Optional[Tags] = None,
-    ) -> None:
-        self.__metrics.increment(name, value, tags=self._add_consumer_tag(tags))
-
-    def gauge(
-        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
-    ) -> None:
-        self.__metrics.gauge(name, value, tags=self._add_consumer_tag(tags))
-
-    def timing(
-        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
-    ) -> None:
-        self.__metrics.timing(name, value, tags=self._add_consumer_tag(tags))
-
-
 class DummyMetricsBackend(Metrics):
     """
     Default metrics backend that does not record anything.
@@ -172,12 +133,4 @@ def get_metrics() -> Metrics:
     return _metrics_backend
 
 
-def get_consumer_metrics() -> ConsumerMetricsWrapper:
-    """
-    Get a metrics backend that automatically adds consumer_member_id to all metrics.
-    """
-    base_metrics = get_metrics()
-    return ConsumerMetricsWrapper(base_metrics)
-
-
-__all__ = ["configure_metrics", "Metrics", "MetricName", "Tags", "get_consumer_metrics"]
+__all__ = ["configure_metrics", "Metrics", "MetricName", "Tags"]

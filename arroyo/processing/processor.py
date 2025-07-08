@@ -29,7 +29,7 @@ from arroyo.processing.strategies.abstract import (
 )
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
-from arroyo.utils.metrics import get_consumer_metrics
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ ConsumerCounter = Literal[
 
 class MetricsBuffer:
     def __init__(self) -> None:
-        self.metrics = get_consumer_metrics()
+        self.metrics = get_metrics()
         self.__timers: MutableMapping[ConsumerTiming, float] = defaultdict(float)
         self.__counters: MutableMapping[ConsumerCounter, int] = defaultdict(int)
         self.__reset()
@@ -195,7 +195,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
         def on_partitions_assigned(partitions: Mapping[Partition, int]) -> None:
             logger.info("New partitions assigned: %r", partitions)
             logger.info("Member id: %r", self.__consumer.member_id)
-            self.__metrics_buffer.metrics.consumer_member_id = self.__consumer.member_id
 
             self.__metrics_buffer.metrics.increment(
                 "arroyo.consumer.partitions_assigned.count", len(partitions)
