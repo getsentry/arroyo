@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.28.0
+
+### Various fixes & improvements
+
+- ref(metrics): Remove consumer_member_id again (#469) by @untitaker
+
 ## 2.27.0
 
 ### Various fixes & improvements
