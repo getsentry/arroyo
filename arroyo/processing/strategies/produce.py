@@ -1,7 +1,9 @@
 import logging
 import time
 from collections import deque
-from typing import Deque, Optional, Tuple, Union
+from typing import Deque, Optional, Tuple, Union, cast
+
+from confluent_kafka import KafkaError, KafkaException
 
 from arroyo.backends.abstract import Producer, ProducerFuture
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -78,6 +80,15 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
                     self.__metrics.increment(
                         "arroyo.producer.produce_status", tags={"status": "success"}
                     )
+                except KafkaException as e:
+                    self.__metrics.increment(
+                        "arroyo.producer.produce_status",
+                        tags={
+                            "status": "error",
+                            "code": str(cast(KafkaError, e.args[0]).code),
+                        },
+                    )
+                    raise e
                 except Exception as e:
                     self.__metrics.increment(
                         "arroyo.producer.produce_status", tags={"status": "error"}
