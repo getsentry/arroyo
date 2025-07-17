@@ -1,5 +1,6 @@
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::{Producer, ProducerError};
+use crate::counter;
 use crate::processing::strategies::run_task_in_threads::{
     ConcurrencyConfig, RunTaskFunc, RunTaskInThreads, TaskRunner,
 };
@@ -9,7 +10,6 @@ use crate::processing::strategies::{
 use crate::types::{Message, TopicOrPartition};
 use std::sync::Arc;
 use std::time::Duration;
-use crate::counter;
 
 use super::run_task_in_threads::RunTaskError;
 
