@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.28.1
+
+### Various fixes & improvements
+
+- fix(slo): Add a metric to capture produce success/failures for our SLO (#470) by @evanh
+
 ## 2.28.0
 
 ### Various fixes & improvements
