@@ -9,6 +9,7 @@ use crate::processing::strategies::{
 use crate::types::{Message, TopicOrPartition};
 use std::sync::Arc;
 use std::time::Duration;
+use crate::counter;
 
 use super::run_task_in_threads::RunTaskError;
 
@@ -32,10 +33,17 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
         let topic = self.topic;
 
         Box::pin(async move {
-            producer
-                .produce(&topic, message.payload().clone())
-                .map_err(RunTaskError::Other)?;
-            Ok(message)
+            let result = producer.produce(&topic, message.payload().clone());
+            match result {
+                Ok(_) => {
+                    counter!("arroyo.producer.produce_status", 1, "status" => "success");
+                    Ok(message)
+                }
+                Err(err) => {
+                    counter!("arroyo.producer.produce_status", 1, "status" => "error");
+                    Err(RunTaskError::Other(err))
+                }
+            }
         })
     }
 }
