@@ -13,6 +13,7 @@ from arroyo.types import (
     TStrategyPayload,
     Value,
 )
+from arroyo.utils.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
         next_step: ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]],
         max_buffer_size: int = 10000,
     ):
+        self.__metrics = get_metrics()
         self.__producer = producer
         self.__topic = topic
         self.__next_step = next_step
@@ -71,9 +73,20 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
                 if not future.done():
                     break
 
+                try:
+                    result = future.result()
+                    self.__metrics.increment(
+                        "arroyo.producer.produce_status", tags={"status": "success"}
+                    )
+                except Exception as e:
+                    self.__metrics.increment(
+                        "arroyo.producer.produce_status", tags={"status": "error"}
+                    )
+                    raise e
+
                 message = Message(
                     Value(
-                        future.result().payload,
+                        result.payload,
                         original_message.committable,
                         original_message.timestamp,
                     )

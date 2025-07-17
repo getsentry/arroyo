@@ -124,4 +124,6 @@ MetricName = Literal[
     # Time: Average round-trip time to brokers from librdkafka statistics.
     # Tagged by broker_id.
     "arroyo.producer.librdkafka.avg_rtt",
+    # Counter: Number of times the produce strategy failed to produce a message
+    "arroyo.producer.produce_status",
 ]

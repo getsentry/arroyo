@@ -1,5 +1,6 @@
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::{Producer, ProducerError};
+use crate::counter;
 use crate::processing::strategies::run_task_in_threads::{
     ConcurrencyConfig, RunTaskFunc, RunTaskInThreads, TaskRunner,
 };
@@ -32,10 +33,17 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
         let topic = self.topic;
 
         Box::pin(async move {
-            producer
-                .produce(&topic, message.payload().clone())
-                .map_err(RunTaskError::Other)?;
-            Ok(message)
+            let result = producer.produce(&topic, message.payload().clone());
+            match result {
+                Ok(_) => {
+                    counter!("arroyo.producer.produce_status", 1, "status" => "success");
+                    Ok(message)
+                }
+                Err(err) => {
+                    counter!("arroyo.producer.produce_status", 1, "status" => "error");
+                    Err(RunTaskError::Other(err))
+                }
+            }
         })
     }
 }
