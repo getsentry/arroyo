@@ -1,9 +1,11 @@
 use crate::types::TopicOrPartition;
+use rdkafka::error::KafkaError;
 use rdkafka::message::Headers as _;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
-
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
+
 #[derive(Clone, Debug)]
 pub struct Headers {
     headers: OwnedHeaders,
@@ -59,6 +61,8 @@ struct KafkaPayloadInner {
     pub payload: Option<Vec<u8>>,
 }
 
+type KafkaCallback = Arc<Sender<Result<(), KafkaError>>>;
+
 #[derive(Clone, Debug)]
 pub struct KafkaPayload {
     inner: Arc<KafkaPayloadInner>,
@@ -90,7 +94,8 @@ impl<'a> KafkaPayload {
     pub fn to_base_record(
         &'a self,
         destination: &'a TopicOrPartition,
-    ) -> BaseRecord<'a, Vec<u8>, Vec<u8>> {
+        delivery_opaque: KafkaCallback,
+    ) -> BaseRecord<'a, Vec<u8>, Vec<u8>, KafkaCallback> {
         let topic = match destination {
             TopicOrPartition::Topic(topic) => topic.as_str(),
             TopicOrPartition::Partition(partition) => partition.topic.as_str(),
@@ -101,7 +106,7 @@ impl<'a> KafkaPayload {
             TopicOrPartition::Partition(partition) => Some(partition.index),
         };
 
-        let mut base_record = BaseRecord::to(topic);
+        let mut base_record = BaseRecord::with_opaque_to(topic, delivery_opaque);
 
         if let Some(msg_key) = self.key() {
             base_record = base_record.key(msg_key);
@@ -127,12 +132,14 @@ impl<'a> KafkaPayload {
 mod tests {
     use super::*;
     use crate::types::Topic;
+    use std::sync::mpsc::channel;
 
     #[test]
     fn test_kafka_payload() {
         let destination = TopicOrPartition::Topic(Topic::new("test"));
         let p: KafkaPayload = KafkaPayload::new(None, None, None);
-        let base_record = p.to_base_record(&destination);
+        let (tx, _) = channel::<Result<(), KafkaError>>();
+        let base_record = p.to_base_record(&destination, Arc::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, None);
         assert_eq!(base_record.payload, None);
@@ -146,7 +153,8 @@ mod tests {
             Some(b"message".to_vec()),
         );
 
-        let base_record = p2.to_base_record(&destination);
+        let (tx, _) = channel::<Result<(), KafkaError>>();
+        let base_record = p2.to_base_record(&destination, Arc::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, Some(&b"key".to_vec()));
         assert_eq!(base_record.payload, Some(&b"message".to_vec()));

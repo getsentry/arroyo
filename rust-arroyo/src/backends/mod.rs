@@ -42,6 +42,9 @@ pub enum ProducerError {
     #[error("The producer errored")]
     ProducerErrorred,
 
+    #[error("Produce wait timeout")]
+    ProduceWaitTimeout,
+
     #[error("Message production failed")]
     MessageProductionFailed { code: RDKafkaErrorCode },
 
