@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.28.2
+
+### Various fixes & improvements
+
+- fix(metrics): Add an error code to the produce SLO (#471) by @evanh
+
 ## 2.28.1
 
 ### Various fixes & improvements
