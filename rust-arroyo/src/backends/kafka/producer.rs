@@ -6,10 +6,13 @@ use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
+use rdkafka::error::KafkaError;
 use rdkafka::producer::{
     DeliveryResult, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
 use rdkafka::Statistics;
+use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct ProducerContext;
@@ -65,13 +68,21 @@ impl ClientContext for ProducerContext {
 }
 
 impl RdkafkaProducerContext for ProducerContext {
-    type DeliveryOpaque = ();
+    type DeliveryOpaque = Arc<Sender<Result<(), KafkaError>>>;
 
     fn delivery(
         &self,
         _delivery_result: &DeliveryResult<'_>,
         _delivery_opaque: Self::DeliveryOpaque,
     ) {
+        let result = match _delivery_result {
+            Ok(_) => Ok(()),
+            Err((err, _)) => Err(err.clone()),
+        };
+
+        _delivery_opaque
+            .send(result)
+            .expect("Failed to send delivery result");
     }
 }
 
@@ -98,13 +109,21 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
-        let base_record = payload.to_base_record(destination);
+        let (tx, rx) = channel::<Result<(), KafkaError>>();
+        let base_record = payload.to_base_record(destination, Arc::new(tx));
 
+        // If the producer fails to enqueue the message, this will return an error
         self.producer
             .send(base_record)
             .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))?;
 
-        Ok(())
+        // If the producer fails to flush the message out of the buffer, the delivery callback will send an error
+        // on the channel.
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(ProducerError::from(e)),
+            Err(_) => Err(ProducerError::ProduceWaitTimeout),
+        }
     }
 }
 
@@ -241,12 +260,11 @@ mod tests {
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
         producer
             .produce(&destination, payload)
-            .expect("Message produced")
+            .expect("Message produced");
     }
 
     #[test]
-    #[ignore = "This should fail with a KafkaError but doesn't for some reason"]
-    #[should_panic]
+    // #[should_panic]
     fn test_producer_failure() {
         let topic = Topic::new("doesnotexist"); // This topic does not exist
         let destination = TopicOrPartition::Partition(Partition::new(topic, 1123)); // This partition does not exist
@@ -256,7 +274,6 @@ mod tests {
         let producer = KafkaProducer::new(configuration);
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
-        // This should fail with a KafkaError
         producer.produce(&destination, payload).unwrap();
     }
 }
