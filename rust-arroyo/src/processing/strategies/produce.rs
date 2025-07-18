@@ -40,7 +40,20 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
                     Ok(message)
                 }
                 Err(err) => {
-                    counter!("arroyo.producer.produce_status", 1, "status" => "error");
+                    match err {
+                        ProducerError::BrokerError { code } => {
+                            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => code.to_string());
+                        }
+                        ProducerError::MessageProductionFailed { code } => {
+                            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => code.to_string());
+                        }
+                        ProducerError::FlushFailed { code } => {
+                            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => code.to_string());
+                        }
+                        _ => {
+                            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => "unknown");
+                        }
+                    }
                     Err(RunTaskError::Other(err))
                 }
             }

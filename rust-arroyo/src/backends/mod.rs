@@ -1,4 +1,5 @@
 use super::types::{BrokerMessage, Partition, TopicOrPartition};
+use rdkafka::error::RDKafkaErrorCode;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use thiserror::Error;
@@ -40,6 +41,15 @@ pub enum ConsumerError {
 pub enum ProducerError {
     #[error("The producer errored")]
     ProducerErrorred,
+
+    #[error("Message production failed")]
+    MessageProductionFailed { code: RDKafkaErrorCode },
+
+    #[error("Flush failed")]
+    FlushFailed { code: RDKafkaErrorCode },
+
+    #[error(transparent)]
+    BrokerError { code: RDKafkaErrorCode },
 }
 
 /// This abstracts the committing of partition offsets.
