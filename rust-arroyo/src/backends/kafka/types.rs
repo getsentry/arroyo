@@ -61,7 +61,7 @@ struct KafkaPayloadInner {
     pub payload: Option<Vec<u8>>,
 }
 
-type KafkaCallback = Arc<Sender<Result<(), KafkaError>>>;
+type KafkaCallback = Box<Sender<Result<(), KafkaError>>>;
 
 #[derive(Clone, Debug)]
 pub struct KafkaPayload {
@@ -139,7 +139,7 @@ mod tests {
         let destination = TopicOrPartition::Topic(Topic::new("test"));
         let p: KafkaPayload = KafkaPayload::new(None, None, None);
         let (tx, _) = channel::<Result<(), KafkaError>>();
-        let base_record = p.to_base_record(&destination, Arc::new(tx));
+        let base_record = p.to_base_record(&destination, Box::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, None);
         assert_eq!(base_record.payload, None);
@@ -154,7 +154,7 @@ mod tests {
         );
 
         let (tx, _) = channel::<Result<(), KafkaError>>();
-        let base_record = p2.to_base_record(&destination, Arc::new(tx));
+        let base_record = p2.to_base_record(&destination, Box::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, Some(&b"key".to_vec()));
         assert_eq!(base_record.payload, Some(&b"message".to_vec()));

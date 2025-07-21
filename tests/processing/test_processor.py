@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Sequence, cast
 from unittest import mock
 
-import py.path
 import pytest
 
 from arroyo.backends.local.backend import LocalBroker
@@ -583,7 +582,7 @@ def test_dlq() -> None:
     assert dlq_policy.producer.produce.call_count == 1
 
 
-def test_healthcheck(tmpdir: py.path.local) -> None:
+def test_healthcheck(tmp_path: Any) -> None:
     """
     Test healthcheck strategy e2e with StreamProcessor, to ensure the
     combination of both actually touches the file often enough.
@@ -599,7 +598,7 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     strategy.submit.side_effect = InvalidMessage(partition, 1)
     factory = mock.Mock()
     factory.create_with_partitions.return_value = Healthcheck(
-        healthcheck_file=str(tmpdir.join("health.txt")), next_step=strategy
+        healthcheck_file=str(tmp_path / "health.txt"), next_step=strategy
     )
 
     processor: StreamProcessor[int] = StreamProcessor(
@@ -617,11 +616,11 @@ def test_healthcheck(tmpdir: py.path.local) -> None:
     assignment_callback(offsets)
 
     processor._run_once()
-    health_mtime = tmpdir.join("health.txt").mtime()
+    health_mtime = (tmp_path / "health.txt").stat().st_mtime
     assert health_mtime < time.time() + 1
 
     processor._run_once()
-    assert tmpdir.join("health.txt").mtime() == health_mtime
+    assert (tmp_path / "health.txt").stat().st_mtime == health_mtime
 
 
 def test_processor_pause_with_invalid_message() -> None:

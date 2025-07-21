@@ -12,7 +12,6 @@ use rdkafka::producer::{
 };
 use rdkafka::Statistics;
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
 use std::time::Duration;
 
 pub struct ProducerContext;
@@ -68,7 +67,7 @@ impl ClientContext for ProducerContext {
 }
 
 impl RdkafkaProducerContext for ProducerContext {
-    type DeliveryOpaque = Arc<Sender<Result<(), KafkaError>>>;
+    type DeliveryOpaque = Box<Sender<Result<(), KafkaError>>>;
 
     fn delivery(
         &self,
@@ -110,7 +109,7 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
         let (tx, rx) = channel::<Result<(), KafkaError>>();
-        let base_record = payload.to_base_record(destination, Arc::new(tx));
+        let base_record = payload.to_base_record(destination, Box::new(tx));
 
         // If the producer fails to enqueue the message, this will return an error
         self.producer
@@ -119,11 +118,9 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
         // If the producer fails to flush the message out of the buffer, the delivery callback will send an error
         // on the channel.
-        match rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => Err(ProducerError::from(e)),
-            Err(_) => Err(ProducerError::ProduceWaitTimeout),
-        }
+        rx.recv_timeout(Duration::from_secs(0))
+            .map_err(|_| ProducerError::ProduceWaitTimeout)?
+            .map_err(ProducerError::from)
     }
 }
 
