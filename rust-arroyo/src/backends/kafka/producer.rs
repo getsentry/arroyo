@@ -102,7 +102,7 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
         self.producer
             .send(base_record)
-            .map_err(|_| ProducerError::ProducerErrorred)?;
+            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))?;
 
         Ok(())
     }
@@ -114,7 +114,7 @@ mod tests {
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::types::KafkaPayload;
     use crate::backends::Producer;
-    use crate::types::{Topic, TopicOrPartition};
+    use crate::types::{Partition, Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
     use rdkafka::statistics::{Broker, Statistics, Window};
     use std::collections::HashMap;
@@ -242,5 +242,21 @@ mod tests {
         producer
             .produce(&destination, payload)
             .expect("Message produced")
+    }
+
+    #[test]
+    #[ignore = "This should fail with a KafkaError but doesn't for some reason"]
+    #[should_panic]
+    fn test_producer_failure() {
+        let topic = Topic::new("doesnotexist"); // This topic does not exist
+        let destination = TopicOrPartition::Partition(Partition::new(topic, 1123)); // This partition does not exist
+        let configuration =
+            KafkaConfig::new_producer_config(vec!["1.0.0.127:2909".to_string()], None); // This broker does not exist
+
+        let producer = KafkaProducer::new(configuration);
+
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        // This should fail with a KafkaError
+        producer.produce(&destination, payload).unwrap();
     }
 }
