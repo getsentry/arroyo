@@ -28,8 +28,12 @@ impl From<KafkaError> for ProducerError {
                 ProducerError::FlushFailed { code }
             }
             other => {
-                let code = other.rdkafka_error_code().unwrap();
-                ProducerError::BrokerError { code }
+                let code = other.rdkafka_error_code();
+                if let Some(code) = code {
+                    ProducerError::BrokerError { code }
+                } else {
+                    ProducerError::KafkaError { error: other }
+                }
             }
         }
     }

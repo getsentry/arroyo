@@ -50,6 +50,13 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
                         ProducerError::FlushFailed { code } => {
                             counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => code.to_string());
                         }
+                        ProducerError::KafkaError { ref error } => {
+                            if let Some(code) = error.rdkafka_error_code() {
+                                counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => code.to_string());
+                            } else {
+                                counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => "unknown");
+                            }
+                        }
                         _ => {
                             counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => "unknown");
                         }

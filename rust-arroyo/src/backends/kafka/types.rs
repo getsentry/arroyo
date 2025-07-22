@@ -1,5 +1,5 @@
 use crate::types::TopicOrPartition;
-use rdkafka::error::KafkaError;
+use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use rdkafka::message::Headers as _;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
 use rdkafka::producer::BaseRecord;
@@ -61,7 +61,7 @@ struct KafkaPayloadInner {
     pub payload: Option<Vec<u8>>,
 }
 
-type KafkaCallback = Box<Sender<Result<(), KafkaError>>>;
+type KafkaCallback = Box<Sender<Option<RDKafkaErrorCode>>>;
 
 #[derive(Clone, Debug)]
 pub struct KafkaPayload {
@@ -138,7 +138,7 @@ mod tests {
     fn test_kafka_payload() {
         let destination = TopicOrPartition::Topic(Topic::new("test"));
         let p: KafkaPayload = KafkaPayload::new(None, None, None);
-        let (tx, _) = channel::<Result<(), KafkaError>>();
+        let (tx, _) = channel::<Option<RDKafkaErrorCode>>();
         let base_record = p.to_base_record(&destination, Box::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, None);
@@ -153,7 +153,7 @@ mod tests {
             Some(b"message".to_vec()),
         );
 
-        let (tx, _) = channel::<Result<(), KafkaError>>();
+        let (tx, _) = channel::<Option<RDKafkaErrorCode>>();
         let base_record = p2.to_base_record(&destination, Box::new(tx));
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, Some(&b"key".to_vec()));

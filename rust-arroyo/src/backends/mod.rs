@@ -1,5 +1,5 @@
 use super::types::{BrokerMessage, Partition, TopicOrPartition};
-use rdkafka::error::RDKafkaErrorCode;
+use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use thiserror::Error;
@@ -40,7 +40,7 @@ pub enum ConsumerError {
 #[derive(Error, Debug)]
 pub enum ProducerError {
     #[error("The producer errored")]
-    ProducerErrorred,
+    ProducerErrored,
 
     #[error("Produce wait timeout")]
     ProduceWaitTimeout,
@@ -53,6 +53,9 @@ pub enum ProducerError {
 
     #[error(transparent)]
     BrokerError { code: RDKafkaErrorCode },
+
+    #[error(transparent)]
+    KafkaError { error: KafkaError },
 }
 
 /// This abstracts the committing of partition offsets.

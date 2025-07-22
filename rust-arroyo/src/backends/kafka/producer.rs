@@ -6,7 +6,7 @@ use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
-use rdkafka::error::KafkaError;
+use rdkafka::error::RDKafkaErrorCode;
 use rdkafka::producer::{
     DeliveryResult, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
@@ -67,7 +67,7 @@ impl ClientContext for ProducerContext {
 }
 
 impl RdkafkaProducerContext for ProducerContext {
-    type DeliveryOpaque = Box<Sender<Result<(), KafkaError>>>;
+    type DeliveryOpaque = Box<Sender<Option<RDKafkaErrorCode>>>;
 
     fn delivery(
         &self,
@@ -75,13 +75,12 @@ impl RdkafkaProducerContext for ProducerContext {
         _delivery_opaque: Self::DeliveryOpaque,
     ) {
         let result = match _delivery_result {
-            Ok(_) => Ok(()),
-            Err((err, _)) => Err(err.clone()),
+            Ok(_) => Some(RDKafkaErrorCode::NoError),
+            Err((err, _)) => err.rdkafka_error_code(),
         };
 
-        _delivery_opaque
-            .send(result)
-            .expect("Failed to send delivery result");
+        let result = _delivery_opaque.send(result);
+        result.expect("Failed to send delivery result");
     }
 }
 
@@ -108,7 +107,7 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
-        let (tx, rx) = channel::<Result<(), KafkaError>>();
+        let (tx, rx) = channel::<Option<RDKafkaErrorCode>>();
         let base_record = payload.to_base_record(destination, Box::new(tx));
 
         // If the producer fails to enqueue the message, this will return an error
@@ -118,9 +117,13 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
         // If the producer fails to flush the message out of the buffer, the delivery callback will send an error
         // on the channel.
-        rx.recv_timeout(Duration::from_secs(0))
-            .map_err(|_| ProducerError::ProduceWaitTimeout)?
-            .map_err(ProducerError::from)
+        // match rx.recv_timeout(Duration::from_secs(5)) {
+        match rx.recv() {
+            Ok(Some(RDKafkaErrorCode::NoError)) => Ok(()), // The success code
+            Ok(Some(err)) => Err(ProducerError::BrokerError { code: err }), // The produce had an error
+            Ok(None) => Err(ProducerError::ProducerErrored), // The producer errored with no code
+            Err(_) => Err(ProducerError::ProduceWaitTimeout), // The producer timed out waiting for the message to be delivered
+        }
     }
 }
 
@@ -129,9 +132,10 @@ mod tests {
     use super::{KafkaProducer, ProducerContext};
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::types::KafkaPayload;
-    use crate::backends::Producer;
+    use crate::backends::{Producer, ProducerError};
     use crate::types::{Partition, Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
+    use rdkafka::error::RDKafkaErrorCode;
     use rdkafka::statistics::{Broker, Statistics, Window};
     use std::collections::HashMap;
 
@@ -261,7 +265,6 @@ mod tests {
     }
 
     #[test]
-    // #[should_panic]
     fn test_producer_failure() {
         let topic = Topic::new("doesnotexist"); // This topic does not exist
         let destination = TopicOrPartition::Partition(Partition::new(topic, 1123)); // This partition does not exist
@@ -271,6 +274,18 @@ mod tests {
         let producer = KafkaProducer::new(configuration);
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
-        producer.produce(&destination, payload).unwrap();
+        let result = producer.produce(&destination, payload);
+
+        // The producer should fail due to invalid broker/topic/partition
+        assert!(
+            result.is_err(),
+            "Producer should fail with invalid configuration"
+        );
+        match result.unwrap_err() {
+            ProducerError::BrokerError { code } => {
+                assert_eq!(code, RDKafkaErrorCode::BrokerNotAvailable)
+            }
+            other => panic!("Expected BrokerError not {:?}", other),
+        }
     }
 }
