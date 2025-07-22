@@ -74,13 +74,12 @@ impl RdkafkaProducerContext for ProducerContext {
         _delivery_result: &DeliveryResult<'_>,
         _delivery_opaque: Self::DeliveryOpaque,
     ) {
-        let result = match _delivery_result {
+        let error_code = match _delivery_result {
             Ok(_) => Some(RDKafkaErrorCode::NoError),
             Err((err, _)) => err.rdkafka_error_code(),
         };
 
-        let result = _delivery_opaque.send(result);
-        result.expect("Failed to send delivery result");
+        let _ = _delivery_opaque.send(error_code);
     }
 }
 
@@ -118,9 +117,9 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
         // If the producer fails to flush the message out of the buffer, the delivery callback will send an error
         // on the channel.
         // match rx.recv_timeout(Duration::from_secs(5)) {
-        match rx.recv() {
+        match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Some(RDKafkaErrorCode::NoError)) => Ok(()), // The success code
-            Ok(Some(err)) => Err(ProducerError::BrokerError { code: err }), // The produce had an error
+            Ok(Some(code)) => Err(ProducerError::BrokerError { code }), // The produce had an error
             Ok(None) => Err(ProducerError::ProducerErrored), // The producer errored with no code
             Err(_) => Err(ProducerError::ProduceWaitTimeout), // The producer timed out waiting for the message to be delivered
         }
@@ -268,8 +267,13 @@ mod tests {
     fn test_producer_failure() {
         let topic = Topic::new("doesnotexist"); // This topic does not exist
         let destination = TopicOrPartition::Partition(Partition::new(topic, 1123)); // This partition does not exist
-        let configuration =
-            KafkaConfig::new_producer_config(vec!["1.0.0.127:2909".to_string()], None); // This broker does not exist
+        let configuration = KafkaConfig::new_producer_config(
+            vec!["1.0.0.127:2909".to_string()],
+            Some(HashMap::from([(
+                "message.timeout.ms".to_string(),
+                "1".to_string(),
+            )])),
+        );
 
         let producer = KafkaProducer::new(configuration);
 
@@ -283,7 +287,7 @@ mod tests {
         );
         match result.unwrap_err() {
             ProducerError::BrokerError { code } => {
-                assert_eq!(code, RDKafkaErrorCode::BrokerNotAvailable)
+                assert_eq!(code, RDKafkaErrorCode::MessageTimedOut)
             }
             other => panic!("Expected BrokerError not {:?}", other),
         }
