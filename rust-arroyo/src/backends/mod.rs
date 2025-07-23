@@ -1,4 +1,5 @@
 use super::types::{BrokerMessage, Partition, TopicOrPartition};
+use rdkafka::producer::DeliveryFuture;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use thiserror::Error;
@@ -163,4 +164,13 @@ pub trait Producer<TPayload>: Send + Sync {
         destination: &TopicOrPartition,
         payload: TPayload,
     ) -> Result<(), ProducerError>;
+}
+
+pub trait AsyncProducer<TPayload>: Send + Sync {
+    /// Produce to a topic or partition.
+    fn produce(
+        &self,
+        destination: &TopicOrPartition,
+        payload: TPayload,
+    ) -> Result<DeliveryFuture, ProducerError>;
 }

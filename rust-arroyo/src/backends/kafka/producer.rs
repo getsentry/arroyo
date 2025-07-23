@@ -1,16 +1,18 @@
 use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::errors::get_error_name;
 use crate::backends::kafka::types::KafkaPayload;
-use crate::backends::Producer as ArroyoProducer;
 use crate::backends::ProducerError;
+use crate::backends::{AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer};
 use crate::counter;
 use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{
-    DeliveryResult, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
+    DeliveryFuture, DeliveryResult, FutureProducer, ProducerContext as RdkafkaProducerContext,
+    ThreadedProducer,
 };
+use rdkafka::util::Timeout;
 use rdkafka::Statistics;
 use std::time::Duration;
 
@@ -109,14 +111,42 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
         self.producer
             .send(base_record)
-            .map_err(|(kafka_error, _record)| {
-                let error_name = get_error_name(&kafka_error);
-                let producer_error = ProducerError::ProducerFailure { error: error_name.clone() };
-                counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name);
-                producer_error
-            })?;
+            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))?;
 
         Ok(())
+    }
+}
+
+pub struct AsyncProducer {
+    producer: FutureProducer<ProducerContext>,
+}
+
+impl AsyncProducer {
+    pub fn new(config: KafkaConfig) -> Self {
+        let context = ProducerContext;
+        let config_obj: ClientConfig = config.into();
+        let future_producer: FutureProducer<_> = config_obj.create_with_context(context).unwrap();
+
+        Self {
+            producer: future_producer,
+        }
+    }
+}
+
+impl ArroyoAsyncProducer<KafkaPayload> for AsyncProducer {
+    fn produce(
+        &self,
+        destination: &TopicOrPartition,
+        payload: KafkaPayload,
+    ) -> Result<DeliveryFuture, ProducerError> {
+        let base_record = payload.to_future_record(destination);
+
+        self.producer.send_result(base_record).map_err(|(kafka_error, _record)| {
+            let error_name = get_error_name(&kafka_error);
+            let producer_error = ProducerError::ProducerFailure { error: error_name.clone() };
+            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name);
+            producer_error
+        })
     }
 }
 
