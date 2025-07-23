@@ -237,7 +237,7 @@ impl<TPayload: Send + Sync + 'static> Producer<TPayload> for LocalProducer<TPayl
             TopicOrPartition::Topic(t) => {
                 let max_partitions = broker
                     .get_topic_partition_count(t)
-                    .map_err(|_| ProducerError::ProducerErrorred)?;
+                    .map_err(|_| ProducerError::ProducerErrored)?;
                 let partition = thread_rng().gen_range(0..max_partitions);
                 Partition::new(*t, partition)
             }
@@ -246,7 +246,7 @@ impl<TPayload: Send + Sync + 'static> Producer<TPayload> for LocalProducer<TPayl
 
         broker
             .produce(&partition, payload)
-            .map_err(|_| ProducerError::ProducerErrorred)?;
+            .map_err(|_| ProducerError::ProducerErrored)?;
 
         Ok(())
     }
