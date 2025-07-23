@@ -6,7 +6,7 @@ extern crate sentry_arroyo;
 
 use rdkafka::message::ToBytes;
 use sentry_arroyo::backends::kafka::config::KafkaConfig;
-use sentry_arroyo::backends::kafka::producer::AsyncKafkaProducer;
+use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::kafka::InitialOffset;
 use sentry_arroyo::processing::strategies::noop::Noop;
@@ -48,7 +48,7 @@ async fn main() {
     }
     impl ProcessingStrategyFactory<KafkaPayload> for ReverseStringAndProduceStrategyFactory {
         fn create(&self) -> Box<dyn ProcessingStrategy<KafkaPayload>> {
-            let producer = AsyncKafkaProducer::new(self.config.clone());
+            let producer = KafkaProducer::new(self.config.clone());
             let topic = TopicOrPartition::Topic(self.topic);
             let reverse_string_and_produce_strategy = RunTask::new(
                 reverse_string,

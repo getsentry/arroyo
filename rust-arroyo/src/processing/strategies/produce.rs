@@ -1,5 +1,5 @@
 use crate::backends::kafka::types::KafkaPayload;
-use crate::backends::{AsyncProducer, ProducerError};
+use crate::backends::{Producer, ProducerError};
 use crate::processing::strategies::run_task_in_threads::{
     ConcurrencyConfig, RunTaskFunc, RunTaskInThreads, TaskRunner,
 };
@@ -13,15 +13,12 @@ use std::time::Duration;
 use super::run_task_in_threads::RunTaskError;
 
 struct ProduceMessage {
-    producer: Arc<dyn AsyncProducer<KafkaPayload>>,
+    producer: Arc<dyn Producer<KafkaPayload>>,
     topic: TopicOrPartition,
 }
 
 impl ProduceMessage {
-    pub fn new(
-        producer: impl AsyncProducer<KafkaPayload> + 'static,
-        topic: TopicOrPartition,
-    ) -> Self {
+    pub fn new(producer: impl Producer<KafkaPayload> + 'static, topic: TopicOrPartition) -> Self {
         ProduceMessage {
             producer: Arc::new(producer),
             topic,
@@ -35,7 +32,7 @@ impl TaskRunner<KafkaPayload, KafkaPayload, ProducerError> for ProduceMessage {
         let topic = self.topic;
 
         Box::pin(async move {
-            let result = producer.produce(&topic, message.payload().clone()).await;
+            let result = producer.produce(&topic, message.payload().clone());
             match result {
                 Ok(_) => Ok(message),
                 Err(err) => Err(RunTaskError::Other(err)),
@@ -54,7 +51,7 @@ where
 {
     pub fn new(
         next_step: N,
-        producer: impl AsyncProducer<KafkaPayload> + 'static,
+        producer: impl Producer<KafkaPayload> + 'static,
         concurrency: &ConcurrencyConfig,
         topic: TopicOrPartition,
     ) -> Self {
@@ -97,7 +94,7 @@ mod tests {
 
     use super::*;
     use crate::backends::kafka::config::KafkaConfig;
-    use crate::backends::kafka::producer::AsyncKafkaProducer;
+    use crate::backends::kafka::producer::KafkaProducer;
     use crate::backends::kafka::InitialOffset;
     use crate::backends::local::broker::LocalBroker;
     use crate::backends::local::LocalProducer;
@@ -160,7 +157,7 @@ mod tests {
 
         let partition = Partition::new(Topic::new("test"), 0);
 
-        let producer: AsyncKafkaProducer = AsyncKafkaProducer::new(config);
+        let producer: KafkaProducer = KafkaProducer::new(config);
         let concurrency = ConcurrencyConfig::new(10);
         let mut strategy = Produce::new(
             Noop {},

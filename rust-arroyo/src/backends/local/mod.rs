@@ -1,9 +1,6 @@
 pub mod broker;
 
-use super::{
-    AssignmentCallbacks, AsyncProducer, CommitOffsets, Consumer, ConsumerError, ProducerError,
-    ProducerFuture,
-};
+use super::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError, Producer, ProducerError};
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 use broker::LocalBroker;
 use parking_lot::Mutex;
@@ -229,29 +226,28 @@ impl<TPayload> Clone for LocalProducer<TPayload> {
     }
 }
 
-impl<TPayload: Send + Sync + 'static> AsyncProducer<TPayload> for LocalProducer<TPayload> {
-    fn produce(&self, destination: &TopicOrPartition, payload: TPayload) -> ProducerFuture {
+impl<TPayload: Send + Sync + 'static> Producer<TPayload> for LocalProducer<TPayload> {
+    fn produce(
+        &self,
+        destination: &TopicOrPartition,
+        payload: TPayload,
+    ) -> Result<(), ProducerError> {
         let mut broker = self.broker.lock();
         let partition = match destination {
             TopicOrPartition::Topic(t) => {
                 let max_partitions = broker
                     .get_topic_partition_count(t)
-                    .map_err(|_| ProducerError::ProducerErrored);
-                if let Err(e) = max_partitions {
-                    return Box::pin(async move { Err(e) });
-                }
-                let partition = thread_rng().gen_range(0..max_partitions.unwrap());
+                    .map_err(|_| ProducerError::ProducerErrored)?;
+                let partition = thread_rng().gen_range(0..max_partitions);
                 Partition::new(*t, partition)
             }
             TopicOrPartition::Partition(p) => *p,
         };
 
         let result = broker.produce(&partition, payload);
-        Box::pin(async move {
-            result
-                .map(|_| ())
-                .map_err(|_| ProducerError::ProducerErrored)
-        })
+        result
+            .map(|_| ())
+            .map_err(|_| ProducerError::ProducerErrored)
     }
 }
 
