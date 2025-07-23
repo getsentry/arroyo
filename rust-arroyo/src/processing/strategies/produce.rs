@@ -169,7 +169,7 @@ mod tests {
         let payload_str = "hello world".to_string().as_bytes().to_vec();
         let message = Message {
             inner_message: InnerMessage::BrokerMessage(BrokerMessage {
-                payload: KafkaPayload::new(None, None, Some(payload_str.clone())),
+                payload: KafkaPayload::new(None, None, Some(payload_str.clone()), None),
                 partition,
                 offset: 0,
                 timestamp: Utc::now(),
@@ -203,7 +203,7 @@ mod tests {
         );
 
         let value = br#"{"something": "something"}"#.to_vec();
-        let data = KafkaPayload::new(None, None, Some(value.clone()));
+        let data = KafkaPayload::new(None, None, Some(value.clone()), None);
         let now = chrono::Utc::now();
 
         let message = Message::new_broker_message(data, Partition::new(orig_topic, 0), 1, now);

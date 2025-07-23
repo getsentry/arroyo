@@ -613,7 +613,7 @@ mod tests {
         );
 
         let producer = KafkaProducer::new(producer_configuration);
-        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()), None);
 
         producer
             .produce(&crate::types::TopicOrPartition::Topic(topic.topic), payload)
@@ -711,7 +711,7 @@ mod tests {
 
         wait_for_assignments(&mut consumer);
 
-        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()), None);
         topic.produce(payload);
 
         let old_offsets = consumer.tell().unwrap();

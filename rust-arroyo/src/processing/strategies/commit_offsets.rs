@@ -105,7 +105,7 @@ mod tests {
             inner_message: InnerMessage::BrokerMessage(BrokerMessage {
                 partition: partition1,
                 offset: 1000,
-                payload: KafkaPayload::new(None, None, None),
+                payload: KafkaPayload::new(None, None, None, None),
                 timestamp,
             }),
         };
@@ -114,7 +114,7 @@ mod tests {
             inner_message: InnerMessage::BrokerMessage(BrokerMessage {
                 partition: partition2,
                 offset: 2000,
-                payload: KafkaPayload::new(None, None, None),
+                payload: KafkaPayload::new(None, None, None, None),
                 timestamp,
             }),
         };

@@ -250,7 +250,7 @@ mod tests {
 
         let producer = KafkaProducer::new(configuration);
 
-        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()), None);
         producer
             .produce(&destination, payload)
             .expect("Message produced")

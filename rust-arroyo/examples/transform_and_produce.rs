@@ -33,6 +33,7 @@ fn reverse_string(
         value.key().cloned(),
         value.headers().cloned(),
         Some(result_str.to_bytes().to_vec()),
+        value.timestamp().cloned(),
     );
     Ok(message.replace(result))
 }
