@@ -2,17 +2,18 @@ use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::errors::get_error_name;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::ProducerError;
-use crate::backends::{AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer};
+use crate::backends::{
+    AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer, ProducerFuture,
+};
 use crate::counter;
 use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
+use rdkafka::error::KafkaError;
 use rdkafka::producer::{
-    DeliveryFuture, DeliveryResult, FutureProducer, ProducerContext as RdkafkaProducerContext,
-    ThreadedProducer,
+    DeliveryResult, FutureProducer, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
-use rdkafka::util::Timeout;
 use rdkafka::Statistics;
 use std::time::Duration;
 
@@ -117,11 +118,11 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
     }
 }
 
-pub struct AsyncProducer {
+pub struct AsyncKafkaProducer {
     producer: FutureProducer<ProducerContext>,
 }
 
-impl AsyncProducer {
+impl AsyncKafkaProducer {
     pub fn new(config: KafkaConfig) -> Self {
         let context = ProducerContext;
         let config_obj: ClientConfig = config.into();
@@ -133,29 +134,67 @@ impl AsyncProducer {
     }
 }
 
-impl ArroyoAsyncProducer<KafkaPayload> for AsyncProducer {
-    fn produce(
-        &self,
-        destination: &TopicOrPartition,
-        payload: KafkaPayload,
-    ) -> Result<DeliveryFuture, ProducerError> {
+fn record_producer_error(kafka_error: Option<KafkaError>, default_error: &str) -> ProducerError {
+    if let Some(kafka_error) = kafka_error {
+        let error_name = get_error_name(&kafka_error);
+        let producer_error = ProducerError::ProducerFailure {
+            error: error_name.clone(),
+        };
+        counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name);
+        return producer_error;
+    }
+    let producer_error = ProducerError::ProducerFailure {
+        error: default_error.to_string(),
+    };
+    counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => default_error);
+    producer_error
+}
+
+impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
+    fn produce(&self, destination: &TopicOrPartition, payload: KafkaPayload) -> ProducerFuture {
         let base_record = payload.to_future_record(destination);
 
-        self.producer.send_result(base_record).map_err(|(kafka_error, _record)| {
-            let error_name = get_error_name(&kafka_error);
-            let producer_error = ProducerError::ProducerFailure { error: error_name.clone() };
-            counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name);
-            producer_error
+        let queue_result = self.producer.send_result(base_record);
+        if queue_result.is_err() {
+            // If the producer couldn't put the message in the queue at all, it won't retry and will return an error directly
+            let producer_error = record_producer_error(
+                queue_result.err().map(|(kafka_error, _record)| kafka_error),
+                "queue_full",
+            );
+            return Box::pin(async move { Err(producer_error) });
+        }
+
+        let future = queue_result.unwrap();
+
+        Box::pin(async move {
+            let produce_result = match future.await {
+                Ok(delivery_result) => match delivery_result {
+                    Ok(_) => Ok(()),
+                    Err((kafka_error, _record)) => {
+                        // The producer failed when flushing the message out of the queue
+                        let producer_error =
+                            record_producer_error(Some(kafka_error), "produce_error");
+                        Err(producer_error)
+                    }
+                },
+                Err(_canceled) => {
+                    // The future was canceled, which means the producer was closed
+                    let producer_error = record_producer_error(None, "future_canceled");
+                    Err(producer_error)
+                }
+            };
+
+            produce_result
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{KafkaProducer, ProducerContext};
+    use super::{AsyncKafkaProducer, KafkaProducer, ProducerContext};
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::types::KafkaPayload;
-    use crate::backends::Producer;
+    use crate::backends::{AsyncProducer, Producer};
     use crate::types::{Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
     use rdkafka::statistics::{Broker, Statistics, Window};
@@ -284,5 +323,41 @@ mod tests {
         producer
             .produce(&destination, payload)
             .expect("Message produced")
+    }
+
+    #[tokio::test]
+    async fn test_async_producer() {
+        let topic = Topic::new("test");
+        let destination = TopicOrPartition::Topic(topic);
+        let configuration =
+            KafkaConfig::new_producer_config(vec!["127.0.0.1:9092".to_string()], None);
+
+        let producer = AsyncKafkaProducer::new(configuration);
+
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let result = producer.produce(&destination, payload).await;
+        assert!(result.is_ok(), "Message should be produced successfully");
+    }
+
+    #[tokio::test]
+    async fn test_async_producer_with_error() {
+        let topic = Topic::new("test");
+        let destination = TopicOrPartition::Topic(topic);
+        let configuration = KafkaConfig::new_producer_config(
+            vec!["obviously-not-a-valid-broker".to_string()],
+            Some(HashMap::from([(
+                "message.timeout.ms".to_string(),
+                "1".to_string(),
+            )])),
+        );
+
+        let producer = AsyncKafkaProducer::new(configuration);
+
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let result = producer.produce(&destination, payload).await;
+        assert!(
+            result.is_err(),
+            "Message should not be produced successfully"
+        );
     }
 }
