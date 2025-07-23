@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## 2.28.3
+
+### Various fixes & improvements
+
+- fix(metrics): Log producer metrics in the callback (#475) by @evanh
+- fix(slo): Add error codes to producer failure in Rust (#472) by @evanh
+- ref: Bump pytest (#474) by @untitaker
+
 ## 2.28.2
 
 ### Various fixes & improvements
