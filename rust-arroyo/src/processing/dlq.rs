@@ -94,6 +94,7 @@ impl DlqProducer<KafkaPayload> for KafkaDlqProducer {
             message.payload.key().cloned(),
             Some(headers),
             message.payload.payload().cloned(),
+            message.payload.timestamp().cloned(),
         );
 
         Box::pin(async move {

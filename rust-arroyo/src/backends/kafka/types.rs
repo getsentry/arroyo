@@ -57,6 +57,7 @@ struct KafkaPayloadInner {
     pub key: Option<Vec<u8>>,
     pub headers: Option<Headers>,
     pub payload: Option<Vec<u8>>,
+    pub timestamp: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -65,12 +66,18 @@ pub struct KafkaPayload {
 }
 
 impl<'a> KafkaPayload {
-    pub fn new(key: Option<Vec<u8>>, headers: Option<Headers>, payload: Option<Vec<u8>>) -> Self {
+    pub fn new(
+        key: Option<Vec<u8>>,
+        headers: Option<Headers>,
+        payload: Option<Vec<u8>>,
+        timestamp: Option<i64>,
+    ) -> Self {
         Self {
             inner: Arc::new(KafkaPayloadInner {
                 key,
                 headers,
                 payload,
+                timestamp,
             }),
         }
     }
@@ -85,6 +92,10 @@ impl<'a> KafkaPayload {
 
     pub fn payload(&self) -> Option<&Vec<u8>> {
         self.inner.payload.as_ref()
+    }
+
+    pub fn timestamp(&self) -> Option<&i64> {
+        self.inner.timestamp.as_ref()
     }
 
     pub fn to_base_record(
@@ -131,7 +142,7 @@ mod tests {
     #[test]
     fn test_kafka_payload() {
         let destination = TopicOrPartition::Topic(Topic::new("test"));
-        let p: KafkaPayload = KafkaPayload::new(None, None, None);
+        let p: KafkaPayload = KafkaPayload::new(None, None, None, None);
         let base_record = p.to_base_record(&destination);
         assert_eq!(base_record.topic, "test");
         assert_eq!(base_record.key, None);
@@ -144,6 +155,7 @@ mod tests {
             Some(b"key".to_vec()),
             Some(headers),
             Some(b"message".to_vec()),
+            Some(0),
         );
 
         let base_record = p2.to_base_record(&destination);

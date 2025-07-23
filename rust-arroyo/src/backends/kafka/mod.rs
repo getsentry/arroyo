@@ -99,6 +99,7 @@ fn create_kafka_message(topics: &[Topic], msg: BorrowedMessage) -> BrokerMessage
             msg.key().map(|k| k.to_vec()),
             msg.headers().map(|h| h.into()),
             msg.payload().map(|p| p.to_vec()),
+            msg.timestamp().to_millis(),
         ),
         partition,
         msg.offset() as u64,
