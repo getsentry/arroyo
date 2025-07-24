@@ -1,7 +1,7 @@
 use crate::types::TopicOrPartition;
 use rdkafka::message::Headers as _;
 use rdkafka::message::{BorrowedHeaders, Header, OwnedHeaders};
-use rdkafka::producer::BaseRecord;
+use rdkafka::producer::{BaseRecord, FutureRecord};
 
 use std::sync::Arc;
 #[derive(Clone, Debug)]
@@ -120,6 +120,41 @@ impl<'a> KafkaPayload {
         }
 
         base_record
+    }
+
+    pub fn to_future_record(
+        &'a self,
+        destination: &'a TopicOrPartition,
+    ) -> FutureRecord<'a, Vec<u8>, Vec<u8>> {
+        let topic = match destination {
+            TopicOrPartition::Topic(topic) => topic.as_str(),
+            TopicOrPartition::Partition(partition) => partition.topic.as_str(),
+        };
+
+        let partition = match destination {
+            TopicOrPartition::Topic(_) => None,
+            TopicOrPartition::Partition(partition) => Some(partition.index),
+        };
+
+        let mut future_record = FutureRecord::to(topic);
+
+        if let Some(msg_key) = self.key() {
+            future_record = future_record.key(msg_key);
+        }
+
+        if let Some(msg_payload) = self.payload() {
+            future_record = future_record.payload(msg_payload);
+        }
+
+        if let Some(headers) = self.headers() {
+            future_record = future_record.headers((*headers).clone().into());
+        }
+
+        if let Some(index) = partition {
+            future_record = future_record.partition(index as i32)
+        }
+
+        future_record
     }
 }
 

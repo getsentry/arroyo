@@ -244,11 +244,10 @@ impl<TPayload: Send + Sync + 'static> Producer<TPayload> for LocalProducer<TPayl
             TopicOrPartition::Partition(p) => *p,
         };
 
-        broker
-            .produce(&partition, payload)
-            .map_err(|_| ProducerError::ProducerErrored)?;
-
-        Ok(())
+        let result = broker.produce(&partition, payload);
+        result
+            .map(|_| ())
+            .map_err(|_| ProducerError::ProducerErrored)
     }
 }
 
