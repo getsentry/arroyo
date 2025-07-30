@@ -119,7 +119,7 @@ fn commit_impl<C: AssignmentCallbacks>(
         )?;
     }
 
-    consumer.commit(&partitions, CommitMode::Sync).unwrap();
+    consumer.commit(&partitions, CommitMode::Sync)?;
     Ok(())
 }
 
