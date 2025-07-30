@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.28.4
+
+### Various fixes & improvements
+
+- fix(commit): Do not panic on commit (#478) by @untitaker
+- feat(producer): Add an AsyncProducer that returns Future (#476) by @evanh
+
 ## 2.28.3
 
 ### Various fixes & improvements
