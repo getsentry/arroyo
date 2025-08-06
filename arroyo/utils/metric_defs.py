@@ -126,4 +126,37 @@ MetricName = Literal[
     "arroyo.producer.librdkafka.avg_rtt",
     # Counter: Number of times the produce strategy failed to produce a message
     "arroyo.producer.produce_status",
+    # Gauge: Producer message count metric from librdkafka statistics
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_count",
+    # Gauge: Maximum producer message count from librdkafka statistics
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_count_max",
+    # Gauge: Producer message size from librdkafka statistics
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_size",
+    # Gauge: Maximum producer message size from librdkafka statistics
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_size_max",
+    # Gauge: Total number of messages transmitted from librdkafka statistics
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.txmsgs",
+    # Gauge: Total number of transmission requests from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_tx",
+    # Gauge: Total number of bytes transmitted from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_txbytes",
+    # Gauge: Number of requests awaiting transmission to broker from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_outbuf_requests",
+    # Gauge: Number of messages awaiting transmission to broker from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_outbuf_messages",
+    # Gauge: Number of connection attempts to broker from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_connects",
+    # Gauge: Number of disconnections from broker from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_disconnects",
 ]

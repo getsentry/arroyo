@@ -89,6 +89,10 @@ impl KafkaConfig {
     pub fn offset_reset_config(&self) -> Option<&OffsetResetConfig> {
         self.offset_reset_config.as_ref()
     }
+
+    pub fn get_config_value(&self, key: &str) -> Option<&String> {
+        self.config_map.get(key)
+    }
 }
 
 impl From<KafkaConfig> for RdKafkaConfig {

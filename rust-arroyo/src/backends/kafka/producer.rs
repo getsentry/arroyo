@@ -6,6 +6,7 @@ use crate::backends::{
     AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer, ProducerFuture,
 };
 use crate::counter;
+use crate::gauge;
 use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
@@ -17,55 +18,162 @@ use rdkafka::producer::{
 use rdkafka::Statistics;
 use std::time::Duration;
 
-pub struct ProducerContext;
+pub struct ProducerContext {
+    producer_name: String,
+}
+
+impl ProducerContext {
+    fn new(producer_name: String) -> Self {
+        Self { producer_name }
+    }
+
+    fn get_producer_name(&self) -> &str {
+        &self.producer_name
+    }
+}
 
 impl ClientContext for ProducerContext {
     fn stats(&self, stats: Statistics) {
+        let producer_name = self.get_producer_name();
+
         for (broker_id, broker_stats) in &stats.brokers {
+            let broker_id_str = broker_id.to_string();
+
+            // Record broker latency metrics
             if let Some(int_latency) = &broker_stats.int_latency {
                 let p99_latency_ms = int_latency.p99 as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.p99_int_latency",
                     Duration::from_millis(p99_latency_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
                 );
-                // Also record average latency
+
                 let avg_latency_ms = int_latency.avg as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.avg_int_latency",
                     Duration::from_millis(avg_latency_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
                 );
             }
+
             if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
                 let p99_latency_ms = outbuf_latency.p99 as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.p99_outbuf_latency",
                     Duration::from_millis(p99_latency_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
                 );
+
                 let avg_latency_ms = outbuf_latency.avg as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.avg_outbuf_latency",
                     Duration::from_millis(avg_latency_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
                 );
             }
+
             if let Some(rtt) = &broker_stats.rtt {
                 let p99_rtt_ms = rtt.p99 as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.p99_rtt",
                     Duration::from_millis(p99_rtt_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
                 );
+
                 let avg_rtt_ms = rtt.avg as f64 / 1000.0;
                 timer!(
                     "arroyo.producer.librdkafka.avg_rtt",
                     Duration::from_millis(avg_rtt_ms as u64),
-                    "broker_id" => broker_id.to_string()
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
+                );
+            }
+
+            // Record broker transmission metrics
+            gauge!(
+                "arroyo.producer.librdkafka.broker_tx",
+                broker_stats.tx as i64,
+                "broker_id" => broker_id_str.clone(),
+                "producer_name" => producer_name
+            );
+
+            gauge!(
+                "arroyo.producer.librdkafka.broker_txbytes",
+                broker_stats.txbytes as i64,
+                "broker_id" => broker_id_str.clone(),
+                "producer_name" => producer_name
+            );
+
+            // Record broker buffer metrics
+            gauge!(
+                "arroyo.producer.librdkafka.broker_outbuf_requests",
+                broker_stats.outbuf_cnt as i64,
+                "broker_id" => broker_id_str.clone(),
+                "producer_name" => producer_name
+            );
+
+            gauge!(
+                "arroyo.producer.librdkafka.broker_outbuf_messages",
+                broker_stats.outbuf_msg_cnt as i64,
+                "broker_id" => broker_id_str.clone(),
+                "producer_name" => producer_name
+            );
+
+            // Record broker connection metrics (if available)
+            if let Some(connects) = broker_stats.connects {
+                gauge!(
+                    "arroyo.producer.librdkafka.broker_connects",
+                    connects as i64,
+                    "broker_id" => broker_id_str.clone(),
+                    "producer_name" => producer_name
+                );
+            }
+
+            if let Some(disconnects) = broker_stats.disconnects {
+                gauge!(
+                    "arroyo.producer.librdkafka.broker_disconnects",
+                    disconnects as i64,
+                    "broker_id" => broker_id_str,
+                    "producer_name" => producer_name
                 );
             }
         }
+
+        // Record global producer metrics
+        gauge!(
+            "arroyo.producer.librdkafka.message_count",
+            stats.msg_cnt as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.message_count_max",
+            stats.msg_max as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.message_size",
+            stats.msg_size as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.message_size_max",
+            stats.msg_size_max as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.txmsgs",
+            stats.txmsgs as i64,
+            "producer_name" => producer_name
+        );
     }
 }
 
@@ -81,7 +189,8 @@ impl RdkafkaProducerContext for ProducerContext {
             Ok(_) => "success".to_string(),
             Err((err, _)) => get_error_name(err),
         };
-        counter!("arroyo.producer.produce_status", 1, "status" => result);
+        let producer_name = self.get_producer_name();
+        counter!("arroyo.producer.produce_status", 1, "status" => result, "producer_name" => producer_name);
     }
 }
 
@@ -91,7 +200,12 @@ pub struct KafkaProducer {
 
 impl KafkaProducer {
     pub fn new(config: KafkaConfig) -> Self {
-        let context = ProducerContext;
+        // Extract client.id from config for metrics, default to "unknown"
+        let producer_name = config
+            .get_config_value("client.id")
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
+        let context = ProducerContext::new(producer_name.clone());
         let config_obj: ClientConfig = config.into();
         let threaded_producer: ThreadedProducer<_> =
             config_obj.create_with_context(context).unwrap();
@@ -120,33 +234,44 @@ impl ArroyoProducer<KafkaPayload> for KafkaProducer {
 
 pub struct AsyncKafkaProducer {
     producer: FutureProducer<ProducerContext>,
+    producer_name: String,
 }
 
 impl AsyncKafkaProducer {
     pub fn new(config: KafkaConfig) -> Self {
-        let context = ProducerContext;
+        // Extract client.id from config for metrics, default to "unknown"
+        let producer_name = config
+            .get_config_value("client.id")
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
+        let context = ProducerContext::new(producer_name.clone());
         let config_obj: ClientConfig = config.into();
         let future_producer: FutureProducer<_> = config_obj.create_with_context(context).unwrap();
 
         Self {
             producer: future_producer,
+            producer_name,
         }
     }
 }
 
-fn record_producer_error(kafka_error: Option<KafkaError>, default_error: &str) -> ProducerError {
+fn record_producer_error(
+    kafka_error: Option<KafkaError>,
+    default_error: &str,
+    producer_name: &str,
+) -> ProducerError {
     if let Some(kafka_error) = kafka_error {
         let error_name = get_error_name(&kafka_error);
         let producer_error = ProducerError::ProducerFailure {
             error: error_name.clone(),
         };
-        counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name);
+        counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name, "producer_name" => producer_name);
         return producer_error;
     }
     let producer_error = ProducerError::ProducerFailure {
         error: default_error.to_string(),
     };
-    counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => default_error);
+    counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => default_error, "producer_name" => producer_name);
     producer_error
 }
 
@@ -154,12 +279,14 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
     fn produce(&self, destination: &TopicOrPartition, payload: KafkaPayload) -> ProducerFuture {
         let base_record = payload.to_future_record(destination);
 
+        let producer_name = self.producer_name.clone();
         let queue_result = self.producer.send_result(base_record);
         if queue_result.is_err() {
             // If the producer couldn't put the message in the queue at all, it won't retry and will return an error directly
             let producer_error = record_producer_error(
                 queue_result.err().map(|(kafka_error, _record)| kafka_error),
                 "queue_full",
+                &producer_name,
             );
             return Box::pin(async move { Err(producer_error) });
         }
@@ -172,14 +299,18 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
                     Ok(_) => Ok(()),
                     Err((kafka_error, _record)) => {
                         // The producer failed when flushing the message out of the queue
-                        let producer_error =
-                            record_producer_error(Some(kafka_error), "produce_error");
+                        let producer_error = record_producer_error(
+                            Some(kafka_error),
+                            "produce_error",
+                            &producer_name,
+                        );
                         Err(producer_error)
                     }
                 },
                 Err(_canceled) => {
                     // The future was canceled, which means the producer was closed
-                    let producer_error = record_producer_error(None, "future_canceled");
+                    let producer_error =
+                        record_producer_error(None, "future_canceled", &producer_name);
                     Err(producer_error)
                 }
             };
@@ -275,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_producer_context_stats_with_all_metrics() {
-        let context = ProducerContext;
+        let context = ProducerContext::new("unknown".to_string());
         let stats = create_test_statistics_with_all_metrics();
 
         // This test verifies that the stats callback processes all metrics correctly
@@ -285,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_producer_context_stats_with_partial_metrics() {
-        let context = ProducerContext;
+        let context = ProducerContext::new("unknown".to_string());
         let stats = create_test_statistics_with_partial_metrics();
 
         // This test verifies that the stats callback handles missing RTT data gracefully
@@ -294,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_producer_context_stats_no_brokers() {
-        let context = ProducerContext;
+        let context = ProducerContext::new("unknown".to_string());
         let stats = create_test_statistics_empty_brokers();
 
         // This test verifies that the stats callback handles empty broker data gracefully
@@ -303,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_producer_context_stats_empty_broker_stats() {
-        let context = ProducerContext;
+        let context = ProducerContext::new("unknown".to_string());
         let stats = create_test_statistics_empty_broker_stats();
 
         // This test verifies that the stats callback handles broker with no metrics gracefully
