@@ -189,7 +189,6 @@ impl<C: AssignmentCallbacks + Send + Sync> ClientContext for CustomContext<C> {
                 );
             }
         }
-
     }
 }
 
