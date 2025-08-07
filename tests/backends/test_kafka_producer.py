@@ -22,28 +22,28 @@ def test_producer_stats_callback_with_both_latencies(
         }
     )
 
-    producer_stats_callback(stats_json)
+    producer_stats_callback(stats_json, None)
 
     assert mock_metrics.timing.call_count == 4
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.p99_int_latency",
         2.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.avg_int_latency",
         1.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.p99_outbuf_latency",
         4.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.avg_outbuf_latency",
         2.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
 
 
@@ -54,7 +54,7 @@ def test_producer_stats_callback_no_brokers(mock_get_metrics: mock.Mock) -> None
 
     stats_json = json.dumps({})
 
-    producer_stats_callback(stats_json)
+    producer_stats_callback(stats_json, None)
 
     mock_metrics.timing.assert_not_called()
 
@@ -68,7 +68,7 @@ def test_producer_stats_callback_empty_broker_stats(
 
     stats_json = json.dumps({"brokers": {"1": {}}})
 
-    producer_stats_callback(stats_json)
+    producer_stats_callback(stats_json, None)
 
     mock_metrics.timing.assert_not_called()
 
@@ -90,36 +90,36 @@ def test_producer_stats_callback_with_all_metrics(mock_get_metrics: mock.Mock) -
         }
     )
 
-    producer_stats_callback(stats_json)
+    producer_stats_callback(stats_json, None)
 
     assert mock_metrics.timing.call_count == 6
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.p99_int_latency",
         2.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.avg_int_latency",
         1.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.p99_outbuf_latency",
         4.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.avg_outbuf_latency",
         2.0,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.p99_rtt",
         1.5,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.timing.assert_any_call(
         "arroyo.producer.librdkafka.avg_rtt",
         0.75,
-        tags={"broker_id": "1"},
+        tags={"broker_id": "1", "producer_name": "unknown"},
     )
