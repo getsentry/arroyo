@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.1
+
+### Various fixes & improvements
+
+- feat: Add metrics for fetch queue count and size (#480) by @davidtsuk
+
 ## 2.29.0
 
 ### Various fixes & improvements
