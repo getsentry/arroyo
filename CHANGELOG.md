@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.0
+
+### Various fixes & improvements
+
+- ref: Add more metrics and producer_name tag (#479) by @untitaker
+
 ## 2.28.4
 
 ### Various fixes & improvements
