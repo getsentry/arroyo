@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.2
+
+### Various fixes & improvements
+
+- Add logs to identify paused issue (#481) by @fpacifici
+
 ## 2.29.1
 
 ### Various fixes & improvements
