@@ -316,6 +316,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                     on_assign(offsets)
             finally:
                 self.__state = KafkaConsumerState.CONSUMING
+                logger.info("Paused partitions after assignment: %s", self.__paused)
 
         def revocation_callback(
             consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
@@ -353,6 +354,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                     self.__paused.discard(partition)
 
                 self.__state = KafkaConsumerState.CONSUMING
+                logger.info("Paused partitions after revocation: %s", self.__paused)
 
         self.__consumer.subscribe(
             [topic.name for topic in topics],
