@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.3
+
+### Various fixes & improvements
+
+- ref(rdkafka): Add metrics for txerrs and txretries (#482) by @untitaker
+
 ## 2.29.2
 
 ### Various fixes & improvements
