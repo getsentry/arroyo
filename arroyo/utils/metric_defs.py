@@ -159,4 +159,10 @@ MetricName = Literal[
     # Gauge: Number of disconnections from broker from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_disconnects",
+    # Gauge: Total number of transmission errors from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_txerrs",
+    # Gauge: Total number of request retries from librdkafka statistics
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_txretries",
 ]

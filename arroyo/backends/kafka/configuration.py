@@ -153,6 +153,21 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
                 tags=broker_tags,
             )
 
+        # Record broker transmission error metrics
+        if broker_stats.get("txerrs"):
+            metrics.gauge(
+                "arroyo.producer.librdkafka.broker_txerrs",
+                broker_stats["txerrs"],
+                tags=broker_tags,
+            )
+
+        if broker_stats.get("txretries"):
+            metrics.gauge(
+                "arroyo.producer.librdkafka.broker_txretries",
+                broker_stats["txretries"],
+                tags=broker_tags,
+            )
+
     # Record global producer metrics (librdkafka namespace)
     if stats.get("msg_cnt"):
         metrics.gauge(

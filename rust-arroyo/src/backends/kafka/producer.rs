@@ -138,10 +138,25 @@ impl ClientContext for ProducerContext {
                 gauge!(
                     "arroyo.producer.librdkafka.broker_disconnects",
                     disconnects as i64,
-                    "broker_id" => broker_id_str,
+                    "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
             }
+
+            // Record broker transmission error metrics
+            gauge!(
+                "arroyo.producer.librdkafka.broker_txerrs",
+                broker_stats.txerrs as i64,
+                "broker_id" => broker_id_str.clone(),
+                "producer_name" => producer_name
+            );
+
+            gauge!(
+                "arroyo.producer.librdkafka.broker_txretries",
+                broker_stats.txretries as i64,
+                "broker_id" => broker_id_str,
+                "producer_name" => producer_name
+            );
         }
 
         // Record global producer metrics
