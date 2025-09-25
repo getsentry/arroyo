@@ -198,14 +198,14 @@ class BatchBuilder(Generic[TBatchValue]):
 def parallel_worker_initializer(
     custom_initialize_func: Optional[Callable[[], None]] = None,
 ) -> None:
-    logger.info("Initializing worker process %d", multiprocessing.current_process().pid)
+    logger.info("Started parallel_worker_initializer function with pid %d", multiprocessing.current_process().pid)
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     if custom_initialize_func is not None:
         custom_initialize_func()
-    logger.info("Finished initializing worker process %d", multiprocessing.current_process().pid)
+    logger.info("Finished parallel_worker_initializer function with pid %d", multiprocessing.current_process().pid)
 
 @dataclass
 class ParallelRunTaskResult(Generic[TResult]):
@@ -312,13 +312,16 @@ class MultiprocessingPool:
         num_processes: int,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
+        logger.info("Starting init MultiprocessingPool class")
         self.__num_processes = num_processes
         self.__initializer = initializer
         self.__pool: Optional[Pool] = None
         self.__metrics = get_metrics()
         self.maybe_create_pool()
+        logger.info("Finished init MultiprocessingPool class")
 
     def maybe_create_pool(self) -> None:
+        logger.info("Starting maybe_create_pool function")
         if self.__pool is None:
             self.__metrics.increment(
                 "arroyo.strategies.run_task_with_multiprocessing.pool.create"
@@ -328,6 +331,7 @@ class MultiprocessingPool:
                 initializer=partial(parallel_worker_initializer, self.__initializer),
                 context=multiprocessing.get_context("spawn"),
             )
+        logger.info("Finished maybe_create_pool function")
 
     @property
     def num_processes(self) -> int:
