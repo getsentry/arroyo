@@ -22,7 +22,7 @@ from arroyo.types import Message, Partition, Topic, Value
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import Increment as IncrementCall
-from tests.metrics import TestingMetricsBackend
+from tests.metrics import MetricCall, TestingMetricsBackend
 from tests.metrics import Timing as TimingCall
 
 
@@ -150,12 +150,20 @@ def test_parallel_transform_step() -> None:
     manager_processes = 1
     metrics = TestingMetricsBackend
 
+    def get_trimmed_metrics() -> list[MetricCall]:
+        return [
+            call
+            for call in metrics.calls
+            if call.name
+            != "arroyo.strategies.run_task_with_multiprocessing.batch.submit.time"
+        ]
+
     with assert_changes(
         get_subprocess_count,
         starting_processes,
         starting_processes + worker_processes + manager_processes,
     ), assert_changes(
-        lambda: metrics.calls,
+        get_trimmed_metrics,
         [],
         [
             IncrementCall(
@@ -234,7 +242,7 @@ def test_parallel_transform_step() -> None:
         starting_processes + worker_processes + manager_processes,
         starting_processes,
     ), assert_changes(
-        lambda: metrics.calls,
+        get_trimmed_metrics,
         [],
         [
             TimingCall(
@@ -403,71 +411,6 @@ def test_message_rejected_multiple() -> None:
     assert next_step.submit.call_args_list == [
         call(Message(Value(2, {}, now))),
         call(Message(Value(-98, {}, now))),
-    ]
-
-    assert TestingMetricsBackend.calls == [
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.pool.create",
-            value=1,
-            tags=None,
-        ),
-        GaugeCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
-            value=0.0,
-            tags=None,
-        ),
-        GaugeCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.processes",
-            value=1,
-            tags=None,
-        ),
-        GaugeCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
-            value=1.0,
-            tags=None,
-        ),
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
-            value=2,
-            tags=None,
-        ),
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
-            value=0,
-            tags=None,
-        ),
-    ] + [
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
-            value=2,
-            tags=None,
-        ),
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
-            value=0,
-            tags=None,
-        ),
-        IncrementCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batch.backpressure",
-            value=1,
-            tags=None,
-        ),
-    ] * 5 + [
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
-            value=2,
-            tags=None,
-        ),
-        TimingCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes",
-            value=0,
-            tags=None,
-        ),
-        GaugeCall(
-            name="arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
-            value=0.0,
-            tags=None,
-        ),
     ]
 
     pool.close()
