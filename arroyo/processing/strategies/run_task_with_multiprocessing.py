@@ -615,6 +615,7 @@ class RunTaskWithMultiprocessing(
         assert self.__batch_builder is not None
         batch = self.__batch_builder.build()
         logger.debug("Submitting %r to %r...", batch, self.__pool)
+        start_time = time.time()
         self.__processes.append(
             (
                 batch,
@@ -626,6 +627,8 @@ class RunTaskWithMultiprocessing(
                 False,
             )
         )
+        end_time = time.time()
+        self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch.submit.time", end_time - start_time)
         self.__batches_in_progress.increment()
         self.__metrics.timing(
             "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)

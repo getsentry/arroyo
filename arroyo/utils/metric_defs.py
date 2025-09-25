@@ -5,6 +5,8 @@ MetricName = Literal[
     "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg",
     # Time: Number of bytes in a multiprocessing batch
     "arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes",
+    # Time: How long it took to submit a batch to multiprocessing
+    "arroyo.strategies.run_task_with_multiprocessing.batch.submit.time",
     # Time: Number of messages in a multiprocessing batch after the message transformation
     "arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
     # Time: Number of bytes in a multiprocessing batch after the message transformation
