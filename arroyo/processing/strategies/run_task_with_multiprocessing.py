@@ -198,13 +198,14 @@ class BatchBuilder(Generic[TBatchValue]):
 def parallel_worker_initializer(
     custom_initialize_func: Optional[Callable[[], None]] = None,
 ) -> None:
+    logger.info("Initializing worker process %d", multiprocessing.current_process().pid)
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     if custom_initialize_func is not None:
         custom_initialize_func()
-
+    logger.info("Finished initializing worker process %d", multiprocessing.current_process().pid)
 
 @dataclass
 class ParallelRunTaskResult(Generic[TResult]):
