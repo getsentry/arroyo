@@ -21,7 +21,7 @@ class Timing(NamedTuple):
     tags: Optional[Tags]
 
 
-MetricCall = Increment | Gauge | Timing
+MetricCall = Union[Increment, Gauge, Timing]
 
 
 class _TestingMetricsBackend(Metrics):
