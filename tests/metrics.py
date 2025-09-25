@@ -21,6 +21,9 @@ class Timing(NamedTuple):
     tags: Optional[Tags]
 
 
+MetricCall = Increment | Gauge | Timing
+
+
 class _TestingMetricsBackend(Metrics):
     """
     A metrics backend that logs all metrics recorded. Intended for testing
