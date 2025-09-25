@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.4
+
+### Various fixes & improvements
+
+- inc-1419: logging and metric around multiprocessing initial setup (#484) by @victoria-yining-huang
+
 ## 2.29.3
 
 ### Various fixes & improvements
