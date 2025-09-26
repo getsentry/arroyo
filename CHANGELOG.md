@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.5
+
+### Various fixes & improvements
+
+- Add elapsed time to multiprocess init (#485) by @fpacifici
+
 ## 2.29.4
 
 ### Various fixes & improvements
