@@ -198,14 +198,20 @@ class BatchBuilder(Generic[TBatchValue]):
 def parallel_worker_initializer(
     custom_initialize_func: Optional[Callable[[], None]] = None,
 ) -> None:
-    logger.info("Started parallel_worker_initializer function with pid %d", multiprocessing.current_process().pid)
+    start_time = time.time()
     # Worker process should ignore ``SIGINT`` so that processing is not
     # interrupted by ``KeyboardInterrupt`` during graceful shutdown.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     if custom_initialize_func is not None:
         custom_initialize_func()
-    logger.info("Finished parallel_worker_initializer function with pid %d", multiprocessing.current_process().pid)
+    elapsed_time = time.time() - start_time
+    logger.info(
+        "Finished parallel_worker_initializer function with pid %d, elapsed time %f",
+        multiprocessing.current_process().pid,
+        elapsed_time,
+    )
+
 
 @dataclass
 class ParallelRunTaskResult(Generic[TResult]):
@@ -628,7 +634,10 @@ class RunTaskWithMultiprocessing(
             )
         )
         end_time = time.time()
-        self.__metrics.timing("arroyo.strategies.run_task_with_multiprocessing.batch.submit.time", end_time - start_time)
+        self.__metrics.timing(
+            "arroyo.strategies.run_task_with_multiprocessing.batch.submit.time",
+            end_time - start_time,
+        )
         self.__batches_in_progress.increment()
         self.__metrics.timing(
             "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
