@@ -731,3 +731,115 @@ def test_reuse_pool() -> None:
 
     assert next_step.submit.call_count == 1
     pool.close()
+
+
+def add_process_id_to_payload(message: Message[KafkaPayload]) -> KafkaPayload:
+    import os
+
+    # Encode the PID into the payload so we can track it
+    pid = os.getpid()
+    return KafkaPayload(None, str(pid).encode(), [])
+
+
+def test_reuse_processes() -> None:
+    """
+    Test that reuse_processes parameter controls whether worker processes
+    are reused or recreated between batches.
+
+    With reuse_processes=True (default), the same worker process handles
+    multiple batches. With reuse_processes=False, each batch gets a fresh
+    worker process.
+    """
+    next_step = Mock()
+    now = datetime.now()
+
+    messages = [
+        Message(
+            Value(
+                KafkaPayload(None, b"\x00" * 1000, []),
+                {Partition(Topic("test"), 0): i + 1},
+                now,
+            )
+        )
+        for i in range(3)
+    ]
+
+    # Test default behavior: processes ARE reused (same PID across batches)
+    pool = MultiprocessingPool(num_processes=1)
+    strategy = RunTaskWithMultiprocessing(
+        add_process_id_to_payload,
+        next_step,
+        max_batch_size=1,
+        max_batch_time=60,
+        pool=pool,
+        input_block_size=16384,
+        output_block_size=16384,
+        prefetch_batches=True,  # Allocate 2 input blocks for 1 process
+    )
+
+    # Submit messages one by one, waiting for processing between each
+    for message in messages:
+        submitted = False
+        while not submitted:
+            strategy.poll()
+            try:
+                strategy.submit(message)
+                submitted = True
+            except MessageRejected:
+                time.sleep(0.01)
+
+    strategy.close()
+    strategy.join()
+
+    assert next_step.submit.call_count == 3
+    # Extract PIDs from the payloads
+    pids = [
+        int(call_args[0][0].payload.value)
+        for call_args in next_step.submit.call_args_list
+    ]
+    assert len(pids) == 3
+    assert len(set(pids)) == 1, f"Expected same PID, got: {pids}"
+
+    strategy.terminate()
+    pool.close()
+
+    # Test reuse_processes=False: processes are NOT reused (different PIDs)
+    next_step = Mock()
+
+    pool = MultiprocessingPool(num_processes=1, reuse_processes=False)
+    strategy = RunTaskWithMultiprocessing(
+        add_process_id_to_payload,
+        next_step,
+        max_batch_size=1,
+        max_batch_time=60,
+        pool=pool,
+        input_block_size=16384,
+        output_block_size=16384,
+        prefetch_batches=True,
+    )
+
+    # Submit messages one by one, waiting for processing between each
+    for message in messages:
+        submitted = False
+        while not submitted:
+            strategy.poll()
+            try:
+                strategy.submit(message)
+                submitted = True
+            except MessageRejected:
+                time.sleep(0.01)
+
+    strategy.close()
+    strategy.join()
+
+    assert next_step.submit.call_count == 3
+    # Extract PIDs from the payloads
+    pids = [
+        int(call_args[0][0].payload.value)
+        for call_args in next_step.submit.call_args_list
+    ]
+    assert len(pids) == 3
+    assert len(set(pids)) == 3, f"Expected 3 different PIDs, got: {pids}"
+
+    strategy.terminate()
+    pool.close()

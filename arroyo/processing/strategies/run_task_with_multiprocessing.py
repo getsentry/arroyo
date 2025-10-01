@@ -311,16 +311,22 @@ class MultiprocessingPool:
         process, they are entirely new Python interpreters. You might want to
         re-initialize your Django application here.
 
+    :param reuse_processes: If True (default), worker processes are reused across
+        multiple batches. If False, each worker process is terminated after completing
+        a single batch and a fresh process is spawned for the next batch.
+
     """
 
     def __init__(
         self,
         num_processes: int,
         initializer: Optional[Callable[[], None]] = None,
+        reuse_processes: bool = True,
     ) -> None:
         logger.info("Starting init MultiprocessingPool class")
         self.__num_processes = num_processes
         self.__initializer = initializer
+        self.__reuse_processes = reuse_processes
         self.__pool: Optional[Pool] = None
         self.__metrics = get_metrics()
         self.maybe_create_pool()
@@ -336,6 +342,7 @@ class MultiprocessingPool:
                 self.__num_processes,
                 initializer=partial(parallel_worker_initializer, self.__initializer),
                 context=multiprocessing.get_context("spawn"),
+                maxtasksperchild=1 if not self.__reuse_processes else None,
             )
         logger.info("Finished maybe_create_pool function")
 
