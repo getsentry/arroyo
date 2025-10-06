@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.6
+
+### Various fixes & improvements
+
+- fix: retry on COORDINATOR_LOAD_IN_PROGRESS (#487) by @bmckerry
+
 ## 2.29.5
 
 ### Various fixes & improvements
