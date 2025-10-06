@@ -163,6 +163,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 KafkaError.NOT_COORDINATOR,
                 KafkaError._WAIT_COORD,
                 KafkaError.STALE_MEMBER_EPOCH,  # kip-848
+                KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
             ),
         )
 
