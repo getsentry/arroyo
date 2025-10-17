@@ -41,6 +41,7 @@ DEFAULT_INPUT_BLOCK_SIZE = 16 * 1024 * 1024
 DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024 * 1024
 
 LOG_THRESHOLD_TIME = 20  # In seconds
+FAIL_THRESHOLD_TIME = 300  # In seconds
 
 
 class ChildProcessTerminated(RuntimeError):
@@ -673,19 +674,24 @@ class RunTaskWithMultiprocessing(
                 if deadline is None or deadline > time.time():
                     continue
                 break
-            except multiprocessing.TimeoutError:
+            except multiprocessing.TimeoutError as err:
                 if self.__pool_waiting_time is None:
                     self.__pool_waiting_time = time.time()
                 else:
                     current_time = time.time()
-                    if current_time - self.__pool_waiting_time > LOG_THRESHOLD_TIME:
+                    if (
+                        current_time - self.__pool_waiting_time
+                    ) % LOG_THRESHOLD_TIME == 0:
                         logger.warning(
                             "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
                             LOG_THRESHOLD_TIME,
                             len(self.__processes),
                             self.__pool,
                         )
-                        self.__pool_waiting_time = current_time
+                    if current_time - self.__pool_waiting_time > FAIL_THRESHOLD_TIME:
+                        raise multiprocessing.TimeoutError(
+                            f"Waited on process pool for {FAIL_THRESHOLD_TIME} seconds giving up."
+                        ) from err
                 break
             else:
                 self.__pool_waiting_time = None
