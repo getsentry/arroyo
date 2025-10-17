@@ -41,7 +41,7 @@ DEFAULT_INPUT_BLOCK_SIZE = 16 * 1024 * 1024
 DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024 * 1024
 
 LOG_THRESHOLD_TIME = 20  # In seconds
-FAIL_THRESHOLD_TIME = 300  # In seconds
+FAIL_THRESHOLD_TIME = 180  # In seconds
 
 
 class ChildProcessTerminated(RuntimeError):
