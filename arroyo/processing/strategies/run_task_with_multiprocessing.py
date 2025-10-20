@@ -601,6 +601,7 @@ class RunTaskWithMultiprocessing(
             "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
         )
         self.__pool_waiting_time: Optional[float] = None
+        self.__pool_waiting_log_time: Optional[float] = None
         self.__metrics.gauge(
             "arroyo.strategies.run_task_with_multiprocessing.processes", num_processes
         )
@@ -675,19 +676,22 @@ class RunTaskWithMultiprocessing(
                     continue
                 break
             except multiprocessing.TimeoutError as err:
-                if self.__pool_waiting_time is None:
-                    self.__pool_waiting_time = time.time()
+                current_time = time.time()
+                if (
+                    self.__pool_waiting_time is None
+                    or self.__pool_waiting_log_time is None
+                ):
+                    self.__pool_waiting_time = current_time
+                    self.__pool_waiting_log_time = current_time
                 else:
-                    current_time = time.time()
-                    if (
-                        current_time - self.__pool_waiting_time
-                    ) % LOG_THRESHOLD_TIME == 0:
+                    if current_time - self.__pool_waiting_log_time > LOG_THRESHOLD_TIME:
                         logger.warning(
                             "Waited on the process pool longer than %d seconds. Waiting for %d results. Pool: %r",
                             LOG_THRESHOLD_TIME,
                             len(self.__processes),
                             self.__pool,
                         )
+                        self.__pool_waiting_log_time = current_time
                     if current_time - self.__pool_waiting_time > FAIL_THRESHOLD_TIME:
                         raise multiprocessing.TimeoutError(
                             f"Waited on process pool for {FAIL_THRESHOLD_TIME} seconds giving up."
@@ -695,6 +699,7 @@ class RunTaskWithMultiprocessing(
                 break
             else:
                 self.__pool_waiting_time = None
+                self.__pool_waiting_log_time = None
 
     def __check_for_results_impl(self, timeout: Optional[float] = None) -> None:
         (
