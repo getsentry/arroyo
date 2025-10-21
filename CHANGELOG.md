@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.29.7
+
+### Various fixes & improvements
+
+- fix: Raise errors when multiprocessing pool has been stuck for a while (#488) by @markstory
+
 ## 2.29.6
 
 ### Various fixes & improvements
