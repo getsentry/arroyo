@@ -110,7 +110,8 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> None:
-        assert not self.__closed
+        if self.__closed:
+            raise MessageRejected
 
         if len(self.__queue) >= self.__max_buffer_size:
             raise MessageRejected

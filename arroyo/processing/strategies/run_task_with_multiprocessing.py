@@ -865,7 +865,8 @@ class RunTaskWithMultiprocessing(
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
     ) -> None:
-        assert not self.__closed
+        if self.__closed:
+            raise MessageRejected
 
         if self.__batch_builder is None:
             self.__reset_batch_builder()
