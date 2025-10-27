@@ -40,6 +40,8 @@ MetricName = Literal[
     "arroyo.strategies.run_task_with_multiprocessing.batch.output.resize",
     # Gauge: How many batches are being processed in parallel by multiprocessing.
     "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+    # Gauge: Shows the total number of available processes in the pool.
+    "arroyo.strategies.run_task_with_multiprocessing.pool_size",
     # Counter: A subprocess by multiprocessing unexpectedly died.
     "sigchld.detected",
     # Gauge: Shows how many processes the multiprocessing strategy is

@@ -181,6 +181,11 @@ def test_parallel_transform_step() -> None:
                 2.0,
                 tags=None,
             ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                2.0,
+                tags=None,
+            ),
             IncrementCall(
                 name="arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow",
                 value=1,
@@ -189,6 +194,11 @@ def test_parallel_transform_step() -> None:
             GaugeCall(
                 "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
                 1.0,
+                tags=None,
+            ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                2.0,
                 tags=None,
             ),
             TimingCall(
@@ -203,6 +213,11 @@ def test_parallel_transform_step() -> None:
             ),
             GaugeCall(
                 "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
+                2.0,
+                tags=None,
+            ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
                 2.0,
                 tags=None,
             ),
@@ -275,6 +290,11 @@ def test_parallel_transform_step() -> None:
                 1.0,
                 tags=None,
             ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                2.0,
+                tags=None,
+            ),
             TimingCall(
                 name="arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg",
                 value=1,
@@ -288,6 +308,11 @@ def test_parallel_transform_step() -> None:
             GaugeCall(
                 "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
                 0.0,
+                tags=None,
+            ),
+            GaugeCall(
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                2.0,
                 tags=None,
             ),
         ],
