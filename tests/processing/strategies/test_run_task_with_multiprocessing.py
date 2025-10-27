@@ -177,12 +177,12 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
-                0.0,
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
+                2.0,
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.processes",
+                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
                 2.0,
                 tags=None,
             ),

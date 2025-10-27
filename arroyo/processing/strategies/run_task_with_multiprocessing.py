@@ -605,13 +605,12 @@ class RunTaskWithMultiprocessing(
             self.__metrics,
             "arroyo.strategies.run_task_with_multiprocessing.batches_in_progress",
         )
-        self.__pool_size = Gauge(
-            self.__metrics,
-            "arroyo.strategies.run_task_with_multiprocessing.pool_size",
-        )
         self.__pool_waiting_time: Optional[float] = None
         self.__metrics.gauge(
             "arroyo.strategies.run_task_with_multiprocessing.processes", num_processes
+        )
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.pool_size", num_processes
         )
 
         self.__closed = False
