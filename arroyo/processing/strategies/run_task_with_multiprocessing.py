@@ -649,7 +649,10 @@ class RunTaskWithMultiprocessing(
             end_time - start_time,
         )
         self.__batches_in_progress.increment()
-        self.__pool_size.set(self.__pool.num_processes)
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+            self.__pool.num_processes,
+        )
         self.__metrics.timing(
             "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
         )
@@ -835,7 +838,10 @@ class RunTaskWithMultiprocessing(
         self.__input_blocks.append(new_input_block)
         self.__output_blocks.append(new_output_block)
         self.__batches_in_progress.decrement()
-        self.__pool_size.set(self.__pool.num_processes)
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+            self.__pool.num_processes,
+        )
 
         del self.__processes[0]
 
