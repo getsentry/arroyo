@@ -274,6 +274,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 strategy.submit.side_effect = None
                 processor._run_once()
                 assert consumer.paused() == []
+                assert consumer.poll(0.1) is None
 
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
