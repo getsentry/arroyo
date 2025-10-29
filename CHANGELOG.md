@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.30.0
+
+### Various fixes & improvements
+
+- ref: Change default of join timeout to 25 seconds (#493) by @untitaker
+
 ## 2.29.7
 
 ### Various fixes & improvements
