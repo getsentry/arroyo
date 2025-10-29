@@ -33,7 +33,7 @@ from confluent_kafka import (
 from confluent_kafka import Consumer as ConfluentConsumer
 from confluent_kafka import KafkaError, KafkaException
 from confluent_kafka import Message as ConfluentMessage
-from confluent_kafka import Producer as ConfluentProducer
+from confluent_kafka import Producer as ConfluentKafkaProducer
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
 from arroyo.backends.abstract import (
@@ -50,6 +50,7 @@ from arroyo.errors import (
 )
 from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
+from arroyo.utils.metrics import get_metrics
 from arroyo.utils.retries import BasicRetryPolicy
 
 logger = logging.getLogger(__name__)
@@ -652,12 +653,64 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         return member_id
 
 
+# Type alias for the delivery callback function
+DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
+
+
+class ConfluentProducer(ConfluentKafkaProducer):
+    """
+    A thin wrapper around confluent_kafka.Producer that adds metrics reporting.
+
+    This class helps track producer delivery status (success/error) via metrics
+    while preserving all original confluent_kafka.Producer functionality.
+    """
+
+    def __init__(self, configuration: Mapping[str, Any]) -> None:
+        super().__init__(configuration)
+        self.__metrics = get_metrics()
+
+    def __metrics_delivery_callback(
+        self,
+        error: Optional[KafkaError],
+        _message: ConfluentMessage,
+    ) -> None:
+        if error is not None:
+            status = "error"
+        else:
+            status = "success"
+
+        self.__metrics.increment(
+            "arroyo.producer.produce_status",
+            1,
+            tags={"status": status},
+        )
+
+    def __delivery_callback(
+        self,
+        user_callback: Optional[DeliveryCallback],
+    ) -> DeliveryCallback:
+        def wrapped(error: Optional[KafkaError], message: ConfluentMessage) -> None:
+            self.__metrics_delivery_callback(error, message)
+            if user_callback is not None:
+                user_callback(error, message)
+
+        return wrapped
+
+    def produce(self, *args: Any, **kwargs: Any) -> None:
+        # callback and on_delivery are aliases, callback takes precedence over on_delivery
+        callback = kwargs.pop("callback", None)
+        on_delivery = kwargs.pop("on_delivery", None)
+        user_callback = callback or on_delivery
+        wrapped_callback = self.__delivery_callback(user_callback)
+        super().produce(*args, on_delivery=wrapped_callback, **kwargs)
+
+
 class KafkaProducer(Producer[KafkaPayload]):
     def __init__(
         self, configuration: Mapping[str, Any], use_simple_futures: bool = False
     ) -> None:
         self.__configuration = configuration
-        self.__producer = ConfluentProducer(configuration)
+        self.__producer = ConfluentKafkaProducer(configuration)
         self.__shutdown_requested = Event()
 
         # The worker must execute in a separate thread to ensure that callbacks
