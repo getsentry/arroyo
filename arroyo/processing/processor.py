@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 METRICS_FREQUENCY_SEC = 1.0  # In seconds
 BACKPRESSURE_THRESHOLD = 5.0  # In seconds
+DEFAULT_JOIN_TIMEOUT = 25.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
 
@@ -157,7 +158,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__is_paused = False
 
         self.__commit_policy_state = commit_policy.get_state_machine()
-        self.__join_timeout = join_timeout
+
+        # Default join_timeout to DEFAULT_JOIN_TIMEOUT if not provided
+        self.__join_timeout = (
+            join_timeout if join_timeout is not None else DEFAULT_JOIN_TIMEOUT
+        )
+
         self.__shutdown_requested = False
         self.__shutdown_strategy_before_consumer = shutdown_strategy_before_consumer
 

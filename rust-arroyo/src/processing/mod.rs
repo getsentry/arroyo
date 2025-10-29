@@ -47,6 +47,7 @@ pub enum RunError {
 }
 
 const BACKPRESSURE_THRESHOLD: Duration = Duration::from_secs(5);
+const DEFAULT_JOIN_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[derive(Clone)]
 pub struct ConsumerState<TPayload>(Arc<(AtomicBool, Mutex<ConsumerStateInner<TPayload>>)>);
@@ -150,7 +151,7 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         if let Some(s) = state.strategy.as_mut() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
                 tracing::info!("Joining strategy");
-                s.join(None)
+                s.join(Some(DEFAULT_JOIN_TIMEOUT))
             }));
 
             match result {
