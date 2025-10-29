@@ -1,7 +1,6 @@
 from typing import Optional
 from unittest import mock
 
-import pytest
 from confluent_kafka import KafkaError
 from confluent_kafka import Message as ConfluentMessage
 
