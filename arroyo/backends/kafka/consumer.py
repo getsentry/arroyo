@@ -749,12 +749,9 @@ class KafkaProducer(Producer[KafkaPayload]):
 DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 
 
-class ConfluentProducer(ConfluentKafkaProducer):
+class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     """
-    A thin wrapper around confluent_kafka.Producer that adds metrics reporting.
-
-    This class helps track producer delivery status (success/error) via metrics
-    while preserving all original confluent_kafka.Producer functionality.
+    A thin wrapper for confluent_kafka.Producer that adds metrics reporting.
     """
 
     def __init__(self, configuration: Mapping[str, Any]) -> None:
