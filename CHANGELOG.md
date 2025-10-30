@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.31.1
+
+### Various fixes & improvements
+
+- feat(ConfluentProducer): Set producer_name tag (#495) by @lvthanh03
+
 ## 2.31.0
 
 ### Various fixes & improvements
