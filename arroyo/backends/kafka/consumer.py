@@ -757,6 +757,11 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     def __init__(self, configuration: Mapping[str, Any]) -> None:
         super().__init__(configuration)
         self.__metrics = get_metrics()
+        self.__metric_name = "arroyo.producer.produce_status"
+        if configuration.get("client.id"):
+            self.__metric_name = (
+                f"{configuration.get('client.id')}.{self.__metric_name}"
+            )
 
     def __metrics_delivery_callback(
         self,
@@ -769,7 +774,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
             status = "success"
 
         self.__metrics.increment(
-            "arroyo.producer.produce_status",
+            self.__metric_name,
             1,
             tags={"status": status},
         )
