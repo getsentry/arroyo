@@ -25,13 +25,15 @@ class TestConfluentProducer:
     def test_metrics_callback_records_success(self) -> None:
         """Test that the metrics callback records success metric"""
         producer = ConfluentProducer(
-            {"bootstrap.servers": "fake:9092", "client.id": "test-producer"}
+            {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
         )
         mock_message = mock.Mock(spec=ConfluentMessage)
         producer._ConfluentProducer__metrics_delivery_callback(None, mock_message)
         assert (
             Increment(
-                "test-producer.arroyo.producer.produce_status", 1, {"status": "success"}
+                "arroyo.producer.produce_status",
+                1,
+                {"status": "success", "producer_name": "test-producer-name"},
             )
             in TestingMetricsBackend.calls
         )
@@ -50,7 +52,7 @@ class TestConfluentProducer:
     def test_delivery_callback_wraps_user_callback(self) -> None:
         """Test that the delivery callback wrapper calls both metrics and user callbacks"""
         producer = ConfluentProducer(
-            {"bootstrap.servers": "fake:9092", "client.id": "test-producer"}
+            {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
         )
         user_callback_invoked = []
 
@@ -64,7 +66,9 @@ class TestConfluentProducer:
         wrapped(None, mock_message)
         assert (
             Increment(
-                "test-producer.arroyo.producer.produce_status", 1, {"status": "success"}
+                "arroyo.producer.produce_status",
+                1,
+                {"status": "success", "producer_name": "test-producer-name"},
             )
             in TestingMetricsBackend.calls
         )
