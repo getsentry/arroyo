@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.31.0
+
+### Various fixes & improvements
+
+- Adds ConfluentProducer wrapper for produce metrics (#494) by @lvthanh03
+
 ## 2.30.0
 
 ### Various fixes & improvements
