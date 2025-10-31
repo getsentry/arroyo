@@ -484,6 +484,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # A paused consumer should still poll periodically to avoid it's partitions
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
+                            if self.__consumer.poll(0.1) is not None:
+                                logger.warning("Paused consumer returned a message, this might mean some " \
+                                "partitions are now unpaused. Cached paused partitions: %s, real-time self.__consumer.tell(): %s",
+                                paused_partitions,
+                                self.__consumer.tell())
                             assert self.__consumer.poll(0.1) is None
                     else:
                         time.sleep(0.01)
