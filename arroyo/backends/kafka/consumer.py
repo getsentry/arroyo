@@ -804,7 +804,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
             if self.producer_name:
                 tags["producer_name"] = self.producer_name
             self.__metrics.increment(
-                name=f"arroyo.producer.produce_status",
+                name="arroyo.producer.produce_status",
                 value=count,
                 tags=tags,
             )
