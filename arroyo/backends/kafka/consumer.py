@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from concurrent.futures import Future
 from datetime import datetime
 from enum import Enum
@@ -21,6 +23,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from confluent_kafka import (
@@ -748,6 +751,9 @@ class KafkaProducer(Producer[KafkaPayload]):
 # Type alias for the delivery callback function
 DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 
+# Interval between metric flushes (in seconds)
+METRICS_FREQUENCY_SEC = 1.0
+
 
 class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     """
@@ -756,8 +762,10 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
 
     def __init__(self, configuration: Mapping[str, Any]) -> None:
         super().__init__(configuration)
-        self.__metrics = get_metrics()
         self.producer_name = configuration.get("client.id") or None
+        self.__metrics = get_metrics()
+        self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__reset_metrics()
 
     def __metrics_delivery_callback(
         self,
@@ -768,16 +776,8 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
             status = "error"
         else:
             status = "success"
-
-        tags = {"status": status}
-        if self.producer_name:
-            tags["producer_name"] = self.producer_name
-
-        self.__metrics.increment(
-            "arroyo.producer.produce_status",
-            1,
-            tags=tags,
-        )
+        self.__produce_counters[status] += 1
+        self.__throttled_record()
 
     def __delivery_callback(
         self,
@@ -797,3 +797,28 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         user_callback = callback or on_delivery
         wrapped_callback = self.__delivery_callback(user_callback)
         super().produce(*args, on_delivery=wrapped_callback, **kwargs)
+
+    def __flush_metrics(self) -> None:
+        for status, count in self.__produce_counters.items():
+            tags = {"status": status}
+            if self.producer_name:
+                tags["producer_name"] = self.producer_name
+            self.__metrics.increment(
+                name="arroyo.producer.produce_status",
+                value=count,
+                tags=tags,
+            )
+        self.__reset_metrics()
+
+    def flush(self, timeout: float = -1) -> int:
+        # Kafka producer flush should flush metrics too
+        self.__flush_metrics()
+        return cast(int, super().flush(timeout))
+
+    def __reset_metrics(self) -> None:
+        self.__produce_counters.clear()
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
+            self.__flush_metrics()
