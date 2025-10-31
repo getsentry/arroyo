@@ -23,6 +23,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from confluent_kafka import (
@@ -799,17 +800,20 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
         for status, count in self.__produce_counters.items():
+            tags = {"status": status}
+            if self.producer_name:
+                tags["producer_name"] = self.producer_name
             self.__metrics.increment(
                 name=f"arroyo.producer.produce_status",
                 value=count,
-                tags={"status": status, "producer_name": self.producer_name},
+                tags=tags,
             )
         self.__reset_metrics()
 
     def flush(self, timeout: float = -1) -> int:
         # Kafka producer flush should flush metrics too
         self.__flush_metrics()
-        return super().flush(timeout)
+        return cast(int, super().flush(timeout))
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()

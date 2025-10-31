@@ -29,6 +29,7 @@ class TestConfluentProducer:
         )
         mock_message = mock.Mock(spec=ConfluentMessage)
         producer._ConfluentProducer__metrics_delivery_callback(None, mock_message)
+        producer.flush()  # Flush buffered metrics
         assert (
             Increment(
                 "arroyo.producer.produce_status",
@@ -44,6 +45,7 @@ class TestConfluentProducer:
         mock_error = mock.Mock(spec=KafkaError)
         mock_message = mock.Mock(spec=ConfluentMessage)
         producer._ConfluentProducer__metrics_delivery_callback(mock_error, mock_message)
+        producer.flush()  # Flush buffered metrics
         assert (
             Increment("arroyo.producer.produce_status", 1, {"status": "error"})
             in TestingMetricsBackend.calls
@@ -64,6 +66,7 @@ class TestConfluentProducer:
         wrapped = producer._ConfluentProducer__delivery_callback(user_callback)
         mock_message = mock.Mock(spec=ConfluentMessage)
         wrapped(None, mock_message)
+        producer.flush()  # Flush buffered metrics
         assert (
             Increment(
                 "arroyo.producer.produce_status",

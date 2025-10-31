@@ -146,9 +146,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[
-            ProcessingStrategy[TStrategyPayload]
-        ] = None
+        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
+            None
+        )
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
