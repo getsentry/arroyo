@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.31.2
+
+### Various fixes & improvements
+
+- feat(ConfluentProducer): Add metrics buffer for produce metrics (#496) by @lvthanh03
+
 ## 2.31.1
 
 ### Various fixes & improvements
