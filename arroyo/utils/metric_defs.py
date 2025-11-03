@@ -44,9 +44,6 @@ MetricName = Literal[
     "arroyo.strategies.run_task_with_multiprocessing.pool_size",
     # Counter: A subprocess by multiprocessing unexpectedly died.
     "sigchld.detected",
-    # Gauge: Shows how many processes the multiprocessing strategy is
-    # configured with.
-    "arroyo.strategies.run_task_with_multiprocessing.processes",
     # Counter: Incremented when the multiprocessing pool is created (or re-created).
     "arroyo.strategies.run_task_with_multiprocessing.pool.create",
     # Time: (unitless) spent polling librdkafka for new messages.
