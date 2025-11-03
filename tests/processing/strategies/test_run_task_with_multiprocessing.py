@@ -176,16 +176,6 @@ def test_parallel_transform_step() -> None:
                 0.0,
                 tags=None,
             ),
-            GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.processes",
-                2.0,
-                tags=None,
-            ),
-            GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
-                2.0,
-                tags=None,
-            ),
             IncrementCall(
                 name="arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow",
                 value=1,
