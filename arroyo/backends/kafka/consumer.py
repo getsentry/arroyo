@@ -680,13 +680,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         before the timeout is reached.
         """
         try:
-            # In auto-commit mode, the underlying consumer will commit on close
-            # But we should explicitly commit any stored offsets to be safe
-            if self.__use_auto_commit:
-                # Force a synchronous commit before closing
-                # This ensures any offsets stored via store_offsets are committed
-                self.__consumer.commit(asynchronous=False)
-
             self.__consumer.close()
         except RuntimeError:
             pass
