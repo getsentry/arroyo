@@ -728,7 +728,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         try:
             self.__flush_metrics()
         except Exception:
-            logger.debug("Failed to flush metrics on consumer close", exc_info=True)
+            logger.warning("Failed to flush metrics on consumer close")
 
         try:
             self.__consumer.close()
@@ -902,7 +902,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         try:
             self.__flush_metrics()
         except Exception:
-            logger.debug("Failed to flush metrics on producer flush", exc_info=True)
+            logger.warning("Failed to flush metrics on producer flush")
 
         return cast(int, super().flush(timeout))
 
