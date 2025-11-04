@@ -424,12 +424,15 @@ class RunTaskWithMultiprocessing(
     point.
 
     The metric ``arroyo.strategies.run_task_with_multiprocessing.processes``
-    shows how many processes arroyo was configured with.
+    shows the total number of available processes in the pool. This is recorded
+    as a gauge alongside ``batches_in_progress`` so you can calculate the ratio
+    of processes in use to total available processes.
 
     If those two metrics don't line up, your consumer is not bottlenecked on
     number of processes. That's a good thing, you want to have some reserve
     capacity. But it means that increasing ``num_processes`` will not make your
     consumer faster.
+
 
     Batching
     ~~~~~~~~
@@ -602,9 +605,6 @@ class RunTaskWithMultiprocessing(
         )
         self.__pool_waiting_time: Optional[float] = None
         self.__pool_waiting_log_time: Optional[float] = None
-        self.__metrics.gauge(
-            "arroyo.strategies.run_task_with_multiprocessing.processes", num_processes
-        )
 
         self.__closed = False
 
@@ -641,6 +641,10 @@ class RunTaskWithMultiprocessing(
             end_time - start_time,
         )
         self.__batches_in_progress.increment()
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.processes",
+            self.__pool.num_processes,
+        )
         self.__metrics.timing(
             "arroyo.strategies.run_task_with_multiprocessing.batch.size.msg", len(batch)
         )
@@ -835,6 +839,10 @@ class RunTaskWithMultiprocessing(
         self.__input_blocks.append(new_input_block)
         self.__output_blocks.append(new_output_block)
         self.__batches_in_progress.decrement()
+        self.__metrics.gauge(
+            "arroyo.strategies.run_task_with_multiprocessing.processes",
+            self.__pool.num_processes,
+        )
 
         del self.__processes[0]
 
