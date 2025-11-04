@@ -331,11 +331,13 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 # Should start from offset 5, hitting EndOfPartition immediately
                 # If we got a message with offset < 5, auto-commit didn't work
-                with pytest.raises(EndOfPartition) as exc_info:
+                try:
                     consumer.poll(10.0)
-
-                assert exc_info.value.offset == 5
-                assert exc_info.value.partition == Partition(topic, 0)
+                    pytest.fail("Expected EndOfPartition, but poll succeeded")
+                except EndOfPartition as e:
+                    # Verify we got EndOfPartition at offset 5
+                    assert e.offset == 5
+                    assert e.partition == Partition(topic, 0)
 
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
