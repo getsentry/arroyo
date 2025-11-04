@@ -465,8 +465,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
                     elif self.__is_paused:
                         paused_partitions = set(self.__consumer.paused())
+                        all_partitions = set(self.__consumer.tell())
                         unpaused_partitions = (
-                            set(self.__consumer.tell()) - paused_partitions
+                            all_partitions - paused_partitions
                         )
                         if unpaused_partitions:
                             logger.warning(
@@ -484,6 +485,18 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # A paused consumer should still poll periodically to avoid it's partitions
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
+                            logger.warning("consumer.tell() value right before poll() is: %s", self.__consumer.tell())
+                            maybe_message = self.__consumer.poll(0.1)
+                            if maybe_message is not None:
+                                logger.warning("Received a message from partition: %s, \
+                                                consumer.tell() value right after poll() is: %s \
+                                                Some lines above consumer.tell() was called, all_partitons value was: %s \
+                                                Some lines above consumer.paused() was called, paused_partitions value is: %s",
+                                                maybe_message.partition,
+                                                self.__consumer.tell(),
+                                                all_partitions,
+                                                paused_partitions
+                                                )
                             assert self.__consumer.poll(0.1) is None
                     else:
                         time.sleep(0.01)
