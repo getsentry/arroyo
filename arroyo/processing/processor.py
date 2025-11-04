@@ -488,10 +488,10 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             logger.warning(f"consumer.tell() value right before poll() is: {self.__consumer.tell()}")
                             maybe_message = self.__consumer.poll(0.1)
                             if maybe_message is not None:
-                                logger.warning(f"Received a message from partition: {maybe_message.partition}")
-                                logger.warning(f"consumer.tell() value right after poll() is: {self.__consumer.tell()}")
-                                logger.warning(f"A few more lines above consumer.tell() was called, all_partitons value was: {all_partitions}")
-                                logger.warning(f"A few more lines above consumer.paused() was called,paused_partitions value is: {paused_partitions}")
+                                logger.warning(f"Received a message from partition: {maybe_message.partition}. \
+                                                consumer.tell() value right after poll() is: {self.__consumer.tell()} \
+                                                Some lines above consumer.tell() was called, all_partitons value was: {all_partitions} \
+                                                Some lines above consumer.paused() was called,paused_partitions value is: {paused_partitions}")
                             assert self.__consumer.poll(0.1) is None
                     else:
                         time.sleep(0.01)
