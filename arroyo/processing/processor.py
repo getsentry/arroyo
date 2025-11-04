@@ -497,7 +497,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                                 all_partitions,
                                                 paused_partitions
                                                 )
-                            assert self.__consumer.poll(0.1) is None
+                            assert maybe_message is None
                     else:
                         time.sleep(0.01)
 
