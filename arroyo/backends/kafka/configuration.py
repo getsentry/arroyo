@@ -237,6 +237,7 @@ def build_kafka_consumer_configuration(
     bootstrap_servers: Optional[Sequence[str]] = None,
     override_params: Optional[Mapping[str, Any]] = None,
     strict_offset_reset: Optional[bool] = None,
+    enable_auto_commit: bool = False,
 ) -> KafkaBrokerConfig:
 
     if auto_offset_reset is None:
@@ -252,20 +253,23 @@ def build_kafka_consumer_configuration(
         default_config, bootstrap_servers, override_params
     )
 
-    broker_config.update(
-        {
-            "enable.auto.commit": False,
-            "enable.auto.offset.store": False,
-            "group.id": group_id,
-            "auto.offset.reset": auto_offset_reset,
-            # this is an arroyo specific flag that only affects the consumer.
-            "arroyo.strict.offset.reset": strict_offset_reset,
-            # overridden to reduce memory usage when there's a large backlog
-            "queued.max.messages.kbytes": queued_max_messages_kbytes,
-            "queued.min.messages": queued_min_messages,
-            "enable.partition.eof": False,
-            "statistics.interval.ms": STATS_COLLECTION_FREQ_MS,
-            "stats_cb": stats_callback,
-        }
-    )
+    # Default configuration with manual commit management
+    config_update = {
+        "enable.auto.commit": False,
+        "enable.auto.offset.store": False,
+        "group.id": group_id,
+        "auto.offset.reset": auto_offset_reset,
+        # this is an arroyo specific flag that only affects the consumer.
+        "arroyo.strict.offset.reset": strict_offset_reset,
+        # this is an arroyo specific flag to enable auto-commit mode
+        "arroyo.enable.auto.commit": enable_auto_commit,
+        # overridden to reduce memory usage when there's a large backlog
+        "queued.max.messages.kbytes": queued_max_messages_kbytes,
+        "queued.min.messages": queued_min_messages,
+        "enable.partition.eof": False,
+        "statistics.interval.ms": STATS_COLLECTION_FREQ_MS,
+        "stats_cb": stats_callback,
+    }
+
+    broker_config.update(config_update)
     return broker_config

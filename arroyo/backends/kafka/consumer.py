@@ -186,6 +186,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if self.__strict_offset_reset is None:
             self.__strict_offset_reset = True
 
+        # Feature flag to enable rdkafka auto-commit with store_offsets
+        # When enabled, offsets are stored via store_offsets() and rdkafka
+        # automatically commits them periodically
+        self.__use_auto_commit = as_kafka_configuration_bool(
+            configuration.pop("arroyo.enable.auto.commit", False)
+        )
+
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
             self.__resolve_partition_starting_offset = (
                 self.__resolve_partition_offset_earliest
@@ -201,21 +208,31 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         else:
             raise ValueError("invalid value for 'auto.offset.reset' configuration")
 
-        if (
-            as_kafka_configuration_bool(configuration.get("enable.auto.commit", "true"))
-            is not False
-        ):
-            raise ValueError("invalid value for 'enable.auto.commit' configuration")
+        # When auto-commit is disabled (default), we require explicit configuration
+        # When auto-commit is enabled, we allow rdkafka to handle commits
+        if not self.__use_auto_commit:
+            if (
+                as_kafka_configuration_bool(
+                    configuration.get("enable.auto.commit", "true")
+                )
+                is not False
+            ):
+                raise ValueError("invalid value for 'enable.auto.commit' configuration")
 
-        if (
-            as_kafka_configuration_bool(
-                configuration.get("enable.auto.offset.store", "true")
-            )
-            is not False
-        ):
-            raise ValueError(
-                "invalid value for 'enable.auto.offset.store' configuration"
-            )
+            if (
+                as_kafka_configuration_bool(
+                    configuration.get("enable.auto.offset.store", "true")
+                )
+                is not False
+            ):
+                raise ValueError(
+                    "invalid value for 'enable.auto.offset.store' configuration"
+                )
+        else:
+            # In auto-commit mode, enable auto.commit and keep auto.offset.store disabled
+            # We'll use store_offsets() manually to control which offsets get committed
+            configuration["enable.auto.commit"] = True
+            configuration["enable.auto.offset.store"] = False
 
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled when
@@ -572,7 +589,21 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
-        self.__staged_offsets.update(offsets)
+        if self.__use_auto_commit:
+            # When auto-commit is enabled, use store_offsets to stage offsets
+            # for rdkafka to auto-commit
+            if offsets:
+                self.__consumer.store_offsets(
+                    offsets=[
+                        ConfluentTopicPartition(
+                            partition.topic.name, partition.index, offset
+                        )
+                        for partition, offset in offsets.items()
+                    ]
+                )
+        else:
+            # Default behavior: manually track staged offsets
+            self.__staged_offsets.update(offsets)
 
     def __commit(self) -> Mapping[Partition, int]:
         if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
@@ -620,15 +651,24 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         return offsets
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
         """
         Commit staged offsets for all partitions that this consumer is
         assigned to. The return value of this method is a mapping of
         partitions with their committed offsets as values.
 
+        When auto-commit is enabled, returns None since rdkafka handles
+        commits automatically and we don't track which offsets were committed.
+
         Raises an ``InvalidState`` if called on a closed consumer.
         """
-        return self.__commit_retry_policy.call(self.__commit)
+        if self.__use_auto_commit:
+            # When auto-commit is enabled, rdkafka commits automatically
+            # We don't track what was committed, so return None
+            # The offsets have already been staged via store_offsets()
+            return None
+        else:
+            return self.__commit_retry_policy.call(self.__commit)
 
     def close(self, timeout: Optional[float] = None) -> None:
         """
@@ -640,6 +680,13 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         before the timeout is reached.
         """
         try:
+            # In auto-commit mode, the underlying consumer will commit on close
+            # But we should explicitly commit any stored offsets to be safe
+            if self.__use_auto_commit:
+                # Force a synchronous commit before closing
+                # This ensures any offsets stored via store_offsets are committed
+                self.__consumer.commit(asynchronous=False)
+
             self.__consumer.close()
         except RuntimeError:
             pass

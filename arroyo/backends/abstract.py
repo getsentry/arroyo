@@ -153,10 +153,13 @@ class Consumer(Generic[TStrategyPayload], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
         """
         Commit staged offsets. The return value of this method is a mapping
         of streams with their committed offsets as values.
+
+        When auto-commit is enabled (in Kafka consumers), returns None since
+        the broker handles commits automatically.
         """
         raise NotImplementedError
 

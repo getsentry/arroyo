@@ -275,6 +275,68 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 processor._run_once()
                 assert consumer.paused() == []
 
+    def test_auto_commit_mode(self) -> None:
+        """Test that auto-commit mode uses store_offsets and commits on close"""
+        group_id = uuid.uuid1().hex
+
+        with self.get_topic() as topic:
+            # Produce some messages
+            with closing(self.get_producer()) as producer:
+                for i in range(5):
+                    payload = KafkaPayload(None, f"msg_{i}".encode("utf8"), [])
+                    producer.produce(topic, payload).result(5.0)
+
+            # Create consumer with auto-commit enabled
+            configuration = {
+                **self.configuration,
+                "auto.offset.reset": "earliest",
+                "arroyo.enable.auto.commit": True,
+                "group.id": group_id,
+                "session.timeout.ms": 10000,
+            }
+
+            # First consumer: consume messages and close
+            consumed_offsets = []
+            with closing(KafkaConsumer(configuration)) as consumer:
+                consumer.subscribe([topic])
+
+                # Consume all 5 messages and stage their offsets
+                for i in range(5):
+                    value = consumer.poll(10.0)
+                    assert value is not None
+                    consumed_offsets.append(value.offset)
+
+                    # Stage offsets (will use store_offsets internally in auto-commit mode)
+                    consumer.stage_offsets(value.committable)
+
+                # commit_offsets should return None in auto-commit mode
+                result = consumer.commit_offsets()
+                assert result is None
+
+                # Close will commit any stored offsets
+
+            # Verify we consumed offsets 0-4
+            assert consumed_offsets == [0, 1, 2, 3, 4]
+
+            # Second consumer: verify offsets were committed on close
+            # This consumer uses manual commit to verify the committed offset
+            with closing(
+                self.get_consumer(
+                    group=group_id,
+                    auto_offset_reset="earliest",
+                    enable_end_of_partition=True,
+                )
+            ) as consumer:
+                consumer.subscribe([topic])
+
+                # Should start from offset 5, hitting EndOfPartition immediately
+                # If we got a message with offset < 5, auto-commit didn't work
+                with pytest.raises(EndOfPartition) as exc_info:
+                    consumer.poll(10.0)
+
+                assert exc_info.value.offset == 5
+                assert exc_info.value.partition == Partition(topic, 0)
+
 
 class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
     # re-test the kafka consumer with cooperative-sticky rebalancing
