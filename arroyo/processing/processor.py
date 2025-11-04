@@ -486,7 +486,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
                             logger.warning(f"consumer.tell() value right before poll() is: {self.__consumer.tell()}")
-                            if self.__consumer.poll(0.1) is not None:
+                            maybe_message = self.__consumer.poll(0.1)
+                            if maybe_message is not None:
+                                logger.warning(f"Received a message from partition: {maybe_message.partition}")
                                 logger.warning(f"consumer.tell() value right after poll() is: {self.__consumer.tell()}")
                                 logger.warning(f"A few more lines above consumer.tell() was called, all_partitons value was: {all_partitions}")
                                 logger.warning(f"A few more lines above consumer.paused() was called,paused_partitions value is: {paused_partitions}")
