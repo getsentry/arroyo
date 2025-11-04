@@ -38,9 +38,9 @@ class LocalBroker(Generic[TStrategyPayload]):
         self.__message_storage = message_storage
         self.__clock = clock
 
-        self.__offsets: MutableMapping[str, MutableMapping[Partition, int]] = (
-            defaultdict(dict)
-        )
+        self.__offsets: MutableMapping[
+            str, MutableMapping[Partition, int]
+        ] = defaultdict(dict)
 
         # The active subscriptions are stored by consumer group as a mapping
         # between the consumer and it's subscribed topics.
@@ -326,7 +326,7 @@ class LocalConsumer(Consumer[TStrategyPayload]):
             # atomic
             self.__staged_offsets.update(offsets)
 
-    def commit_offsets(self) -> Mapping[Partition, int]:
+    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
         with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
