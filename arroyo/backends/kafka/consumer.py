@@ -233,6 +233,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             # We'll use store_offsets() manually to control which offsets get committed
             configuration["enable.auto.commit"] = True
             configuration["enable.auto.offset.store"] = False
+            configuration["on_commit"] = self.__on_commit_callback
 
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled when
@@ -251,6 +252,19 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         self.__commit_retry_policy = commit_retry_policy
 
         self.__state = KafkaConsumerState.CONSUMING
+
+    def __on_commit_callback(
+        self,
+        error: Optional[KafkaException],
+        partitions: Sequence[ConfluentTopicPartition],
+    ) -> None:
+        if error:
+            partition_info = [f"{p.topic}:{p.partition}" for p in partitions]
+            logger.warning(
+                "Commit failed: %s. Partitions: %s",
+                error,
+                partition_info,
+            )
 
     def __resolve_partition_offset_earliest(
         self, partition: ConfluentTopicPartition
