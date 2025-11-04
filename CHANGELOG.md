@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.32.2
+
+### Various fixes & improvements
+
+- only call once (#500) by @victoria-yining-huang
+
 ## 2.32.1
 
 ### Various fixes & improvements
