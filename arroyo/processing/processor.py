@@ -485,13 +485,18 @@ class StreamProcessor(Generic[TStrategyPayload]):
                             # A paused consumer should still poll periodically to avoid it's partitions
                             # getting revoked by the broker after reaching the max.poll.interval.ms
                             # Polling a paused consumer should never yield a message.
-                            logger.warning(f"consumer.tell() value right before poll() is: {self.__consumer.tell()}")
+                            logger.warning("consumer.tell() value right before poll() is: %s", self.__consumer.tell())
                             maybe_message = self.__consumer.poll(0.1)
                             if maybe_message is not None:
-                                logger.warning(f"Received a message from partition: {maybe_message.partition}. \
-                                                consumer.tell() value right after poll() is: {self.__consumer.tell()} \
-                                                Some lines above consumer.tell() was called, all_partitons value was: {all_partitions} \
-                                                Some lines above consumer.paused() was called, paused_partitions value is: {paused_partitions}")
+                                logger.warning("Received a message from partition: %s, \
+                                                consumer.tell() value right after poll() is: %s \
+                                                Some lines above consumer.tell() was called, all_partitons value was: %s \
+                                                Some lines above consumer.paused() was called, paused_partitions value is: %s",
+                                                maybe_message.partition,
+                                                self.__consumer.tell(),
+                                                all_partitions,
+                                                paused_partitions
+                                                )
                             assert self.__consumer.poll(0.1) is None
                     else:
                         time.sleep(0.01)
