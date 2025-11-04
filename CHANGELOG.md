@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.32.1
+
+### Various fixes & improvements
+
+- feat(metrics): Record total number of available processes (#491) by @lvthanh03
+
 ## 0.0.33
 
 - No documented changes.
