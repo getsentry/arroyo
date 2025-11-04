@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.32.0
+
+### Various fixes & improvements
+
+- add logging before consumer poll assertion fails (#497) by @victoria-yining-huang
+- feat: Implement autocommit (#498) by @untitaker
+
 ## 2.31.2
 
 ### Various fixes & improvements
