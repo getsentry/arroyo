@@ -63,6 +63,9 @@ KafkaConsumerState = Enum(
     "KafkaConsumerState", ["CONSUMING", "ERROR", "CLOSED", "ASSIGNING", "REVOKING"]
 )
 
+# Interval between metric flushes (in seconds)
+METRICS_FREQUENCY_SEC = 1.0
+
 
 class InvalidState(RuntimeError):
     def __init__(self, state: KafkaConsumerState):
@@ -253,6 +256,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__state = KafkaConsumerState.CONSUMING
 
+        self.__metrics = get_metrics()
+        self.__group_id = configuration.get("group.id")
+        self.__commit_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__reset_metrics()
+
     def __on_commit_callback(
         self,
         error: Optional[KafkaException],
@@ -265,6 +273,30 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 error,
                 partition_info,
             )
+            self.__commit_counters["error"] += 1
+        else:
+            self.__commit_counters["success"] += 1
+        self.__throttled_record()
+
+    def __flush_metrics(self) -> None:
+        for status, count in self.__commit_counters.items():
+            tags = {"status": status}
+            if self.__group_id:
+                tags["group_id"] = self.__group_id
+            self.__metrics.increment(
+                name="arroyo.consumer.commit_status",
+                value=count,
+                tags=tags,
+            )
+        self.__reset_metrics()
+
+    def __reset_metrics(self) -> None:
+        self.__commit_counters.clear()
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
+            self.__flush_metrics()
 
     def __resolve_partition_offset_earliest(
         self, partition: ConfluentTopicPartition
@@ -694,6 +726,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         before the timeout is reached.
         """
         try:
+            self.__flush_metrics()
+        except Exception:
+            logger.debug("Failed to flush metrics on consumer close", exc_info=True)
+
+        try:
             self.__consumer.close()
         except RuntimeError:
             pass
@@ -805,9 +842,6 @@ class KafkaProducer(Producer[KafkaPayload]):
 # Type alias for the delivery callback function
 DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 
-# Interval between metric flushes (in seconds)
-METRICS_FREQUENCY_SEC = 1.0
-
 
 class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     """
@@ -865,8 +899,11 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         self.__reset_metrics()
 
     def flush(self, timeout: float = -1) -> int:
-        # Kafka producer flush should flush metrics too
-        self.__flush_metrics()
+        try:
+            self.__flush_metrics()
+        except Exception:
+            logger.debug("Failed to flush metrics on producer flush", exc_info=True)
+
         return cast(int, super().flush(timeout))
 
     def __reset_metrics(self) -> None:
