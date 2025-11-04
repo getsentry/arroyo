@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 0.0.33
+
+- No documented changes.
+
 ## 2.32.0
 
 ### Various fixes & improvements
