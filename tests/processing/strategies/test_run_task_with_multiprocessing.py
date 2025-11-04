@@ -187,7 +187,7 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
                 2.0,
                 tags=None,
             ),
@@ -207,7 +207,7 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
                 2.0,
                 tags=None,
             ),
@@ -281,7 +281,7 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
                 2.0,
                 tags=None,
             ),
@@ -301,7 +301,7 @@ def test_parallel_transform_step() -> None:
                 tags=None,
             ),
             GaugeCall(
-                "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+                "arroyo.strategies.run_task_with_multiprocessing.processes",
                 2.0,
                 tags=None,
             ),

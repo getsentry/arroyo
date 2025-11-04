@@ -423,7 +423,7 @@ class RunTaskWithMultiprocessing(
     shows you how many processes arroyo is able to effectively use at any given
     point.
 
-    The metric ``arroyo.strategies.run_task_with_multiprocessing.pool_size``
+    The metric ``arroyo.strategies.run_task_with_multiprocessing.processes``
     shows the total number of available processes in the pool. This is recorded
     as a gauge alongside ``batches_in_progress`` so you can calculate the ratio
     of processes in use to total available processes.
@@ -642,7 +642,7 @@ class RunTaskWithMultiprocessing(
         )
         self.__batches_in_progress.increment()
         self.__metrics.gauge(
-            "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+            "arroyo.strategies.run_task_with_multiprocessing.processes",
             self.__pool.num_processes,
         )
         self.__metrics.timing(
@@ -840,7 +840,7 @@ class RunTaskWithMultiprocessing(
         self.__output_blocks.append(new_output_block)
         self.__batches_in_progress.decrement()
         self.__metrics.gauge(
-            "arroyo.strategies.run_task_with_multiprocessing.pool_size",
+            "arroyo.strategies.run_task_with_multiprocessing.processes",
             self.__pool.num_processes,
         )
 
