@@ -1,3 +1,5 @@
+from unittest import mock
+
 from confluent_kafka import KafkaError, KafkaException
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
@@ -24,8 +26,7 @@ def test_commit_callback_success_metric() -> None:
         ConfluentTopicPartition("test-topic", 1, 20),
     ]
 
-    consumer._KafkaConsumer__on_commit_callback(None, partitions)
-    consumer._KafkaConsumer__flush_metrics()
+    consumer._KafkaConsumer__on_commit_callback(None, partitions)  # type: ignore[attr-defined]
 
     assert (
         Increment(
@@ -58,8 +59,7 @@ def test_commit_callback_error_metric() -> None:
         ConfluentTopicPartition("test-topic", 0, 10),
     ]
 
-    consumer._KafkaConsumer__on_commit_callback(error, partitions)
-    consumer._KafkaConsumer__flush_metrics()
+    consumer._KafkaConsumer__on_commit_callback(error, partitions)  # type: ignore[attr-defined]
 
     assert (
         Increment(

@@ -258,8 +258,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__metrics = get_metrics()
         self.__group_id = configuration.get("group.id")
-        self.__commit_counters: MutableMapping[str, int] = defaultdict(int)
-        self.__reset_metrics()
 
     def __on_commit_callback(
         self,
@@ -273,30 +271,23 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 error,
                 partition_info,
             )
-            self.__commit_counters["error"] += 1
-        else:
-            self.__commit_counters["success"] += 1
-        self.__throttled_record()
-
-    def __flush_metrics(self) -> None:
-        for status, count in self.__commit_counters.items():
-            tags = {"status": status}
+            tags = {"status": "error"}
             if self.__group_id:
                 tags["group_id"] = self.__group_id
             self.__metrics.increment(
                 name="arroyo.consumer.commit_status",
-                value=count,
+                value=1,
                 tags=tags,
             )
-        self.__reset_metrics()
-
-    def __reset_metrics(self) -> None:
-        self.__commit_counters.clear()
-        self.__last_record_time = time.time()
-
-    def __throttled_record(self) -> None:
-        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
-            self.__flush_metrics()
+        else:
+            tags = {"status": "success"}
+            if self.__group_id:
+                tags["group_id"] = self.__group_id
+            self.__metrics.increment(
+                name="arroyo.consumer.commit_status",
+                value=1,
+                tags=tags,
+            )
 
     def __resolve_partition_offset_earliest(
         self, partition: ConfluentTopicPartition
@@ -725,11 +716,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         Raises a ``InvalidState`` if the consumer is unable to be closed
         before the timeout is reached.
         """
-        try:
-            self.__flush_metrics()
-        except Exception:
-            logger.warning("Failed to flush metrics on consumer close")
-
         try:
             self.__consumer.close()
         except RuntimeError:
