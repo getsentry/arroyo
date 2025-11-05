@@ -63,9 +63,6 @@ KafkaConsumerState = Enum(
     "KafkaConsumerState", ["CONSUMING", "ERROR", "CLOSED", "ASSIGNING", "REVOKING"]
 )
 
-# Interval between metric flushes (in seconds)
-METRICS_FREQUENCY_SEC = 1.0
-
 
 class InvalidState(RuntimeError):
     def __init__(self, state: KafkaConsumerState):
@@ -828,6 +825,9 @@ class KafkaProducer(Producer[KafkaPayload]):
 # Type alias for the delivery callback function
 DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 
+# Interval between metric flushes (in seconds)
+METRICS_FREQUENCY_SEC = 1.0
+
 
 class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     """
@@ -885,11 +885,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         self.__reset_metrics()
 
     def flush(self, timeout: float = -1) -> int:
-        try:
-            self.__flush_metrics()
-        except Exception:
-            logger.warning("Failed to flush metrics on producer flush")
-
+        self.__flush_metrics()
         return cast(int, super().flush(timeout))
 
     def __reset_metrics(self) -> None:
