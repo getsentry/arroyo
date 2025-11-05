@@ -157,21 +157,32 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         self,
         configuration: Mapping[str, Any],
     ) -> None:
+        configuration = dict(configuration)
+
+        # Feature flag to enable retrying on `Broker handle destroyed` errors
+        # which can occur if we attempt to commit during a rebalance when
+        # the consumer group coordinator changed
+        self.__retry_handle_destroyed = as_kafka_configuration_bool(
+            configuration.pop("arroyo.retry.broker.handle.destroyed", False)
+        )
+
+        retryable_errors: Tuple[int, ...] = (
+            KafkaError.REQUEST_TIMED_OUT,
+            KafkaError.NOT_COORDINATOR,
+            KafkaError._WAIT_COORD,
+            KafkaError.STALE_MEMBER_EPOCH,  # kip-848
+            KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
+        )
+        if self.__retry_handle_destroyed:
+            retryable_errors += (KafkaError._DESTROY,)
+
         commit_retry_policy = BasicRetryPolicy(
             3,
             1,
             lambda e: isinstance(e, KafkaException)
-            and e.args[0].code()
-            in (
-                KafkaError.REQUEST_TIMED_OUT,
-                KafkaError.NOT_COORDINATOR,
-                KafkaError._WAIT_COORD,
-                KafkaError.STALE_MEMBER_EPOCH,  # kip-848
-                KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
-            ),
+            and e.args[0].code() in retryable_errors,
         )
 
-        configuration = dict(configuration)
         self.__is_cooperative_sticky = (
             configuration.get("partition.assignment.strategy") == "cooperative-sticky"
         )
