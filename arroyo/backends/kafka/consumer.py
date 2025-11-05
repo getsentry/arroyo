@@ -253,6 +253,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__state = KafkaConsumerState.CONSUMING
 
+        self.__metrics = get_metrics()
+        self.__group_id = configuration.get("group.id")
+
     def __on_commit_callback(
         self,
         error: Optional[KafkaException],
@@ -264,6 +267,23 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 "Commit failed: %s. Partitions: %s",
                 error,
                 partition_info,
+            )
+            tags = {"status": "error"}
+            if self.__group_id:
+                tags["group_id"] = self.__group_id
+            self.__metrics.increment(
+                name="arroyo.consumer.commit_status",
+                value=1,
+                tags=tags,
+            )
+        else:
+            tags = {"status": "success"}
+            if self.__group_id:
+                tags["group_id"] = self.__group_id
+            self.__metrics.increment(
+                name="arroyo.consumer.commit_status",
+                value=1,
+                tags=tags,
             )
 
     def __resolve_partition_offset_earliest(

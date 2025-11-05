@@ -101,6 +101,8 @@ MetricName = Literal[
     "arroyo.strategies.filter.dropped_messages",
     # Counter: how many messages are dropped due to errors producing to the dlq
     "arroyo.consumer.dlq.dropped_messages",
+    # Counter: Number of times consumer commit succeeds or fails
+    "arroyo.consumer.commit_status",
     # Gauge: Current length of the DLQ buffer deque
     "arroyo.consumer.dlq_buffer.len",
     # Counter: Number of times the DLQ buffer size has been exceeded, causing messages to be dropped
@@ -125,7 +127,7 @@ MetricName = Literal[
     # Time: Average round-trip time to brokers from librdkafka statistics.
     # Tagged by broker_id.
     "arroyo.producer.librdkafka.avg_rtt",
-    # Counter: Number of times the produce strategy failed to produce a message
+    # Counter: Number of times the produce strategy succeeds or fails
     "arroyo.producer.produce_status",
     # Gauge: Producer message count metric from librdkafka statistics
     # Tagged by producer_name
