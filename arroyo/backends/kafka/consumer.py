@@ -885,6 +885,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         self.__reset_metrics()
 
     def flush(self, timeout: float = -1) -> int:
+        # Kafka producer flush should flush metrics too
         self.__flush_metrics()
         return cast(int, super().flush(timeout))
 
