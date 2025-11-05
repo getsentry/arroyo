@@ -1,5 +1,3 @@
-from unittest import mock
-
 from confluent_kafka import KafkaError, KafkaException
 from confluent_kafka import TopicPartition as ConfluentTopicPartition
 
