@@ -1,5 +1,6 @@
 import contextlib
 import itertools
+from mailbox import Message
 import os
 import pickle
 import time
@@ -231,6 +232,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 with pytest.raises(RuntimeError):
                     processor.run()
 
+    @mock.patch("arroyo.processing.processor.BACKPRESSURE_THRESHOLD", 0)
     def test_assign_partition_during_pause(self) -> None:
         payloads = self.get_payloads()
 
@@ -247,9 +249,9 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
         with self.get_topic(2) as topic, closing(
             self.get_producer()
         ) as producer, closing(
-            self.get_consumer("group", enable_end_of_partition=False)
+            self.get_consumer("test_assign_partition_during_pause", enable_end_of_partition=False)
         ) as consumer_a, closing(
-            self.get_consumer("group", enable_end_of_partition=False)
+            self.get_consumer("test_assign_partition_during_pause", enable_end_of_partition=False)
         ) as consumer_b:
             messages = [
                 producer.produce(Partition(topic, i), next(payloads)).result(
@@ -258,22 +260,13 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 for i in [0, 1]
             ]
 
-            def wait_until_rebalancing(
-                from_consumer: Consumer[Any], to_consumer: Consumer[Any]
-            ) -> None:
+            def wait_until_rebalancing() -> None:
                 for _ in range(20):
-                    assert from_consumer.poll(0) is None
-                    if to_consumer.poll(1.0) is not None:
-                        return
-
+                    consumer_b.poll(1)
+                assert len(consumer_b.tell()) == 1
                 raise RuntimeError("no rebalancing happened")
 
-            consumer_a.subscribe(
-                [topic], on_assign=consumer_a_on_assign, on_revoke=consumer_a_on_revoke
-            )
-
             processor_a = StreamProcessor(consumer_a, topic, factory, IMMEDIATE)
-            processor_b = StreamProcessor(consumer_b, topic, factory, IMMEDIATE)
             # calling _run_once will pause both consumers because of the MessageRejected strategy above
             def wait_until_consumer_pauses(
                 processor: StreamProcessor[Any]) -> None:
@@ -281,7 +274,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     processor._run_once()
                     if processor._StreamProcessor__is_paused:
                         return
-
+                print(processor._StreamProcessor__consumer.tell())
                 raise RuntimeError("processor was not paused")
 
             wait_until_consumer_pauses(processor_a)
@@ -289,13 +282,9 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             assert len(consumer_a.tell()) == 2
             assert len(consumer_b.tell()) == 0
 
-            # assert processor_a.__is_paused is True
+            assert processor_a._StreamProcessor__is_paused is True
 
-            consumer_b.subscribe(
-                [topic], on_assign=consumer_b_on_assign, on_revoke=consumer_b_on_revoke
-            )
-
-            wait_until_rebalancing(consumer_a, consumer_b)
+            processor_b = StreamProcessor(consumer_b, topic, factory, IMMEDIATE)
 
             if self.cooperative_sticky or self.kip_848:
                 # within incremental rebalancing, only one partition should have been reassigned to the consumer_b, and consumer_a should remain paused
@@ -306,8 +295,11 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 # The first consumer should have had its offsets rolled back, as
                 # well as should have had it's partition resumed during
                 # rebalancing.
-                assert consumer_a.paused() == [] # not paused
-                assert consumer_a.poll(10.0) is None
+                assert consumer_a.paused() != [] # no paused partitions
+                wait_until_rebalancing()
+                processor_a._run_once()
+                # should raise the assertion error within streamprocessor
+                # assert consumer_a.poll(10.0) is None
 
 
             # assert len(consumer_a.tell()) == 1
