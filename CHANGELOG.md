@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.32.3
+
+### Various fixes & improvements
+
+- feat(consumer): add flag to retry on handle detroyed (#501) by @bmckerry
+- feat(consumer): Add commit status metrics (#499) by @lvthanh03
+
 ## 2.32.2
 
 ### Various fixes & improvements
