@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.32.4
+
+### Various fixes & improvements
+
+- add retry_handle_destroyed to configuration.py (#502) by @bmckerry
+
 ## 2.32.3
 
 ### Various fixes & improvements
