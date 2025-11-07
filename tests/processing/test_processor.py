@@ -642,6 +642,7 @@ def test_processor_pause_with_invalid_message() -> None:
 
     # Partition assignment
     partition = Partition(topic, 0)
+    new_partition = Partition(topic, 1)
     consumer.tell.return_value = {}
     assignment_callback = subscribe_kwargs["on_assign"]
     offsets = {partition: 0}
@@ -682,9 +683,12 @@ def test_processor_pause_with_invalid_message() -> None:
     with assert_changes(lambda: int(consumer.resume.call_count), 0, 1):
         processor._run_once()
 
-    # Poll for the next message from Kafka
-    new_message = Message(BrokerValue(0, partition, 1, datetime.now()))
+    # Poll for the next message from Kafka, but this time the partition has changed
+    new_message = Message(BrokerValue(0, new_partition, 1, datetime.now()))
     consumer.poll.return_value = new_message.value
+    processor._run_once()
+    assert processor._StreamProcessor__is_paused is False
+
     strategy.submit.return_value = None
     strategy.submit.side_effect = None
 
