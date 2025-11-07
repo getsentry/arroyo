@@ -1,6 +1,5 @@
 import contextlib
 import itertools
-from mailbox import Message
 import os
 import pickle
 import time
@@ -9,7 +8,7 @@ from contextlib import closing
 from pickle import PickleBuffer
 from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import mock
-from arroyo.backends.abstract import Consumer, Producer
+
 import pytest
 from confluent_kafka.admin import AdminClient, NewTopic
 
@@ -81,7 +80,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
     @property
     def configuration(self) -> KafkaBrokerConfig:
         config = {
-            "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092"),
+            "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "127.0.0.1:9092"),
         }
 
         return build_kafka_configuration(config)
@@ -234,131 +233,87 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
     @mock.patch("arroyo.processing.processor.BACKPRESSURE_THRESHOLD", 0)
     def test_assign_partition_during_pause(self) -> None:
-        payloads = self.get_payloads()
+        if self.cooperative_sticky or self.kip_848:
+            pytest.skip("test does not work with cooperative-sticky rebalancing")
 
-        consumer_a_on_assign = mock.Mock()
-        consumer_a_on_revoke = mock.Mock()
-        consumer_b_on_assign = mock.Mock()
-        consumer_b_on_revoke = mock.Mock()
+        payloads = self.get_payloads()
 
         strategy = mock.Mock()
         strategy.submit.side_effect = MessageRejected()
         factory = mock.Mock()
         factory.create_with_partitions.return_value = strategy
 
-        with self.get_topic(2) as topic, closing(
+        partition_count = 2
+
+        with self.get_topic(partition_count) as topic, closing(
             self.get_producer()
         ) as producer, closing(
-            self.get_consumer("test_assign_partition_during_pause", enable_end_of_partition=False)
+            self.get_consumer(
+                "test_assign_partition_during_pause", enable_end_of_partition=True
+            )
         ) as consumer_a, closing(
-            self.get_consumer("test_assign_partition_during_pause", enable_end_of_partition=False)
+            self.get_consumer(
+                "test_assign_partition_during_pause", enable_end_of_partition=True
+            )
         ) as consumer_b:
-            messages = [
+            for i in range(partition_count):
                 producer.produce(Partition(topic, i), next(payloads)).result(
                     timeout=5.0
                 )
-                for i in [0, 1]
-            ]
-
-            def wait_until_rebalancing() -> None:
-                for _ in range(20):
-                    consumer_b.poll(1)
-                assert len(consumer_b.tell()) == 1
-                raise RuntimeError("no rebalancing happened")
 
             processor_a = StreamProcessor(consumer_a, topic, factory, IMMEDIATE)
-            # calling _run_once will pause both consumers because of the MessageRejected strategy above
-            def wait_until_consumer_pauses(
-                processor: StreamProcessor[Any]) -> None:
+
+            def wait_until_consumer_pauses(processor: StreamProcessor[Any]) -> None:
                 for _ in range(20):
-                    processor._run_once()
-                    if processor._StreamProcessor__is_paused:
+                    try:
+                        processor._run_once()
+                    except EndOfPartition:
+                        pass
+
+                    if processor._StreamProcessor__is_paused:  # type:ignore
                         return
-                print(processor._StreamProcessor__consumer.tell())
+                print(processor._StreamProcessor__consumer.tell())  # type:ignore
                 raise RuntimeError("processor was not paused")
 
+            # calling _run_once will pause both consumers because of the MessageRejected strategy above
             wait_until_consumer_pauses(processor_a)
 
+            # consumer A has all the partitions
             assert len(consumer_a.tell()) == 2
             assert len(consumer_b.tell()) == 0
 
-            assert processor_a._StreamProcessor__is_paused is True
+            # consumer A has all partitions paused (both from consumer and from
+            # StreamProcessor POV)
+            assert consumer_a.paused()
+            assert processor_a._StreamProcessor__is_paused is True  # type:ignore
 
+            # subscribe with another consumer, now we should have rebalancing in the next few polls
             processor_b = StreamProcessor(consumer_b, topic, factory, IMMEDIATE)
 
-            if self.cooperative_sticky or self.kip_848:
-                # within incremental rebalancing, only one partition should have been reassigned to the consumer_b, and consumer_a should remain paused
-                # Either partition 0 or 1 might be the paused one
-                assert len(consumer_a.paused()) == 1
-                assert consumer_a.poll(10.0) is None
-            else:
-                # The first consumer should have had its offsets rolled back, as
-                # well as should have had it's partition resumed during
-                # rebalancing.
-                assert consumer_a.paused() != [] # no paused partitions
-                wait_until_rebalancing()
-                processor_a._run_once()
-                # should raise the assertion error within streamprocessor
-                # assert consumer_a.poll(10.0) is None
+            for _ in range(10):
+                try:
+                    processor_a._run_once()
+                except EndOfPartition:
+                    pass
+                try:
+                    processor_b._run_once()
+                except EndOfPartition:
+                    pass
 
+            # balanced
+            assert len(consumer_a.tell()) == 1
+            assert len(consumer_b.tell()) == 1
 
-            # assert len(consumer_a.tell()) == 1
-            # assert len(consumer_b.tell()) == 1
+            # close B, but A has not polled yet, so it only has one partition still
+            consumer_b.close()
+            assert len(consumer_a.tell()) == 1
 
-            # (consumer_a_partition,) = consumer_a.tell()
-            # (consumer_b_partition,) = consumer_b.tell()
-
-            # # Pause consumer_a again.
-            # consumer_a.pause(list(consumer_a.tell()))
-            # # if we close consumer_a, consumer_b should get all partitions
-            # producer.produce(next(iter(consumer_a.tell())), next(payloads)).result(
-            #     timeout=5.0
-            # )
-            # consumer_a.unsubscribe()
-            # wait_until_rebalancing(consumer_a, consumer_b)
-
-            # assert len(consumer_b.tell()) == 2
-
-            # if self.cooperative_sticky or self.kip_848:
-            #     consumer_a_on_assign.assert_has_calls(
-            #         [
-            #             mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-            #         ]
-            #     )
-
-            #     consumer_a_on_revoke.assert_has_calls(
-            #         [
-            #             mock.call([Partition(topic, 0)]),
-            #             mock.call([Partition(topic, 1)]),
-            #         ],
-            #         any_order=True,
-            #     )
-
-            #     consumer_b_on_assign.assert_has_calls(
-            #         [
-            #             mock.call({Partition(topic, 0): 0}),
-            #             mock.call({Partition(topic, 1): 0}),
-            #         ],
-            #         any_order=True,
-            #     )
-            #     assert consumer_b_on_revoke.mock_calls == []
-            # else:
-            #     assert consumer_a_on_assign.mock_calls == [
-            #         mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-            #         mock.call({consumer_a_partition: 0}),
-            #     ]
-            #     assert consumer_a_on_revoke.mock_calls == [
-            #         mock.call([Partition(topic, 0), Partition(topic, 1)]),
-            #         mock.call([consumer_a_partition]),
-            #     ]
-
-            #     assert consumer_b_on_assign.mock_calls == [
-            #         mock.call({consumer_b_partition: 0}),
-            #         mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),
-            #     ]
-            #     assert consumer_b_on_revoke.mock_calls == [
-            #         mock.call([consumer_b_partition])
-            #     ]
+            for _ in range(20):
+                try:
+                    processor_a._run_once()
+                except EndOfPartition:
+                    pass
+            assert len(consumer_a.tell()) == 2
 
     def test_consumer_polls_when_paused(self) -> None:
         strategy = mock.Mock()

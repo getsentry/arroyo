@@ -146,9 +146,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
-            None
-        )
+        self.__processing_strategy: Optional[
+            ProcessingStrategy[TStrategyPayload]
+        ] = None
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
@@ -464,40 +464,15 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         self.__is_paused = True
 
                     elif self.__is_paused:
-                        paused_partitions = set(self.__consumer.paused())
-                        all_partitions = set(self.__consumer.tell())
-                        unpaused_partitions = (
-                            all_partitions - paused_partitions
-                        )
-                        if unpaused_partitions:
-                            logger.warning(
-                                "Processor in paused state while consumer is partially unpaused: %s, paused: %s",
-                                unpaused_partitions,
-                                paused_partitions,
-                            )
-                            self.__is_paused = False
-                            # unpause paused partitions... just in case a subset is paused
-                            self.__metrics_buffer.incr_counter(
-                                "arroyo.consumer.resume", 1
-                            )
-                            self.__consumer.resume([*paused_partitions])
-                        else:
-                            # A paused consumer should still poll periodically to avoid it's partitions
-                            # getting revoked by the broker after reaching the max.poll.interval.ms
-                            # Polling a paused consumer should never yield a message.
-                            logger.warning("consumer.tell() value right before poll() is: %s", self.__consumer.tell())
-                            maybe_message = self.__consumer.poll(0.1)
-                            if maybe_message is not None:
-                                logger.warning("Received a message from partition: %s, \
-                                                consumer.tell() value right after poll() is: %s \
-                                                Some lines above consumer.tell() was called, all_partitons value was: %s \
-                                                Some lines above consumer.paused() was called, paused_partitions value is: %s",
-                                                maybe_message.partition,
-                                                self.__consumer.tell(),
-                                                all_partitions,
-                                                paused_partitions
-                                                )
-                            assert maybe_message is None
+                        maybe_message = self.__consumer.poll(0.1)
+                        if maybe_message is not None:
+                            # The paused consumer, in the above poll, has
+                            # gone through rebalancing. In this case we
+                            # expect that partition revocation cleared the
+                            # pause flag and the carried over message.
+                            # this assumption will not hold for cooperative-sticky rebalancing.
+                            assert not self.__is_paused
+                            assert self.__message is None
                     else:
                         time.sleep(0.01)
 
