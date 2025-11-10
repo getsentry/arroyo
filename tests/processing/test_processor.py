@@ -755,7 +755,7 @@ def test_processor_poll_while_paused() -> None:
     new_message = Message(BrokerValue(0, new_partition, 1, datetime.now()))
     consumer.poll.return_value = new_message.value
     processor._run_once()
-    assert processor._StreamProcessor__is_paused is False
+    assert processor._StreamProcessor__is_paused is False # type:ignore
 
     strategy.submit.return_value = None
     strategy.submit.side_effect = None
