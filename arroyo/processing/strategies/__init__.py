@@ -3,10 +3,10 @@ from arroyo.processing.strategies.abstract import (
     ProcessingStrategy,
     ProcessingStrategyFactory,
 )
-from arroyo.processing.strategies.healthcheck import Healthcheck
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep
 from arroyo.processing.strategies.commit import CommitOffsets
 from arroyo.processing.strategies.filter import FilterStep
+from arroyo.processing.strategies.healthcheck import Healthcheck
 from arroyo.processing.strategies.produce import Produce
 from arroyo.processing.strategies.reduce import Reduce
 from arroyo.processing.strategies.run_task import RunTask

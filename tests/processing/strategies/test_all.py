@@ -10,7 +10,6 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from arroyo.commit import IMMEDIATE
 from arroyo.dlq import InvalidMessage
 from arroyo.processing.strategies import ProcessingStrategy
 from arroyo.processing.strategies.filter import FilterStep
@@ -111,9 +110,7 @@ class FilterFactory(StrategyFactory):
         if raises_invalid_message:
             pytest.skip("does not support invalid message")
 
-        return FilterStep(
-            lambda message: message.payload, next_step, commit_policy=IMMEDIATE
-        )
+        return FilterStep(lambda message: message.payload, next_step)
 
     def shutdown(self) -> None:
         pass

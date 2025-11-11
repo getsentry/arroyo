@@ -187,13 +187,11 @@ The code above is orchestrated by the Arroyo runtime called `StreamProcessor`.
 .. code-block:: Python
 
     from arroyo.processing import StreamProcessor
-    from arroyo.commit import ONCE_PER_SECOND
 
     processor = StreamProcessor(
         consumer=consumer,
         topic=TOPIC,
         processor_factory=ConsumerStrategyFactory(),
-        commit_policy=ONCE_PER_SECOND,
     )
 
     processor.run()

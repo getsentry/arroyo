@@ -19,7 +19,7 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     packages=find_packages(exclude=["tests", "examples"]),
-    package_data={"arroyo": ["py.typed","utils/metricDefs.json"]},
+    package_data={"arroyo": ["py.typed", "utils/metricDefs.json"]},
     zip_safe=False,
     install_requires=get_requirements(),
     classifiers=[

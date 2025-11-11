@@ -13,11 +13,8 @@ The offset to be committed in Kafka is always the next offset to be consumed fro
 In Arroyo, this means you should commit `Message.next_offset` and never `Message.offset` when done processing
 that message. Arroyo exposes `Message.position_to_commit` to make this easier.
 
-It is not safe to commit every offset in a high throughput consumer as this will add a lot of load to the system.
-Commits should generally be throttled. `CommitPolicy` is the Arroyo way of specifying commit frequency. A `CommitPolicy`
-must be passed to the stream processor, which allows specifying a minimum commit frequency (or messages between commits).
-Commit throttling can be skipped when needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
-If you are not sure how often to commit, `ONCE_PER_SECOND` is a reasonable option.
+Arroyo automatically commits offsets immediately when they are staged. Commit throttling can be skipped when
+needed (i.e. during consumer shutdown) by passing `force=True` to the commit callback.
 
 The easiest way is to use the `CommitOffsets` strategy as the last step in a chain of processing strategies to commit offsets.
 

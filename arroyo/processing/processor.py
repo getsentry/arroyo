@@ -19,7 +19,6 @@ from typing import (
 )
 
 from arroyo.backends.abstract import Consumer
-from arroyo.commit import ONCE_PER_SECOND, CommitPolicy
 from arroyo.dlq import BufferedMessages, DlqPolicy, DlqPolicyWrapper, InvalidMessage
 from arroyo.errors import RecoverableError
 from arroyo.processing.strategies.abstract import (
@@ -137,7 +136,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
         consumer: Consumer[TStrategyPayload],
         topic: Topic,
         processor_factory: ProcessingStrategyFactory[TStrategyPayload],
-        commit_policy: CommitPolicy = ONCE_PER_SECOND,
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
         shutdown_strategy_before_consumer: bool = False,
@@ -157,8 +155,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__backpressure_timestamp: Optional[float] = None
         # Consumer is paused after it is in backpressure state for > BACKPRESSURE_THRESHOLD seconds
         self.__is_paused = False
-
-        self.__commit_policy_state = commit_policy.get_state_machine()
 
         # Default join_timeout to DEFAULT_JOIN_TIMEOUT if not provided
         self.__join_timeout = (
@@ -312,31 +308,17 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
         self.__metrics_buffer.incr_timing("arroyo.consumer.shutdown.time", value)
 
-    def __commit(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
+    def __commit(self, offsets: Mapping[Partition, int]) -> None:
         """
-        If force is passed, commit immediately and do not throttle. This should
-        be used during consumer shutdown where we do not want to wait before committing.
+        Stage offsets for auto-commit.
         """
         for partition, offset in offsets.items():
             self.__buffered_messages.pop(partition, offset - 1)
 
+        if self.__dlq_policy:
+            self.__dlq_policy.flush(offsets)
+
         self.__consumer.stage_offsets(offsets)
-        now = time.time()
-
-        if force or self.__commit_policy_state.should_commit(
-            now,
-            offsets,
-        ):
-            if self.__dlq_policy:
-                self.__dlq_policy.flush(offsets)
-
-            self.__consumer.commit_offsets()
-            logger.debug(
-                "Waited %0.4f seconds for offsets to be committed to %r.",
-                time.time() - now,
-                self.__consumer,
-            )
-            self.__commit_policy_state.did_commit(now, offsets)
 
     def run(self) -> None:
         "The main run loop, see class docstring for more information."

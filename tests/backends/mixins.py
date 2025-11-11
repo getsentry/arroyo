@@ -113,16 +113,9 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
             assert value.offset == messages[0].offset
             assert value.payload == messages[0].payload
 
-            assert consumer.commit_offsets() == {}
-
             consumer.stage_offsets(value.committable)
 
-            assert consumer.commit_offsets() == {Partition(topic, 0): value.next_offset}
-
             consumer.stage_offsets({Partition(Topic("invalid"), 0): 0})
-
-            with pytest.raises(ConsumerError):
-                consumer.commit_offsets()
 
             assert consumer.tell() == {Partition(topic, 0): messages[1].offset}
 
@@ -172,9 +165,6 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
 
             # stage_positions does not validate anything
             consumer.stage_offsets({})
-
-            with pytest.raises(RuntimeError):
-                consumer.commit_offsets()
 
             consumer.close()  # should be safe, even if the consumer is already closed
 

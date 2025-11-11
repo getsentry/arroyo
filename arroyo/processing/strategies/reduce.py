@@ -1,8 +1,8 @@
 import time
 from typing import Callable, Generic, Optional, TypeVar, Union
 
-from arroyo.processing.strategies.buffer import Buffer
 from arroyo.processing.strategies import ProcessingStrategy
+from arroyo.processing.strategies.buffer import Buffer
 from arroyo.types import BaseValue, FilteredPayload, Message
 
 TPayload = TypeVar("TPayload")

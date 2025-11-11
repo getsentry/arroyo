@@ -1,8 +1,8 @@
-from typing import Optional
 import time
+from typing import Optional
 
 from arroyo.processing.strategies.abstract import ProcessingStrategy
-from arroyo.types import TStrategyPayload, Message
+from arroyo.types import Message, TStrategyPayload
 from arroyo.utils.metrics import get_metrics
 
 HEALTHCHECK_MAX_FREQUENCY_SEC = 1.0  # In seconds
