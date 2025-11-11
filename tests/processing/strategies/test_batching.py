@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-from typing import Any, Callable, Mapping, Sequence, cast, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence, cast
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -8,7 +8,7 @@ import pytest
 from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.batching import BatchStep, UnbatchStep, ValuesBatch
 from arroyo.processing.strategies.run_task import RunTask
-from arroyo.types import BrokerValue, Message, Partition, Topic, Value, BaseValue
+from arroyo.types import BaseValue, BrokerValue, Message, Partition, Topic, Value
 
 NOW = datetime(2022, 1, 1, 0, 0, 1)
 

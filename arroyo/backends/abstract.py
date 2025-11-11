@@ -146,20 +146,9 @@ class Consumer(Generic[TStrategyPayload], ABC):
     @abstractmethod
     def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         """
-        Stage offsets to be committed. If an offset has already been staged
-        for a given partition, that offset is overwritten (even if the offset
-        moves in reverse.)
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
-        """
-        Commit staged offsets. The return value of this method is a mapping
-        of streams with their committed offsets as values.
-
-        When auto-commit is enabled (in Kafka consumers), returns None since
-        the broker handles commits automatically.
+        Stage offsets to be committed. Offsets are automatically committed
+        by the broker. If an offset has already been staged for a given
+        partition, that offset is overwritten (even if the offset moves in reverse.)
         """
         raise NotImplementedError
 

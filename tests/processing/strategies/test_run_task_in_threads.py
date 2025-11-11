@@ -1,10 +1,11 @@
-from datetime import datetime
 import time
+from datetime import datetime
 from unittest.mock import Mock
+
 import pytest
 
 from arroyo.processing.strategies.run_task_in_threads import RunTaskInThreads
-from arroyo.types import BrokerValue, Message, Topic, Partition
+from arroyo.types import BrokerValue, Message, Partition, Topic
 
 
 @pytest.mark.parametrize("poll_after_msg", (True, False))

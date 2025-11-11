@@ -1,6 +1,6 @@
 from datetime import datetime
-from unittest.mock import Mock, call
 from typing import List
+from unittest.mock import Mock, call
 
 from arroyo.processing.strategies.buffer import Buffer
 from arroyo.types import BaseValue, Message, Partition, Topic, Value

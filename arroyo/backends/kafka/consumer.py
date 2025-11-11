@@ -54,7 +54,6 @@ from arroyo.errors import (
 from arroyo.types import BrokerValue, Partition, Topic
 from arroyo.utils.concurrent import execute
 from arroyo.utils.metrics import get_metrics
-from arroyo.utils.retries import BasicRetryPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -159,30 +158,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
     ) -> None:
         configuration = dict(configuration)
 
-        # Feature flag to enable retrying on `Broker handle destroyed` errors
-        # which can occur if we attempt to commit during a rebalance when
-        # the consumer group coordinator changed
-        self.__retry_handle_destroyed = as_kafka_configuration_bool(
-            configuration.pop("arroyo.retry.broker.handle.destroyed", False)
-        )
-
-        retryable_errors: Tuple[int, ...] = (
-            KafkaError.REQUEST_TIMED_OUT,
-            KafkaError.NOT_COORDINATOR,
-            KafkaError._WAIT_COORD,
-            KafkaError.STALE_MEMBER_EPOCH,  # kip-848
-            KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
-        )
-        if self.__retry_handle_destroyed:
-            retryable_errors += (KafkaError._DESTROY,)
-
-        commit_retry_policy = BasicRetryPolicy(
-            3,
-            1,
-            lambda e: isinstance(e, KafkaException)
-            and e.args[0].code() in retryable_errors,
-        )
-
         self.__is_cooperative_sticky = (
             configuration.get("partition.assignment.strategy") == "cooperative-sticky"
         )
@@ -196,13 +171,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
         if self.__strict_offset_reset is None:
             self.__strict_offset_reset = True
-
-        # Feature flag to enable rdkafka auto-commit with store_offsets
-        # When enabled, offsets are stored via store_offsets() and rdkafka
-        # automatically commits them periodically
-        self.__use_auto_commit = as_kafka_configuration_bool(
-            configuration.pop("arroyo.enable.auto.commit", False)
-        )
 
         if auto_offset_reset in {"smallest", "earliest", "beginning"}:
             self.__resolve_partition_starting_offset = (
@@ -219,32 +187,9 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         else:
             raise ValueError("invalid value for 'auto.offset.reset' configuration")
 
-        # When auto-commit is disabled (default), we require explicit configuration
-        # When auto-commit is enabled, we allow rdkafka to handle commits
-        if not self.__use_auto_commit:
-            if (
-                as_kafka_configuration_bool(
-                    configuration.get("enable.auto.commit", "true")
-                )
-                is not False
-            ):
-                raise ValueError("invalid value for 'enable.auto.commit' configuration")
-
-            if (
-                as_kafka_configuration_bool(
-                    configuration.get("enable.auto.offset.store", "true")
-                )
-                is not False
-            ):
-                raise ValueError(
-                    "invalid value for 'enable.auto.offset.store' configuration"
-                )
-        else:
-            # In auto-commit mode, enable auto.commit and keep auto.offset.store disabled
-            # We'll use store_offsets() manually to control which offsets get committed
-            configuration["enable.auto.commit"] = True
-            configuration["enable.auto.offset.store"] = False
-            configuration["on_commit"] = self.__on_commit_callback
+        configuration["enable.auto.commit"] = True
+        configuration["enable.auto.offset.store"] = False
+        configuration["on_commit"] = self.__on_commit_callback
 
         # NOTE: Offsets are explicitly managed as part of the assignment
         # callback, so preemptively resetting offsets is not enabled when
@@ -257,10 +202,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         )
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, int] = {}
         self.__paused: Set[Partition] = set()
-
-        self.__commit_retry_policy = commit_retry_policy
 
         self.__state = KafkaConsumerState.CONSUMING
 
@@ -397,16 +339,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                     on_revoke(partitions)
             finally:
                 for partition in partitions:
-                    # Staged offsets are deleted during partition revocation to
-                    # prevent later committing offsets for partitions that are
-                    # no longer owned by this consumer.
-                    if partition in self.__staged_offsets:
-                        logger.warning(
-                            "Dropping staged offset for revoked partition (%r)!",
-                            partition,
-                        )
-                        del self.__staged_offsets[partition]
-
                     try:
                         self.__offsets.pop(partition)
                     except KeyError:
@@ -634,86 +566,15 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         # TODO: Maybe log a warning if these offsets exceed the current
         # offsets, since that's probably a side effect of an incorrect usage
         # pattern?
-        if self.__use_auto_commit:
-            # When auto-commit is enabled, use store_offsets to stage offsets
-            # for rdkafka to auto-commit
-            if offsets:
-                self.__consumer.store_offsets(
-                    offsets=[
-                        ConfluentTopicPartition(
-                            partition.topic.name, partition.index, offset
-                        )
-                        for partition, offset in offsets.items()
-                    ]
-                )
-        else:
-            # Default behavior: manually track staged offsets
-            self.__staged_offsets.update(offsets)
-
-    def __commit(self) -> Mapping[Partition, int]:
-        if self.__state in {KafkaConsumerState.CLOSED, KafkaConsumerState.ERROR}:
-            raise InvalidState(self.__state)
-
-        if self.__staged_offsets.keys() - self.__offsets.keys():
-            raise ConsumerError("cannot stage offsets for unassigned partitions")
-
-        self.__validate_offsets(self.__staged_offsets)
-
-        result: Optional[Sequence[ConfluentTopicPartition]]
-
-        if self.__staged_offsets:
-            result = self.__consumer.commit(
+        if offsets:
+            self.__consumer.store_offsets(
                 offsets=[
                     ConfluentTopicPartition(
                         partition.topic.name, partition.index, offset
                     )
-                    for partition, offset in self.__staged_offsets.items()
-                ],
-                asynchronous=False,
+                    for partition, offset in offsets.items()
+                ]
             )
-        else:
-            result = []
-
-        assert result is not None  # synchronous commit should return result immediately
-
-        offsets: MutableMapping[Partition, int] = {}
-
-        for value in result:
-            # The Confluent Kafka Consumer will include logical offsets in the
-            # sequence of ``Partition`` objects returned by ``commit``. These
-            # are an implementation detail of the Kafka Consumer, so we don't
-            # expose them here.
-            # NOTE: These should no longer be seen now that we are forcing
-            # offsets to be set as part of the assignment callback.
-            if value.offset in self.LOGICAL_OFFSETS:
-                continue
-
-            assert value.offset >= 0, "expected non-negative offset"
-            partition = Partition(Topic(value.topic), value.partition)
-            offsets[partition] = value.offset
-
-        self.__staged_offsets.clear()
-
-        return offsets
-
-    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
-        """
-        Commit staged offsets for all partitions that this consumer is
-        assigned to. The return value of this method is a mapping of
-        partitions with their committed offsets as values.
-
-        When auto-commit is enabled, returns None since rdkafka handles
-        commits automatically and we don't track which offsets were committed.
-
-        Raises an ``InvalidState`` if called on a closed consumer.
-        """
-        if self.__use_auto_commit:
-            # When auto-commit is enabled, rdkafka commits automatically
-            # We don't track what was committed, so return None
-            # The offsets have already been staged via store_offsets()
-            return None
-        else:
-            return self.__commit_retry_policy.call(self.__commit)
 
     def close(self, timeout: Optional[float] = None) -> None:
         """

@@ -51,15 +51,15 @@ class BatchStep(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
             result.append(value)
             return result
 
-        self.__reduce_step: Reduce[TStrategyPayload, ValuesBatch[TStrategyPayload]] = (
-            Reduce(
-                max_batch_size,
-                max_batch_time,
-                accumulator,
-                lambda: [],
-                next_step,
-                compute_batch_size,
-            )
+        self.__reduce_step: Reduce[
+            TStrategyPayload, ValuesBatch[TStrategyPayload]
+        ] = Reduce(
+            max_batch_size,
+            max_batch_time,
+            accumulator,
+            lambda: [],
+            next_step,
+            compute_batch_size,
         )
 
     def submit(

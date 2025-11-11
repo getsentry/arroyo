@@ -21,7 +21,7 @@ class CommitOffsets(ProcessingStrategy[Any]):
         self.__last_record_time: Optional[float] = None
 
     def poll(self) -> None:
-        self.__commit({})
+        pass
 
     def submit(self, message: Message[Any]) -> None:
         now = time.time()
@@ -40,5 +40,4 @@ class CommitOffsets(ProcessingStrategy[Any]):
         pass
 
     def join(self, timeout: Optional[float] = None) -> None:
-        # Commit all previously staged offsets
-        self.__commit({}, force=True)
+        pass

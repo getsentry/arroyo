@@ -197,5 +197,5 @@ class BrokerValue(BaseValue[TMessagePayload]):
 
 
 class Commit(Protocol):
-    def __call__(self, offsets: Mapping[Partition, int], force: bool = False) -> None:
+    def __call__(self, offsets: Mapping[Partition, int]) -> None:
         pass

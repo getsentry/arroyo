@@ -153,7 +153,6 @@ class LocalConsumer(Consumer[TStrategyPayload]):
         self.__pending_callbacks: Deque[Callable[[], None]] = deque()
 
         self.__offsets: MutableMapping[Partition, int] = {}
-        self.__staged_offsets: MutableMapping[Partition, int] = {}
 
         self.__paused: Set[Partition] = set()
 
@@ -208,7 +207,6 @@ class LocalConsumer(Consumer[TStrategyPayload]):
                 )
             )
 
-            self.__staged_offsets.clear()
             self.__last_eof_at.clear()
 
     def unsubscribe(self) -> None:
@@ -225,7 +223,6 @@ class LocalConsumer(Consumer[TStrategyPayload]):
             )
             self.__subscription = None
 
-            self.__staged_offsets.clear()
             self.__last_eof_at.clear()
 
     def poll(
@@ -322,16 +319,8 @@ class LocalConsumer(Consumer[TStrategyPayload]):
 
     def stage_offsets(self, offsets: Mapping[Partition, int]) -> None:
         with self.__lock:
-            # XXX: can we remove the locking? dictionary updates might be
-            # atomic
-            self.__staged_offsets.update(offsets)
-
-    def commit_offsets(self) -> Optional[Mapping[Partition, int]]:
-        with self.__lock:
             if self.__closed:
                 raise RuntimeError("consumer is closed")
-
-            offsets = {**self.__staged_offsets}
 
             if offsets.keys() - self.__offsets.keys():
                 raise ConsumerError("cannot stage offsets for unassigned partitions")
@@ -341,10 +330,8 @@ class LocalConsumer(Consumer[TStrategyPayload]):
                 self,
                 offsets,
             )
-            self.__staged_offsets.clear()
 
             self.commit_offsets_calls += 1
-            return offsets
 
     def close(self, timeout: Optional[float] = None) -> None:
         with self.__lock:

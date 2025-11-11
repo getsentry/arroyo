@@ -11,7 +11,6 @@ def test_commit_callback_success_metric() -> None:
         {
             "bootstrap.servers": "localhost:9092",
             "group.id": "test-group",
-            "arroyo.enable.auto.commit": True,
         }
     )
 
@@ -42,7 +41,6 @@ def test_commit_callback_error_metric() -> None:
         {
             "bootstrap.servers": "localhost:9092",
             "group.id": "test-group",
-            "arroyo.enable.auto.commit": True,
         }
     )
 

@@ -19,7 +19,7 @@ from arroyo.backends.kafka.configuration import (
     build_kafka_configuration,
 )
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
-from arroyo.commit import IMMEDIATE, Commit
+from arroyo.commit import Commit
 from arroyo.errors import ConsumerError, EndOfPartition
 from arroyo.processing.processor import StreamProcessor
 from arroyo.processing.strategies.abstract import MessageRejected
@@ -192,7 +192,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 consumer.stage_offsets(
                     {partition: message.offset},
                 )
-                consumer.commit_offsets()
 
             with closing(self.get_consumer(strict_offset_reset=False)) as consumer:
                 consumer.subscribe([topic])
@@ -200,9 +199,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 assert result_message is not None
                 assert result_message.payload.key == b"a"
                 assert result_message.payload.value == b"0"
-
-                # make sure we reset our offset now
-                consumer.commit_offsets()
 
     def test_auto_offset_reset_error(self) -> None:
         with self.get_topic() as topic:
@@ -226,7 +222,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 producer.produce(topic, next(self.get_payloads())).result(5.0)
 
             with closing(self.get_consumer()) as consumer:
-                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+                processor = StreamProcessor(consumer, topic, factory)
 
                 with pytest.raises(RuntimeError):
                     processor.run()
@@ -262,7 +258,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 )
 
             processor_a = StreamProcessor(
-                consumer_a, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+                consumer_a, topic, factory, handle_poll_while_paused=True
             )
 
             def wait_until_consumer_pauses(processor: StreamProcessor[Any]) -> None:
@@ -290,7 +286,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
             # subscribe with another consumer, now we should have rebalancing in the next few polls
             processor_b = StreamProcessor(
-                consumer_b, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+                consumer_b, topic, factory, handle_poll_while_paused=True
             )
 
             for _ in range(10):
@@ -331,7 +327,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             ) as consumer:
                 producer.produce(topic, next(self.get_payloads())).result(5.0)
 
-                processor = StreamProcessor(consumer, topic, factory, IMMEDIATE)
+                processor = StreamProcessor(consumer, topic, factory)
 
                 # Wait for the consumer to subscribe and first message to be processed
                 for _ in range(1000):
@@ -363,7 +359,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 assert consumer.paused() == []
 
     def test_auto_commit_mode(self) -> None:
-        """Test that auto-commit mode uses store_offsets and commits on close"""
+        """Test that auto-commit uses store_offsets and commits on close"""
         group_id = uuid.uuid1().hex
 
         with self.get_topic() as topic:
@@ -373,11 +369,10 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     payload = KafkaPayload(None, f"msg_{i}".encode("utf8"), [])
                     producer.produce(topic, payload).result(5.0)
 
-            # Create consumer with auto-commit enabled
+            # Create consumer
             configuration = {
                 **self.configuration,
                 "auto.offset.reset": "earliest",
-                "arroyo.enable.auto.commit": True,
                 "group.id": group_id,
                 "session.timeout.ms": 10000,
             }
@@ -393,12 +388,8 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     assert value is not None
                     consumed_offsets.append(value.offset)
 
-                    # Stage offsets (will use store_offsets internally in auto-commit mode)
+                    # Stage offsets (will use store_offsets internally)
                     consumer.stage_offsets(value.committable)
-
-                # commit_offsets should return None in auto-commit mode
-                result = consumer.commit_offsets()
-                assert result is None
 
                 # Close will commit any stored offsets
 

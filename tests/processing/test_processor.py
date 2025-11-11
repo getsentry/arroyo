@@ -1,24 +1,15 @@
 import time
-from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Sequence, cast
+from datetime import datetime
+from typing import Any, Optional
 from unittest import mock
 
 import pytest
 
-from arroyo.backends.local.backend import LocalBroker
-from arroyo.backends.local.storages.abstract import MessageStorage
-from arroyo.backends.local.storages.memory import MemoryMessageStorage
-from arroyo.commit import IMMEDIATE, CommitPolicy
 from arroyo.dlq import DlqPolicy, InvalidMessage
 from arroyo.processing.processor import InvalidStateError, StreamProcessor
 from arroyo.processing.strategies import Healthcheck
-from arroyo.processing.strategies.abstract import (
-    MessageRejected,
-    ProcessingStrategy,
-    ProcessingStrategyFactory,
-)
+from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.types import BrokerValue, Commit, Message, Partition, Topic
-from arroyo.utils.clock import MockedClock
 from tests.assertions import assert_changes, assert_does_not_change
 from tests.metrics import Increment, TestingMetricsBackend, Timing
 
@@ -34,9 +25,7 @@ def test_stream_processor_lifecycle() -> None:
     metrics = TestingMetricsBackend
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE
-        )
+        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     # The processor should accept heartbeat messages without an assignment or
     # active processor.
@@ -177,9 +166,7 @@ def test_stream_processor_termination_on_error() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE
-    )
+    processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
     assignment_callback({Partition(topic, 0): 0})
@@ -212,9 +199,7 @@ def test_stream_processor_invalid_message_from_poll() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE
-    )
+    processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
     assignment_callback({Partition(topic, 0): 0})
@@ -254,9 +239,7 @@ def test_stream_processor_invalid_message_from_submit() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE
-    )
+    processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
     assignment_callback({Partition(topic, 0): 0})
@@ -292,9 +275,7 @@ def test_stream_processor_create_with_partitions() -> None:
     factory.create_with_partitions.return_value = strategy
 
     with assert_changes(lambda: int(consumer.subscribe.call_count), 0, 1):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE
-        )
+        processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
     assert subscribe_args[0] == [topic]
@@ -344,16 +325,7 @@ class CommitOffsets(ProcessingStrategy[int]):
         self.__commit = commit
 
     def submit(self, message: Message[int]) -> None:
-        # If we get a message with value of 1, force commit
-        if message.payload == 1:
-            self.__commit(
-                message.committable,
-                force=True,
-            )
-
-        self.__commit(
-            message.committable,
-        )
+        self.__commit(message.committable)
 
     def poll(self) -> None:
         pass
@@ -366,191 +338,6 @@ class CommitOffsets(ProcessingStrategy[int]):
 
     def terminate(self) -> None:
         pass
-
-
-class CommitOffsetsFactory(ProcessingStrategyFactory[int]):
-    def create_with_partitions(
-        self,
-        commit: Commit,
-        partitions: Mapping[Partition, int],
-    ) -> ProcessingStrategy[int]:
-        return CommitOffsets(commit)
-
-
-def run_commit_policy_test(
-    topic: Topic, given_messages: Sequence[Message[int]], policy: CommitPolicy
-) -> Sequence[int]:
-    commit = mock.Mock()
-    consumer = mock.Mock()
-    consumer.tell.return_value = {}
-    consumer.commit_offsets = commit
-
-    factory = CommitOffsetsFactory()
-
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer,
-        topic,
-        factory,
-        policy,
-    )
-
-    # Assignment
-    subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
-    assert subscribe_args[0] == [topic]
-    assignment_callback = subscribe_kwargs["on_assign"]
-    offsets = {Partition(topic, 0): 0}
-    assignment_callback(offsets)
-
-    assert commit.call_count == 0
-
-    commit_calls = []
-
-    for message in given_messages:
-        consumer.poll.return_value = message.value
-        message_timestamp = cast(BrokerValue[int], message.value).timestamp
-        with mock.patch("time.time", return_value=message_timestamp.timestamp()):
-            processor._run_once()
-        commit_calls.append(commit.call_count)
-
-    return commit_calls
-
-
-def test_stream_processor_commit_policy() -> None:
-    topic = Topic("topic")
-
-    commit_every_second_message = CommitPolicy(None, 2)
-
-    assert run_commit_policy_test(
-        topic,
-        [
-            Message(BrokerValue(0, Partition(topic, 0), 0, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 1, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 2, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 5, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 10, datetime.now())),
-        ],
-        commit_every_second_message,
-    ) == [
-        # Does not commit first message
-        0,
-        # Does commit second message
-        1,
-        # Does not commit third message
-        1,
-        # Should always commit if we are committing more than 2 messages at once.
-        2,
-        3,
-    ]
-
-
-def test_stream_processor_commit_policy_multiple_partitions() -> None:
-    topic = Topic("topic")
-
-    commit_every_second_message = CommitPolicy(None, 2)
-
-    assert run_commit_policy_test(
-        topic,
-        [
-            Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 0), 400, datetime.now())),
-            Message(BrokerValue(0, Partition(topic, 1), 400, datetime.now())),
-        ],
-        commit_every_second_message,
-    ) == [
-        # Does not commit first message even if the offset is super large
-        0,
-        # Does not commit first message on other partition even if the offset is super large
-        0,
-        # Does commit second message on first partition since the offset delta is super large
-        1,
-        # Does not commit second message on second partition since the offset delta is zero
-        1,
-    ]
-
-
-def test_stream_processor_commit_policy_always() -> None:
-    topic = Topic("topic")
-
-    assert run_commit_policy_test(
-        topic,
-        [Message(BrokerValue(0, Partition(topic, 0), 200, datetime.now()))],
-        IMMEDIATE,
-    ) == [
-        # IMMEDIATE policy can commit on the first message (even
-        # though there is no previous offset stored)
-        #
-        # Indirectly assert that an offset delta of 1 is passed to
-        # the commit policy, not 0
-        1
-    ]
-
-
-def test_stream_processor_commit_policy_every_two_seconds() -> None:
-    topic = Topic("topic")
-    commit_every_two_seconds = CommitPolicy(2, None)
-
-    now = datetime.now()
-
-    assert run_commit_policy_test(
-        topic,
-        [
-            Message(BrokerValue(0, Partition(topic, 0), 0, now)),
-            Message(BrokerValue(0, Partition(topic, 0), 1, now + timedelta(seconds=1))),
-            Message(BrokerValue(0, Partition(topic, 0), 2, now + timedelta(seconds=2))),
-            Message(BrokerValue(0, Partition(topic, 0), 3, now + timedelta(seconds=3))),
-            Message(BrokerValue(0, Partition(topic, 0), 4, now + timedelta(seconds=4))),
-            Message(BrokerValue(0, Partition(topic, 0), 5, now + timedelta(seconds=5))),
-            Message(BrokerValue(0, Partition(topic, 0), 6, now + timedelta(seconds=6))),
-        ],
-        commit_every_two_seconds,
-    ) == [
-        0,
-        0,
-        0,
-        1,
-        1,
-        2,
-        2,
-    ]
-
-
-@pytest.mark.parametrize(
-    "commit_seconds", [0, 1000], ids=("commit_always", "commit_never")
-)
-@pytest.mark.parametrize("num_messages", [1, 100, 1000])
-def test_commit_policy_bench(
-    benchmark: Any, commit_seconds: int, num_messages: int
-) -> None:
-    topic = Topic("topic")
-    commit_policy = CommitPolicy(commit_seconds, None)
-    num_partitions = 1
-    now = datetime.now()
-
-    storage: MessageStorage[int] = MemoryMessageStorage()
-    storage.create_topic(topic, num_partitions)
-
-    broker = LocalBroker(storage, MockedClock())
-
-    consumer = broker.get_consumer("test-group", enable_end_of_partition=True)
-
-    factory = CommitOffsetsFactory()
-
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer,
-        topic,
-        factory,
-        commit_policy,
-    )
-
-    def inner() -> None:
-        for i in range(num_messages):
-            storage.produce(Partition(topic, i % num_partitions), i, now)
-
-        for _ in range(num_messages):
-            processor._run_once()
-
-    benchmark(inner)
 
 
 def test_dlq() -> None:
@@ -567,7 +354,7 @@ def test_dlq() -> None:
     dlq_policy: Any = DlqPolicy(producer=mock.Mock())
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE, dlq_policy
+        consumer, topic, factory, dlq_policy
     )
 
     # Assignment
@@ -605,7 +392,6 @@ def test_healthcheck(tmp_path: Any) -> None:
         consumer,
         topic,
         factory,
-        IMMEDIATE,
     )
 
     # Assignment
@@ -632,9 +418,7 @@ def test_processor_pause_with_invalid_message() -> None:
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
-    processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE
-    )
+    processor: StreamProcessor[int] = StreamProcessor(consumer, topic, factory)
 
     # Subscribe to topic
     subscribe_args, subscribe_kwargs = consumer.subscribe.call_args
@@ -691,6 +475,7 @@ def test_processor_pause_with_invalid_message() -> None:
     processor._run_once()
     assert strategy.submit.call_args_list[-1] == mock.call(new_message)
 
+
 def test_processor_poll_while_paused() -> None:
 
     topic = Topic("topic")
@@ -701,7 +486,7 @@ def test_processor_poll_while_paused() -> None:
     factory.create_with_partitions.return_value = strategy
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+        consumer, topic, factory, handle_poll_while_paused=True
     )
 
     # Subscribe to topic
@@ -755,7 +540,7 @@ def test_processor_poll_while_paused() -> None:
     new_message = Message(BrokerValue(0, new_partition, 1, datetime.now()))
     consumer.poll.return_value = new_message.value
     processor._run_once()
-    assert processor._StreamProcessor__is_paused is False # type:ignore
+    assert processor._StreamProcessor__is_paused is False  # type:ignore
 
     strategy.submit.return_value = None
     strategy.submit.side_effect = None
