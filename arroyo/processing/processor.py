@@ -141,7 +141,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
         shutdown_strategy_before_consumer: bool = False,
-        handle_poll_while_paused: Optional[bool] = False
+        handle_poll_while_paused: Optional[bool] = False,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -475,15 +475,17 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 # expect that partition revocation cleared the
                                 # pause flag and the carried over message.
                                 # this assumption will not hold for cooperative-sticky rebalancing.
-                                assert not self.__is_paused
-                                assert self.__message is None
+                                assert (
+                                    not self.__is_paused
+                                ), "consumer unpaused itself without rebalancing"
+                                assert (
+                                    self.__message is None
+                                ), "consumer unpaused itself without rebalancing"
                         # this path might raise AssertionErrors
                         else:
                             paused_partitions = set(self.__consumer.paused())
                             all_partitions = set(self.__consumer.tell())
-                            unpaused_partitions = (
-                                all_partitions - paused_partitions
-                            )
+                            unpaused_partitions = all_partitions - paused_partitions
                             if unpaused_partitions:
                                 logger.warning(
                                     "Processor in paused state while consumer is partially unpaused: %s, paused: %s",
@@ -500,18 +502,22 @@ class StreamProcessor(Generic[TStrategyPayload]):
                                 # A paused consumer should still poll periodically to avoid it's partitions
                                 # getting revoked by the broker after reaching the max.poll.interval.ms
                                 # Polling a paused consumer should never yield a message.
-                                logger.warning("consumer.tell() value right before poll() is: %s", self.__consumer.tell())
+                                logger.warning(
+                                    "consumer.tell() value right before poll() is: %s",
+                                    self.__consumer.tell(),
+                                )
                                 maybe_message = self.__consumer.poll(0.1)
                                 if maybe_message is not None:
-                                    logger.warning("Received a message from partition: %s, \
+                                    logger.warning(
+                                        "Received a message from partition: %s, \
                                                     consumer.tell() value right after poll() is: %s \
                                                     Some lines above consumer.tell() was called, all_partitons value was: %s \
                                                     Some lines above consumer.paused() was called, paused_partitions value is: %s",
-                                                    maybe_message.partition,
-                                                    self.__consumer.tell(),
-                                                    all_partitions,
-                                                    paused_partitions
-                                                    )
+                                        maybe_message.partition,
+                                        self.__consumer.tell(),
+                                        all_partitions,
+                                        paused_partitions,
+                                    )
                                 assert maybe_message is None
 
                     else:
