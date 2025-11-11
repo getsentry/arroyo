@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.32.5
+
+### Various fixes & improvements
+
+- fix(processor): address new partition after poll (#504) by @victoria-yining-huang
+
 ## 2.32.4
 
 ### Various fixes & improvements
