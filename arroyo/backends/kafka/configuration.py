@@ -237,7 +237,7 @@ def build_kafka_consumer_configuration(
     bootstrap_servers: Optional[Sequence[str]] = None,
     override_params: Optional[Mapping[str, Any]] = None,
     strict_offset_reset: Optional[bool] = None,
-    enable_auto_commit: bool = False,
+    enable_auto_commit: bool = True,
     retry_handle_destroyed: bool = False,
 ) -> KafkaBrokerConfig:
 
