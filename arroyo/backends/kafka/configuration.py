@@ -238,7 +238,6 @@ def build_kafka_consumer_configuration(
     override_params: Optional[Mapping[str, Any]] = None,
     strict_offset_reset: Optional[bool] = None,
     enable_auto_commit: bool = True,
-    retry_handle_destroyed: bool = False,
 ) -> KafkaBrokerConfig:
 
     if auto_offset_reset is None:
@@ -264,8 +263,6 @@ def build_kafka_consumer_configuration(
         "arroyo.strict.offset.reset": strict_offset_reset,
         # this is an arroyo specific flag to enable auto-commit mode
         "arroyo.enable.auto.commit": enable_auto_commit,
-        # arroyo specific flag to enable retries when hitting `KafkaError._DESTROY` while committing
-        "arroyo.retry.broker.handle.destroyed": retry_handle_destroyed,
         # overridden to reduce memory usage when there's a large backlog
         "queued.max.messages.kbytes": queued_max_messages_kbytes,
         "queued.min.messages": queued_min_messages,
