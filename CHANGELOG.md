@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.33.1
+
+### Various fixes & improvements
+
+- ref(processor): Do not hard-crash if DLQ buffer is missing a message (#510) by @untitaker
+
 ## 2.33.0
 
 ### Various fixes & improvements
