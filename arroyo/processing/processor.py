@@ -140,7 +140,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
         commit_policy: CommitPolicy = ONCE_PER_SECOND,
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
-        shutdown_strategy_before_consumer: bool = False,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -165,7 +164,6 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         self.__shutdown_requested = False
-        self.__shutdown_strategy_before_consumer = shutdown_strategy_before_consumer
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # removed once the commit callback is fired as they are guaranteed to be valid at that point.
@@ -518,12 +516,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__shutdown_requested = True
 
     def _shutdown(self) -> None:
-        # If shutdown_strategy_before_consumer is set, work around an issue
-        # where rdkafka would revoke our partition, but then also immediately
-        # revoke our member ID as well, causing join() of the CommitStrategy
-        # (that is running in the partition revocation callback) to crash.
-        if self.__shutdown_strategy_before_consumer:
-            self._close_processing_strategy()
+        # when we close() a consumer, rdkafka would would revoke our partition
+        # and call revocation callbacks, but also immediately revoke our member
+        # ID as well, causing join() of the CommitStrategy (that is running in
+        # the partition revocation callback) to crash.
+        self._close_processing_strategy()
 
         # close the consumer
         logger.info("Stopping consumer")
