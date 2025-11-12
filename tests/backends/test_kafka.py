@@ -80,7 +80,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
     @property
     def configuration(self) -> KafkaBrokerConfig:
         config = {
-            "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092"),
+            "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "127.0.0.1:9092"),
         }
 
         return build_kafka_configuration(config)
@@ -230,6 +230,93 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
                 with pytest.raises(RuntimeError):
                     processor.run()
+
+    @mock.patch("arroyo.processing.processor.BACKPRESSURE_THRESHOLD", 0)
+    def test_assign_partition_during_pause(self) -> None:
+        if self.cooperative_sticky or self.kip_848:
+            pytest.skip("test does not work with cooperative-sticky rebalancing")
+
+        payloads = self.get_payloads()
+
+        strategy = mock.Mock()
+        strategy.submit.side_effect = MessageRejected()
+        factory = mock.Mock()
+        factory.create_with_partitions.return_value = strategy
+
+        partition_count = 2
+
+        with self.get_topic(partition_count) as topic, closing(
+            self.get_producer()
+        ) as producer, closing(
+            self.get_consumer(
+                "test_assign_partition_during_pause", enable_end_of_partition=True
+            )
+        ) as consumer_a, closing(
+            self.get_consumer(
+                "test_assign_partition_during_pause", enable_end_of_partition=True
+            )
+        ) as consumer_b:
+            for i in range(partition_count):
+                producer.produce(Partition(topic, i), next(payloads)).result(
+                    timeout=5.0
+                )
+
+            processor_a = StreamProcessor(
+                consumer_a, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+            )
+
+            def wait_until_consumer_pauses(processor: StreamProcessor[Any]) -> None:
+                for _ in range(20):
+                    try:
+                        processor._run_once()
+                    except EndOfPartition:
+                        pass
+
+                    if processor._StreamProcessor__is_paused:  # type:ignore
+                        return
+                raise RuntimeError("processor was not paused")
+
+            # calling _run_once will pause both consumers because of the MessageRejected strategy above
+            wait_until_consumer_pauses(processor_a)
+
+            # consumer A has all the partitions
+            assert len(consumer_a.tell()) == 2
+            assert len(consumer_b.tell()) == 0
+
+            # consumer A has all partitions paused (both from consumer and from
+            # StreamProcessor POV)
+            assert consumer_a.paused()
+            assert processor_a._StreamProcessor__is_paused is True  # type:ignore
+
+            # subscribe with another consumer, now we should have rebalancing in the next few polls
+            processor_b = StreamProcessor(
+                consumer_b, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+            )
+
+            for _ in range(10):
+                try:
+                    processor_a._run_once()
+                except EndOfPartition:
+                    pass
+                try:
+                    processor_b._run_once()
+                except EndOfPartition:
+                    pass
+
+            # balanced
+            assert len(consumer_a.tell()) == 1
+            assert len(consumer_b.tell()) == 1
+
+            # close B, but A has not polled yet, so it only has one partition still
+            consumer_b.close()
+            assert len(consumer_a.tell()) == 1
+
+            for _ in range(20):
+                try:
+                    processor_a._run_once()
+                except EndOfPartition:
+                    pass
+            assert len(consumer_a.tell()) == 2
 
     def test_consumer_polls_when_paused(self) -> None:
         strategy = mock.Mock()
