@@ -261,9 +261,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     timeout=5.0
                 )
 
-            processor_a = StreamProcessor(
-                consumer_a, topic, factory, IMMEDIATE, handle_poll_while_paused=True
-            )
+            processor_a = StreamProcessor(consumer_a, topic, factory, IMMEDIATE)
 
             def wait_until_consumer_pauses(processor: StreamProcessor[Any]) -> None:
                 for _ in range(20):
@@ -289,9 +287,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             assert processor_a._StreamProcessor__is_paused is True  # type:ignore
 
             # subscribe with another consumer, now we should have rebalancing in the next few polls
-            processor_b = StreamProcessor(
-                consumer_b, topic, factory, IMMEDIATE, handle_poll_while_paused=True
-            )
+            processor_b = StreamProcessor(consumer_b, topic, factory, IMMEDIATE)
 
             for _ in range(10):
                 try:
