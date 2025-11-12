@@ -79,10 +79,14 @@ reached its destination in the following way:
 
    # add this value to the config:
    "enable.auto.commit": "false"
+   "enable.auto.offset.store": "false"
    # -------
    message = consumer.poll(timeout=0)
    send_to_destination(process_message(message))
    consumer.commit(message.offset())
+
+Note: Arroyo still uses rdkafka's autocommit, but only to commit stored
+offsets. Offsets are still stored explicitly rather than on poll.
 
 High Throughput
 ---------------
