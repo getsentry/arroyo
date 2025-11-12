@@ -1,5 +1,14 @@
 # Changelog and versioning
 
+## 2.33.0
+
+### Various fixes & improvements
+
+- ref(processor): Turn on handle_poll_while_paused unconditionally (#509) by @untitaker
+- ref(consumer): Make autocommit the default (#508) by @untitaker
+- ref(consumer): Remove retry-handle-destroyed featureflag (#507) by @untitaker
+- ref(processor): Remove shutdown_strategy_before_consumer (breaking) (#503) by @untitaker
+
 ## 2.32.5
 
 ### Various fixes & improvements
