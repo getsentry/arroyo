@@ -691,6 +691,7 @@ def test_processor_pause_with_invalid_message() -> None:
     processor._run_once()
     assert strategy.submit.call_args_list[-1] == mock.call(new_message)
 
+
 def test_processor_poll_while_paused() -> None:
 
     topic = Topic("topic")
@@ -701,7 +702,7 @@ def test_processor_poll_while_paused() -> None:
     factory.create_with_partitions.return_value = strategy
 
     processor: StreamProcessor[int] = StreamProcessor(
-        consumer, topic, factory, IMMEDIATE, handle_poll_while_paused=True
+        consumer, topic, factory, IMMEDIATE
     )
 
     # Subscribe to topic
@@ -755,7 +756,7 @@ def test_processor_poll_while_paused() -> None:
     new_message = Message(BrokerValue(0, new_partition, 1, datetime.now()))
     consumer.poll.return_value = new_message.value
     processor._run_once()
-    assert processor._StreamProcessor__is_paused is False # type:ignore
+    assert processor._StreamProcessor__is_paused is False  # type:ignore
 
     strategy.submit.return_value = None
     strategy.submit.side_effect = None
