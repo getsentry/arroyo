@@ -381,9 +381,12 @@ class StreamProcessor(Generic[TStrategyPayload]):
             start_dlq = time.time()
             invalid_message = self.__buffered_messages.pop(exc.partition, exc.offset)
             if invalid_message is None:
-                raise Exception(
-                    f"Invalid message not found in buffer {exc.partition} {exc.offset}",
-                ) from None
+                logger.error(
+                    "Invalid message not found in buffer %s %s",
+                    exc.partition,
+                    exc.offset,
+                )
+                return
 
             # XXX: This blocks if there are more than MAX_PENDING_FUTURES in the queue.
             try:
