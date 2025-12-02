@@ -767,8 +767,6 @@ def test_processor_poll_while_paused() -> None:
 
 def test_stuck_detector(request: pytest.FixtureRequest) -> None:
     """Test that stuck detector emits a metric when strategy blocks."""
-    import threading
-
     topic = Topic("topic")
     partition = Partition(topic, 0)
 
@@ -777,36 +775,33 @@ def test_stuck_detector(request: pytest.FixtureRequest) -> None:
 
     strategy = mock.Mock()
     real_sleep = time.sleep
-    strategy.submit.side_effect = lambda msg: real_sleep(0.5)
 
     factory = mock.Mock()
     factory.create_with_partitions.return_value = strategy
 
     TestingMetricsBackend.calls.clear()
 
-    with mock.patch("time.sleep", side_effect=lambda s: real_sleep(0.01)):
-        processor: StreamProcessor[int] = StreamProcessor(
-            consumer, topic, factory, IMMEDIATE, stuck_detector_timeout=2
-        )
+    with mock.patch("time.time", return_value=0.0) as mock_time:
+        with mock.patch("time.sleep", side_effect=lambda s: real_sleep(0.01)):
+            processor: StreamProcessor[int] = StreamProcessor(
+                consumer, topic, factory, IMMEDIATE, stuck_detector_timeout=2
+            )
 
-        request.addfinalizer(processor.signal_shutdown)
+            request.addfinalizer(processor.signal_shutdown)
 
-        assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
-        assignment_callback({partition: 0})
+            assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
+            assignment_callback({partition: 0})
 
-        consumer.poll.return_value = BrokerValue(0, partition, 0, datetime.now())
+            consumer.poll.return_value = BrokerValue(0, partition, 0, datetime.now())
+            processor._run_once()
 
-        run_thread = threading.Thread(target=processor._run_once)
-        run_thread.start()
+            mock_time.return_value = 5.0
+            real_sleep(0.2)
 
-        real_sleep(0.5)
-
-        stuck_metrics = [
-            call
-            for call in TestingMetricsBackend.calls
-            if isinstance(call, Increment) and call.name == "arroyo.consumer.stuck"
-        ]
-        assert len(stuck_metrics) == 1
-        assert stuck_metrics[0].value == 1
-
-        run_thread.join(timeout=2)
+            stuck_metrics = [
+                call
+                for call in TestingMetricsBackend.calls
+                if isinstance(call, Increment) and call.name == "arroyo.consumer.stuck"
+            ]
+            assert len(stuck_metrics) == 1
+            assert stuck_metrics[0].value == 1

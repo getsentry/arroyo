@@ -197,7 +197,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
             DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
 
-        self.__stuck = True
+        self.__last_run = time.time()
 
         if stuck_detector_timeout:
             self.stuck_detector_run(stuck_detector_timeout)
@@ -389,15 +389,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         import threading
 
         def f() -> None:
-            i = 0
             while not self.__shutdown_done:
-                if self.__stuck:
-                    i += 1
-                else:
-                    i = 0
-                    self.__stuck = True
-
-                if i >= stuck_detector_timeout:
+                time_since_last_run = time.time() - self.__last_run
+                if time_since_last_run > stuck_detector_timeout:
                     stack_traces = get_all_thread_stacks()
                     logger.warning(
                         "main thread stuck for more than %s seconds, stacks: %s",
@@ -463,7 +457,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
-        self.__stuck = False
+        self.__last_run = time.time()
 
         message_carried_over = self.__message is not None
 
