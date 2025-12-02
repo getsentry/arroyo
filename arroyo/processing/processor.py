@@ -40,6 +40,25 @@ DEFAULT_JOIN_TIMEOUT = 25.0  # In seconds
 F = TypeVar("F", bound=Callable[[Any], Any])
 
 
+def get_all_thread_stacks() -> str:
+    """Get stack traces from all threads without using signals."""
+    import sys
+    import threading
+    import traceback
+
+    stacks = []
+    frames = sys._current_frames()
+    threads_by_id = {t.ident: t for t in threading.enumerate()}
+
+    for thread_id, frame in frames.items():
+        thread = threads_by_id.get(thread_id)
+        thread_name = thread.name if thread else f"Unknown-{thread_id}"
+        stack = "".join(traceback.format_stack(frame))
+        stacks.append(f"Thread {thread_name} ({thread_id}):\n{stack}")
+
+    return "\n\n".join(stacks)
+
+
 def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
     def decorator(f: F) -> F:
         @functools.wraps(f)
@@ -86,6 +105,7 @@ ConsumerCounter = Literal[
     "arroyo.consumer.pause",
     "arroyo.consumer.resume",
     "arroyo.consumer.dlq.dropped_messages",
+    "arroyo.consumer.stuck",
 ]
 
 
@@ -140,6 +160,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         commit_policy: CommitPolicy = ONCE_PER_SECOND,
         dlq_policy: Optional[DlqPolicy[TStrategyPayload]] = None,
         join_timeout: Optional[float] = None,
+        stuck_detector_timeout: Optional[int] = None,
     ) -> None:
         self.__consumer = consumer
         self.__processor_factory = processor_factory
@@ -164,6 +185,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         self.__shutdown_requested = False
+        self.__shutdown_done = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # removed once the commit callback is fired as they are guaranteed to be valid at that point.
@@ -174,6 +196,11 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__dlq_policy: Optional[DlqPolicyWrapper[TStrategyPayload]] = (
             DlqPolicyWrapper(dlq_policy) if dlq_policy is not None else None
         )
+
+        self.__last_run = time.time()
+
+        if stuck_detector_timeout:
+            self.stuck_detector_run(stuck_detector_timeout)
 
         def _close_strategy() -> None:
             self._close_processing_strategy()
@@ -355,6 +382,31 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processor_factory.shutdown()
             logger.info("Processor terminated")
             raise
+        finally:
+            self.__shutdown_done = True
+
+    def stuck_detector_run(self, stuck_detector_timeout: int) -> None:
+        import threading
+
+        def f() -> None:
+            while not self.__shutdown_done:
+                time_since_last_run = time.time() - self.__last_run
+                if time_since_last_run > stuck_detector_timeout:
+                    stack_traces = get_all_thread_stacks()
+                    logger.warning(
+                        "main thread stuck for more than %s seconds, stacks: %s",
+                        stuck_detector_timeout,
+                        stack_traces,
+                    )
+                    self.__metrics_buffer.incr_counter("arroyo.consumer.stuck", 1)
+                    self.__metrics_buffer.flush()
+                    return
+
+                time.sleep(1)
+
+        t = threading.Thread(target=f)
+        t.daemon = True
+        t.start()
 
     def _clear_backpressure(self) -> None:
         if self.__backpressure_timestamp is not None:
@@ -405,6 +457,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
 
     def _run_once(self) -> None:
         self.__metrics_buffer.incr_counter("arroyo.consumer.run.count", 1)
+        self.__last_run = time.time()
 
         message_carried_over = self.__message is not None
 
