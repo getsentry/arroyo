@@ -185,6 +185,7 @@ class StreamProcessor(Generic[TStrategyPayload]):
         )
 
         self.__shutdown_requested = False
+        self.__shutdown_done = False
 
         # Buffers messages for DLQ. Messages are added when they are submitted for processing and
         # removed once the commit callback is fired as they are guaranteed to be valid at that point.
@@ -381,13 +382,15 @@ class StreamProcessor(Generic[TStrategyPayload]):
             self.__processor_factory.shutdown()
             logger.info("Processor terminated")
             raise
+        finally:
+            self.__shutdown_done = True
 
     def stuck_detector_run(self, stuck_detector_timeout: int) -> None:
         import threading
 
         def f() -> None:
             i = 0
-            while True:
+            while not self.__shutdown_done:
                 if self.__stuck:
                     i += 1
                 else:
