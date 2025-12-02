@@ -1,4 +1,4 @@
-sphinx>=5.3
-sphinxcontrib-mermaid==0.8.1
-shibuya
-typing-extensions
+sphinx==9.0.1
+sphinxcontrib-mermaid==1.2.3
+shibuya==2025.11.10
+typing-extensions==4.15.0
