@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.34.0
+
+### Build / dependencies / internal 🔧
+
+- ref: Stuck detector by @untitaker in [#512](https://github.com/getsentry/arroyo/pull/512)
+- chore: Fix doc CI by @untitaker in [#513](https://github.com/getsentry/arroyo/pull/513)
+
 ## 2.33.1
 
 ### Various fixes & improvements
