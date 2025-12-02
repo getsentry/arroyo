@@ -765,7 +765,7 @@ def test_processor_poll_while_paused() -> None:
     assert strategy.submit.call_args_list[-1] == mock.call(new_message)
 
 
-def test_stuck_detector() -> None:
+def test_stuck_detector(request: pytest.FixtureRequest) -> None:
     """Test that stuck detector emits a metric when strategy blocks."""
     import threading
 
@@ -788,6 +788,8 @@ def test_stuck_detector() -> None:
         processor: StreamProcessor[int] = StreamProcessor(
             consumer, topic, factory, IMMEDIATE, stuck_detector_timeout=2
         )
+
+        request.addfinalizer(processor.signal_shutdown)
 
         assignment_callback = consumer.subscribe.call_args.kwargs["on_assign"]
         assignment_callback({partition: 0})
