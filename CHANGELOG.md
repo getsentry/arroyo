@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.35.0
+
+### Build / dependencies / internal 🔧
+
+- ref(rust): Simplify metrics interface (breaking change) by @untitaker in [#514](https://github.com/getsentry/arroyo/pull/514)
+
 ## 2.34.0
 
 ### Build / dependencies / internal 🔧
