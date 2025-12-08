@@ -47,7 +47,8 @@ impl<S> StatsdRecorder<S> {
         }
     }
 
-    fn write_tag(mut self, key: Option<&dyn Display>, value: &dyn Display) -> Self {
+    /// Add a global tag (as key/value) to this Recorder.
+    pub fn with_tag(mut self, key: &'static str, value: impl Display) -> Self {
         let t = &mut self.tags;
         if t.is_empty() {
             t.push_str("|#");
@@ -55,23 +56,11 @@ impl<S> StatsdRecorder<S> {
             t.push(',');
         }
 
-        if let Some(key) = key {
-            let _ = write!(t, "{key}");
-            t.push(':');
-        }
+        t.push_str(key);
+        t.push(':');
         let _ = write!(t, "{value}");
 
         self
-    }
-
-    /// Add a global tag (as key/value) to this Recorder.
-    pub fn with_tag(self, key: impl Display, value: impl Display) -> Self {
-        self.write_tag(Some(&key), &value)
-    }
-
-    /// Add a global tag (as a single value) to this Recorder.
-    pub fn with_tag_value(self, value: impl Display) -> Self {
-        self.write_tag(None, &value)
     }
 
     fn write_metric(&self, metric: Metric<'_>, s: &mut String) {
@@ -115,10 +104,8 @@ impl Metric<'_> {
             if i > 0 {
                 s.push(',');
             }
-            if let Some(key) = key {
-                let _ = write!(s, "{key}");
-                s.push(':');
-            }
+            s.push_str(key);
+            s.push(':');
             let _ = write!(s, "{value}");
         }
     }

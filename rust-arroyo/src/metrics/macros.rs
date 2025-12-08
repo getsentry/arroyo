@@ -11,15 +11,13 @@
 macro_rules! metric {
     ($ty:ident: $key:expr, $value:expr
         $(, $($tag_key:expr => $tag_val:expr),*)?
-        $(; $($tag_only_val:expr),*)?
     ) => {{
         $crate::metrics::Metric {
             key: &$key,
             ty: $crate::metrics::MetricType::$ty,
 
             tags: &[
-                $($((Some(&$tag_key), &$tag_val),)*)?
-                $($((None, &$tag_only_val),)*)?
+                $($(($tag_key, &$tag_val),)*)?
             ],
             value: $value.into(),
 

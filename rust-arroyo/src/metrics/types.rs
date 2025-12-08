@@ -85,7 +85,7 @@ into_metric_value!(Duration => Duration);
 into_metric_value!(coarsetime::Duration => Duration);
 
 /// An alias for a list of Metric tags.
-pub type MetricTags<'a> = &'a [(Option<&'a dyn Display>, &'a dyn Display)];
+pub type MetricTags<'a> = &'a [(&'static str, &'a dyn Display)];
 
 /// A fully types Metric.
 ///
