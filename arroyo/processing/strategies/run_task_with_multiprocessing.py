@@ -42,6 +42,7 @@ DEFAULT_OUTPUT_BLOCK_SIZE = 16 * 1024 * 1024
 
 LOG_THRESHOLD_TIME = 20  # In seconds
 FAIL_THRESHOLD_TIME = 180  # In seconds
+BATCH_PROCESS_LOG_TIME = 5  # In seconds
 
 
 class ChildProcessTerminated(RuntimeError):
@@ -233,6 +234,7 @@ def parallel_run_task_worker_apply(
     output_block: SharedMemory,
     start_index: int = 0,
 ) -> ParallelRunTaskResult[TResult]:
+    last_logged_time = time.time()
     valid_messages_transformed: MessageBatch[
         Union[InvalidMessage, Message[Union[FilteredPayload, TResult]]]
     ] = MessageBatch(
@@ -242,6 +244,14 @@ def parallel_run_task_worker_apply(
 
     next_index_to_process = start_index
     while next_index_to_process < len(input_batch):
+        if last_logged_time + BATCH_PROCESS_LOG_TIME < time.time():
+            logger.info(
+                "Batch process is taking longer than %d seconds. index: %d",
+                BATCH_PROCESS_LOG_TIME,
+                next_index_to_process,
+            )
+            last_logged_time = time.time()
+
         message = input_batch[next_index_to_process]
 
         # Theory: Doing this check in the subprocess is cheaper because we
