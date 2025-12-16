@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.36.0
+
+- Log progress on multiprocess worker by @fpacifici in [#515](https://github.com/getsentry/arroyo/pull/515)
+
 ## 2.35.0
 
 ### Build / dependencies / internal 🔧
