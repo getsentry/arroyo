@@ -132,10 +132,18 @@ def test_dlq_policy_wrapper_limit_exceeded() -> None:
 
 
 def test_invalid_message_pickleable() -> None:
-    exc = InvalidMessage(Partition(Topic("test_topic"), 0), 2)
+    exc = InvalidMessage(
+        Partition(Topic("test_topic"), 0),
+        2,
+        needs_commit=True,
+        reason="Test error reason",
+        log_exception=False,
+    )
     pickled_exc = pickle.dumps(exc)
     unpickled_exc = pickle.loads(pickled_exc)
     assert exc == unpickled_exc
+    assert unpickled_exc.reason == "Test error reason"
+    assert unpickled_exc.log_exception is False
 
 
 def test_dlq_limit_state() -> None:

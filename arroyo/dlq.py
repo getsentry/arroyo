@@ -74,7 +74,13 @@ class InvalidMessage(Exception):
         )
 
     def __reduce__(self) -> Tuple[Any, Tuple[Any, ...]]:
-        return self.__class__, (self.partition, self.offset, self.needs_commit)
+        return self.__class__, (
+            self.partition,
+            self.offset,
+            self.needs_commit,
+            self.reason,
+            self.log_exception,
+        )
 
 
 @dataclass(frozen=True)
