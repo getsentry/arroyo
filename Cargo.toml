@@ -20,7 +20,7 @@ chrono = "0.4.26"
 coarsetime = "0.1.33"
 once_cell = "1.18.0"
 rand = "0.8.5"
-rdkafka = { version = "0.37.0", features = ["cmake-build", "tracing"] }
+rdkafka = { version = "0.38.0", features = ["cmake-build", "tracing"] }
 sentry-core = { version = ">=0.32", features = ["client"] }
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
