@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.37.0
+
+### Build / dependencies / internal 🔧
+
+- (dep) Upgrade to rdkafka 0.38 by @Dav1dde in [#516](https://github.com/getsentry/arroyo/pull/516)
+
 ## 2.36.0
 
 - Log progress on multiprocess worker by @fpacifici in [#515](https://github.com/getsentry/arroyo/pull/515)
