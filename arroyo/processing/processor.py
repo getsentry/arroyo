@@ -398,8 +398,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
                         stuck_detector_timeout,
                         stack_traces,
                     )
-                    self.__metrics_buffer.incr_counter("arroyo.consumer.stuck", 1)
-                    self.__metrics_buffer.flush()
+                    # Use the metrics directly instead of going through the buffer
+                    # to avoid race conditions with the main thread
+                    self.__metrics_buffer.metrics.increment("arroyo.consumer.stuck", 1)
                     return
 
                 time.sleep(1)
