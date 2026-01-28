@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - run: cargo check
       - run: cargo fmt --check
 
@@ -26,6 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout code
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Run Kafka
         run: sh scripts/run-kafka.sh
       - name: Run tests
