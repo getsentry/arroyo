@@ -579,7 +579,6 @@ mod tests {
     #[test]
     fn test_tell() {
         let topic = TestTopic::create("test-tell");
-        sleep(Duration::from_secs(1));
         let configuration = KafkaConfig::new_consumer_config(
             vec![std::env::var("DEFAULT_BROKERS").unwrap_or("127.0.0.1:9092".to_string())],
             "my-group-1".to_string(),
