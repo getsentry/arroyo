@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.37.1
+
+### Bug Fixes 🐛
+
+- (stuck-detector) Use metrics directly by @untitaker in [#517](https://github.com/getsentry/arroyo/pull/517)
+
+### Other
+
+- Fix CI by @untitaker in [#518](https://github.com/getsentry/arroyo/pull/518)
+
 ## 2.37.0
 
 ### Build / dependencies / internal 🔧
