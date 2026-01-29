@@ -94,6 +94,8 @@ impl TestTopic {
         let runtime = Runtime::new().unwrap();
         let name = format!("rust-arroyo-{}-{}", name, uuid::Uuid::new_v4());
         runtime.block_on(create_topic(&name, 1));
+        // Wait for topic metadata to propagate to brokers
+        std::thread::sleep(Duration::from_secs(1));
         Self {
             runtime,
             topic: Topic::new(&name),
