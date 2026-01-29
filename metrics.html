@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Metrics - Arroyo documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Common consumer parameters" href="parameters.html" /><link rel="prev" title="Backpressure" href="backpressure.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=ad592e98" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=14737038" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=d78f5285" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/><meta property="og:title" content="Metrics"/>
+    <meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      <img class="light-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <strong>Arroyo</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">What is Arroyo for?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getstarted.html">Getting started with Arroyo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Arroyo Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="strategies/index.html">Processing Strategies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="strategies/filter.html">Filter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/reduce.html">Reduce (Fold)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/unfold.html">Unfold</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/batching.html">Batch and Unbatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task.html">Run Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_in_threads.html">Run Task in Threads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_with_multiprocessing.html">Run Task with Multiprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/produce.html">Produce</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/commit_offsets.html">Commit offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/noop.html">Noop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/healthcheck.html">Healthchecks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="offsets.html">Committing offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dlqs.html">Dead letter queues</a></li>
+<li class="toctree-l1"><a class="reference internal" href="backpressure.html">Backpressure</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameters.html">Common consumer parameters</a></li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#available-metrics">Available Metrics</a></li>
+<li><a class="reference internal" href="#module-arroyo.utils.metrics">API</a><ul>
+<li><a class="reference internal" href="#arroyo.utils.metrics.Metrics"><code class="docutils literal notranslate"><span class="pre">Metrics</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.utils.metrics.Metrics.gauge"><code class="docutils literal notranslate">gauge()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.utils.metrics.Metrics.increment"><code class="docutils literal notranslate">increment()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.utils.metrics.Metrics.timing"><code class="docutils literal notranslate">timing()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.utils.metrics.configure_metrics"><code class="docutils literal notranslate"><span class="pre">configure_metrics()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">Arroyo</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Metrics</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="metrics">
+<h1>Metrics<a class="headerlink" href="#metrics" title="Link to this heading">¶</a></h1>
+<p>Arroyo consumers and strategies attempt to auto instrument some metrics that most people find useful
+to understand the behavior and performance of their consumers. These metrics are typically sampled or
+buffered as appropriate and flushed periodically (often once per second).</p>
+<p>In order to use these metrics, you must configure a metrics backend that conforms to the metrics protocol
+before creating your consumer.</p>
+<p>This can be done like so:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.utils.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">Metrics</span><span class="p">,</span> <span class="n">MetricName</span>
+</span><span data-line="2">
+</span><span data-line="3"> <span class="k">class</span><span class="w"> </span><span class="nc">MyMetrics</span><span class="p">(</span><span class="n">Metrics</span><span class="p">):</span>
+</span><span data-line="4">     <span class="k">def</span><span class="w"> </span><span class="nf">increment</span><span class="p">(</span>
+</span><span data-line="5">         <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n">MetricName</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">tags</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tags</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span data-line="6">     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="7">         <span class="c1"># Increment a counter by the given value.</span>
+</span><span data-line="8">         <span class="n">record_incr</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10">     <span class="k">def</span><span class="w"> </span><span class="nf">gauge</span><span class="p">(</span>
+</span><span data-line="11">         <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n">MetricName</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">tags</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tags</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span data-line="12">     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="13">         <span class="c1"># Sets a gauge metric to the given value.</span>
+</span><span data-line="14">         <span class="n">record_gauge</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+</span><span data-line="15">
+</span><span data-line="16">     <span class="k">def</span><span class="w"> </span><span class="nf">timing</span><span class="p">(</span>
+</span><span data-line="17">         <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n">MetricName</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">tags</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tags</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span data-line="18">     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="19">         <span class="c1"># Emit a timing metric with the given value.</span>
+</span><span data-line="20">         <span class="n">record_timing</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+</span><span data-line="21">
+</span><span data-line="22"> <span class="n">metrics_backend</span> <span class="o">=</span> <span class="n">MyMetrics</span><span class="p">()</span>
+</span><span data-line="23">
+</span><span data-line="24"> <span class="n">configure_metrics</span><span class="p">(</span><span class="n">metrics_backend</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<section id="available-metrics">
+<h2>Available Metrics<a class="headerlink" href="#available-metrics" title="Link to this heading">¶</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">MetricName</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span>
+</span><span data-line="4">    <span class="c1"># Time: Number of messages in a multiprocessing batch</span>
+</span><span data-line="5">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.size.msg&quot;</span><span class="p">,</span>
+</span><span data-line="6">    <span class="c1"># Time: Number of bytes in a multiprocessing batch</span>
+</span><span data-line="7">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.size.bytes&quot;</span><span class="p">,</span>
+</span><span data-line="8">    <span class="c1"># Time: How long it took to submit a batch to multiprocessing</span>
+</span><span data-line="9">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.submit.time&quot;</span><span class="p">,</span>
+</span><span data-line="10">    <span class="c1"># Time: Number of messages in a multiprocessing batch after the message transformation</span>
+</span><span data-line="11">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.output_batch.size.msg&quot;</span><span class="p">,</span>
+</span><span data-line="12">    <span class="c1"># Time: Number of bytes in a multiprocessing batch after the message transformation</span>
+</span><span data-line="13">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.output_batch.size.bytes&quot;</span><span class="p">,</span>
+</span><span data-line="14">    <span class="c1"># Counter: Number of times the consumer is spinning</span>
+</span><span data-line="15">    <span class="s2">&quot;arroyo.consumer.run.count&quot;</span><span class="p">,</span>
+</span><span data-line="16">    <span class="c1"># Counter: Number of times the consumer encountered an invalid message.</span>
+</span><span data-line="17">    <span class="s2">&quot;arroyo.consumer.invalid_message.count&quot;</span><span class="p">,</span>
+</span><span data-line="18">    <span class="c1"># Time: How long it took the Reduce step to fill up a batch</span>
+</span><span data-line="19">    <span class="s2">&quot;arroyo.strategies.reduce.batch_time&quot;</span><span class="p">,</span>
+</span><span data-line="20">    <span class="c1"># Counter: Incremented when a strategy after multiprocessing applies</span>
+</span><span data-line="21">    <span class="c1"># backpressure to multiprocessing. May be a reason why CPU cannot be</span>
+</span><span data-line="22">    <span class="c1"># saturated.</span>
+</span><span data-line="23">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.backpressure&quot;</span><span class="p">,</span>
+</span><span data-line="24">    <span class="c1"># Counter: Incremented when multiprocessing cannot fill the input batch</span>
+</span><span data-line="25">    <span class="c1"># because not enough memory was allocated. This results in batches smaller</span>
+</span><span data-line="26">    <span class="c1"># than configured. Increase `input_block_size` to fix.</span>
+</span><span data-line="27">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.input.overflow&quot;</span><span class="p">,</span>
+</span><span data-line="28">    <span class="c1"># Counter: Incremented when multiprocessing cannot pull results in batches</span>
+</span><span data-line="29">    <span class="c1"># equal to the input batch size, because not enough memory was allocated.</span>
+</span><span data-line="30">    <span class="c1"># This can be devastating for throughput. Increase `output_block_size` to</span>
+</span><span data-line="31">    <span class="c1"># fix.</span>
+</span><span data-line="32">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.output.overflow&quot;</span><span class="p">,</span>
+</span><span data-line="33">    <span class="c1"># Counter: Arroyo has decided to re-allocate a block in order to combat input</span>
+</span><span data-line="34">    <span class="c1"># buffer overflow. This behavior can be disabled by explicitly setting</span>
+</span><span data-line="35">    <span class="c1"># `input_block_size` to a not-None value in `RunTaskWithMultiprocessing`.</span>
+</span><span data-line="36">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.input.resize&quot;</span><span class="p">,</span>
+</span><span data-line="37">    <span class="c1"># Counter: Arroyo has decided to re-allocate a block in order to combat output</span>
+</span><span data-line="38">    <span class="c1"># buffer overflow. This behavior can be disabled by explicitly setting</span>
+</span><span data-line="39">    <span class="c1"># `output_block_size` to a not-None value in `RunTaskWithMultiprocessing`.</span>
+</span><span data-line="40">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batch.output.resize&quot;</span><span class="p">,</span>
+</span><span data-line="41">    <span class="c1"># Gauge: How many batches are being processed in parallel by multiprocessing.</span>
+</span><span data-line="42">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.batches_in_progress&quot;</span><span class="p">,</span>
+</span><span data-line="43">    <span class="c1"># Gauge: Shows the total number of available processes in the pool.</span>
+</span><span data-line="44">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.processes&quot;</span><span class="p">,</span>
+</span><span data-line="45">    <span class="c1"># Counter: A subprocess by multiprocessing unexpectedly died.</span>
+</span><span data-line="46">    <span class="s2">&quot;sigchld.detected&quot;</span><span class="p">,</span>
+</span><span data-line="47">    <span class="c1"># Counter: Incremented when the multiprocessing pool is created (or re-created).</span>
+</span><span data-line="48">    <span class="s2">&quot;arroyo.strategies.run_task_with_multiprocessing.pool.create&quot;</span><span class="p">,</span>
+</span><span data-line="49">    <span class="c1"># Time: (unitless) spent polling librdkafka for new messages.</span>
+</span><span data-line="50">    <span class="s2">&quot;arroyo.consumer.poll.time&quot;</span><span class="p">,</span>
+</span><span data-line="51">    <span class="c1"># Time: (unitless) spent in strategies (blocking in strategy.submit or</span>
+</span><span data-line="52">    <span class="c1"># strategy.poll)</span>
+</span><span data-line="53">    <span class="s2">&quot;arroyo.consumer.processing.time&quot;</span><span class="p">,</span>
+</span><span data-line="54">    <span class="c1"># Time: (unitless) spent pausing the consumer due to backpressure (MessageRejected)</span>
+</span><span data-line="55">    <span class="s2">&quot;arroyo.consumer.backpressure.time&quot;</span><span class="p">,</span>
+</span><span data-line="56">    <span class="c1"># Time: (unitless) spent in handling `InvalidMessage` exceptions and sending</span>
+</span><span data-line="57">    <span class="c1"># messages to the the DLQ.</span>
+</span><span data-line="58">    <span class="s2">&quot;arroyo.consumer.dlq.time&quot;</span><span class="p">,</span>
+</span><span data-line="59">    <span class="c1"># Time: (unitless) spent in waiting for the strategy to exit, such as during</span>
+</span><span data-line="60">    <span class="c1"># shutdown or rebalancing.</span>
+</span><span data-line="61">    <span class="s2">&quot;arroyo.consumer.join.time&quot;</span><span class="p">,</span>
+</span><span data-line="62">    <span class="c1"># Time: (unitless) spent in librdkafka callbacks. This metric&#39;s timings</span>
+</span><span data-line="63">    <span class="c1"># overlap other timings, and might spike at the same time.</span>
+</span><span data-line="64">    <span class="s2">&quot;arroyo.consumer.callback.time&quot;</span><span class="p">,</span>
+</span><span data-line="65">    <span class="c1"># Time: (unitless) spent in shutting down the consumer. This metric&#39;s</span>
+</span><span data-line="66">    <span class="c1"># timings overlap other timings, and might spike at the same time.</span>
+</span><span data-line="67">    <span class="s2">&quot;arroyo.consumer.shutdown.time&quot;</span><span class="p">,</span>
+</span><span data-line="68">    <span class="c1"># Time: A regular duration metric where each datapoint is measuring the time it</span>
+</span><span data-line="69">    <span class="c1"># took to execute a single callback. This metric is distinct from the</span>
+</span><span data-line="70">    <span class="c1"># arroyo.consumer.*.time metrics as it does not attempt to accumulate time</span>
+</span><span data-line="71">    <span class="c1"># spent per second in an attempt to keep monitoring overhead low.</span>
+</span><span data-line="72">    <span class="c1">#</span>
+</span><span data-line="73">    <span class="c1"># The metric is tagged by the name of the internal callback function being</span>
+</span><span data-line="74">    <span class="c1"># executed, as &#39;callback_name&#39;. Possible values are on_partitions_assigned</span>
+</span><span data-line="75">    <span class="c1"># and on_partitions_revoked.</span>
+</span><span data-line="76">    <span class="s2">&quot;arroyo.consumer.run.callback&quot;</span><span class="p">,</span>
+</span><span data-line="77">    <span class="c1"># Time: Duration metric measuring the time it took to flush in-flight messages</span>
+</span><span data-line="78">    <span class="c1"># and shut down the strategies.</span>
+</span><span data-line="79">    <span class="s2">&quot;arroyo.consumer.run.close_strategy&quot;</span><span class="p">,</span>
+</span><span data-line="80">    <span class="c1"># Time: Duration metric measuring the time it took to create the processing strategy.</span>
+</span><span data-line="81">    <span class="s2">&quot;arroyo.consumer.run.create_strategy&quot;</span><span class="p">,</span>
+</span><span data-line="82">    <span class="c1"># Counter: How many partitions have been revoked just now.</span>
+</span><span data-line="83">    <span class="s2">&quot;arroyo.consumer.partitions_revoked.count&quot;</span><span class="p">,</span>
+</span><span data-line="84">    <span class="c1"># Counter: How many partitions have been assigned just now.</span>
+</span><span data-line="85">    <span class="s2">&quot;arroyo.consumer.partitions_assigned.count&quot;</span><span class="p">,</span>
+</span><span data-line="86">    <span class="c1"># Time: Consumer latency in seconds. Recorded by the commit offsets strategy.</span>
+</span><span data-line="87">    <span class="s2">&quot;arroyo.consumer.latency&quot;</span><span class="p">,</span>
+</span><span data-line="88">    <span class="c1"># Counter: Metric for when the underlying rdkafka consumer is being paused.</span>
+</span><span data-line="89">    <span class="c1">#</span>
+</span><span data-line="90">    <span class="c1"># This flushes internal prefetch buffers.</span>
+</span><span data-line="91">    <span class="s2">&quot;arroyo.consumer.pause&quot;</span><span class="p">,</span>
+</span><span data-line="92">    <span class="c1"># Counter: Metric for when the underlying rdkafka consumer is being resumed.</span>
+</span><span data-line="93">    <span class="c1">#</span>
+</span><span data-line="94">    <span class="c1"># This might cause increased network usage as messages are being re-fetched.</span>
+</span><span data-line="95">    <span class="s2">&quot;arroyo.consumer.resume&quot;</span><span class="p">,</span>
+</span><span data-line="96">    <span class="c1"># Counter: Incremented when the consumer main thread is stuck and not processing messages.</span>
+</span><span data-line="97">    <span class="s2">&quot;arroyo.consumer.stuck&quot;</span><span class="p">,</span>
+</span><span data-line="98">    <span class="c1"># Gauge: Queue size of background queue that librdkafka uses to prefetch messages.</span>
+</span><span data-line="99">    <span class="s2">&quot;arroyo.consumer.librdkafka.total_queue_size&quot;</span><span class="p">,</span>
+</span><span data-line="100">    <span class="c1"># Counter: Counter metric to measure how often the healthcheck file has been touched.</span>
+</span><span data-line="101">    <span class="s2">&quot;arroyo.processing.strategies.healthcheck.touch&quot;</span><span class="p">,</span>
+</span><span data-line="102">    <span class="c1"># Counter: Number of messages dropped in the FilterStep strategy</span>
+</span><span data-line="103">    <span class="s2">&quot;arroyo.strategies.filter.dropped_messages&quot;</span><span class="p">,</span>
+</span><span data-line="104">    <span class="c1"># Counter: how many messages are dropped due to errors producing to the dlq</span>
+</span><span data-line="105">    <span class="s2">&quot;arroyo.consumer.dlq.dropped_messages&quot;</span><span class="p">,</span>
+</span><span data-line="106">    <span class="c1"># Counter: Number of times consumer commit succeeds or fails</span>
+</span><span data-line="107">    <span class="s2">&quot;arroyo.consumer.commit_status&quot;</span><span class="p">,</span>
+</span><span data-line="108">    <span class="c1"># Gauge: Current length of the DLQ buffer deque</span>
+</span><span data-line="109">    <span class="s2">&quot;arroyo.consumer.dlq_buffer.len&quot;</span><span class="p">,</span>
+</span><span data-line="110">    <span class="c1"># Counter: Number of times the DLQ buffer size has been exceeded, causing messages to be dropped</span>
+</span><span data-line="111">    <span class="s2">&quot;arroyo.consumer.dlq_buffer.exceeded&quot;</span><span class="p">,</span>
+</span><span data-line="112">    <span class="c1"># Gauge: Number of partitions being tracked in the DLQ buffer</span>
+</span><span data-line="113">    <span class="s2">&quot;arroyo.consumer.dlq_buffer.assigned_partitions&quot;</span><span class="p">,</span>
+</span><span data-line="114">    <span class="c1"># Time: Internal producer queue latency from librdkafka statistics.</span>
+</span><span data-line="115">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="116">    <span class="s2">&quot;arroyo.producer.librdkafka.p99_int_latency&quot;</span><span class="p">,</span>
+</span><span data-line="117">    <span class="c1"># Time: Output buffer latency from librdkafka statistics.</span>
+</span><span data-line="118">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="119">    <span class="s2">&quot;arroyo.producer.librdkafka.p99_outbuf_latency&quot;</span><span class="p">,</span>
+</span><span data-line="120">    <span class="c1"># Time: Round-trip time to brokers from librdkafka statistics.</span>
+</span><span data-line="121">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="122">    <span class="s2">&quot;arroyo.producer.librdkafka.p99_rtt&quot;</span><span class="p">,</span>
+</span><span data-line="123">    <span class="c1"># Time: Average internal producer queue latency from librdkafka statistics.</span>
+</span><span data-line="124">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="125">    <span class="s2">&quot;arroyo.producer.librdkafka.avg_int_latency&quot;</span><span class="p">,</span>
+</span><span data-line="126">    <span class="c1"># Time: Average output buffer latency from librdkafka statistics.</span>
+</span><span data-line="127">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="128">    <span class="s2">&quot;arroyo.producer.librdkafka.avg_outbuf_latency&quot;</span><span class="p">,</span>
+</span><span data-line="129">    <span class="c1"># Time: Average round-trip time to brokers from librdkafka statistics.</span>
+</span><span data-line="130">    <span class="c1"># Tagged by broker_id.</span>
+</span><span data-line="131">    <span class="s2">&quot;arroyo.producer.librdkafka.avg_rtt&quot;</span><span class="p">,</span>
+</span><span data-line="132">    <span class="c1"># Counter: Number of times the produce strategy succeeds or fails</span>
+</span><span data-line="133">    <span class="s2">&quot;arroyo.producer.produce_status&quot;</span><span class="p">,</span>
+</span><span data-line="134">    <span class="c1"># Gauge: Producer message count metric from librdkafka statistics</span>
+</span><span data-line="135">    <span class="c1"># Tagged by producer_name</span>
+</span><span data-line="136">    <span class="s2">&quot;arroyo.producer.librdkafka.message_count&quot;</span><span class="p">,</span>
+</span><span data-line="137">    <span class="c1"># Gauge: Maximum producer message count from librdkafka statistics</span>
+</span><span data-line="138">    <span class="c1"># Tagged by producer_name</span>
+</span><span data-line="139">    <span class="s2">&quot;arroyo.producer.librdkafka.message_count_max&quot;</span><span class="p">,</span>
+</span><span data-line="140">    <span class="c1"># Gauge: Producer message size from librdkafka statistics</span>
+</span><span data-line="141">    <span class="c1"># Tagged by producer_name</span>
+</span><span data-line="142">    <span class="s2">&quot;arroyo.producer.librdkafka.message_size&quot;</span><span class="p">,</span>
+</span><span data-line="143">    <span class="c1"># Gauge: Maximum producer message size from librdkafka statistics</span>
+</span><span data-line="144">    <span class="c1"># Tagged by producer_name</span>
+</span><span data-line="145">    <span class="s2">&quot;arroyo.producer.librdkafka.message_size_max&quot;</span><span class="p">,</span>
+</span><span data-line="146">    <span class="c1"># Gauge: Total number of messages transmitted from librdkafka statistics</span>
+</span><span data-line="147">    <span class="c1"># Tagged by producer_name</span>
+</span><span data-line="148">    <span class="s2">&quot;arroyo.producer.librdkafka.txmsgs&quot;</span><span class="p">,</span>
+</span><span data-line="149">    <span class="c1"># Gauge: Total number of transmission requests from librdkafka statistics</span>
+</span><span data-line="150">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="151">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_tx&quot;</span><span class="p">,</span>
+</span><span data-line="152">    <span class="c1"># Gauge: Total number of bytes transmitted from librdkafka statistics</span>
+</span><span data-line="153">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="154">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_txbytes&quot;</span><span class="p">,</span>
+</span><span data-line="155">    <span class="c1"># Gauge: Number of requests awaiting transmission to broker from librdkafka statistics</span>
+</span><span data-line="156">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="157">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_outbuf_requests&quot;</span><span class="p">,</span>
+</span><span data-line="158">    <span class="c1"># Gauge: Number of messages awaiting transmission to broker from librdkafka statistics</span>
+</span><span data-line="159">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="160">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_outbuf_messages&quot;</span><span class="p">,</span>
+</span><span data-line="161">    <span class="c1"># Gauge: Number of connection attempts to broker from librdkafka statistics</span>
+</span><span data-line="162">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="163">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_connects&quot;</span><span class="p">,</span>
+</span><span data-line="164">    <span class="c1"># Gauge: Number of disconnections from broker from librdkafka statistics</span>
+</span><span data-line="165">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="166">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_disconnects&quot;</span><span class="p">,</span>
+</span><span data-line="167">    <span class="c1"># Gauge: Total number of transmission errors from librdkafka statistics</span>
+</span><span data-line="168">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="169">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_txerrs&quot;</span><span class="p">,</span>
+</span><span data-line="170">    <span class="c1"># Gauge: Total number of request retries from librdkafka statistics</span>
+</span><span data-line="171">    <span class="c1"># Tagged by broker_id, producer_name</span>
+</span><span data-line="172">    <span class="s2">&quot;arroyo.producer.librdkafka.broker_txretries&quot;</span><span class="p">,</span>
+</span><span data-line="173"><span class="p">]</span>
+</span></pre></div>
+</div>
+<p>For convenience Arroyo includes a machine readable version which can be loaded like:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">importlib.resources</span>
+</span><span data-line="2"><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="k">with</span> <span class="n">importlib</span><span class="o">.</span><span class="n">resources</span><span class="o">.</span><span class="n">files</span><span class="p">(</span><span class="s2">&quot;arroyo.utils&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">&quot;metricDefs.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">open</span><span class="p">()</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+</span><span data-line="5">    <span class="n">metric_defs</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="module-arroyo.utils.metrics">
+<span id="api"></span><h2>API<a class="headerlink" href="#module-arroyo.utils.metrics" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.utils.metrics.Metrics">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.utils.metrics.</span></span><span class="sig-name descname"><span class="pre">Metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.utils.metrics.Metrics" title="Link to this definition">¶</a></dt>
+<dd><p>An abstract class that defines the interface for metrics backends.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.utils.metrics.Metrics.gauge">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">gauge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MetricName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.utils.metrics.Metrics.gauge" title="Link to this definition">¶</a></dt>
+<dd><p>Sets a gauge metric to the given value.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.utils.metrics.Metrics.increment">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">increment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MetricName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.utils.metrics.Metrics.increment" title="Link to this definition">¶</a></dt>
+<dd><p>Increments a counter metric by a given value.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.utils.metrics.Metrics.timing">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">timing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MetricName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.utils.metrics.Metrics.timing" title="Link to this definition">¶</a></dt>
+<dd><p>Records a timing metric.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arroyo.utils.metrics.configure_metrics">
+<span class="sig-prename descclassname"><span class="pre">arroyo.utils.metrics.</span></span><span class="sig-name descname"><span class="pre">configure_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metrics</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arroyo.utils.metrics.Metrics" title="arroyo.utils.metrics.Metrics"><span class="pre">Metrics</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.utils.metrics.configure_metrics" title="Link to this definition">¶</a></dt>
+<dd><p>Metrics can generally only be configured once, unless force is passed
+on subsequent initializations.</p>
+</dd></dl>
+
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="backpressure.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Backpressure</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="parameters.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Common consumer parameters</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2023, Sentry Team and Contributors</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/shibuya.js?v=c1cf1a6b"></script></body>
+</html>
