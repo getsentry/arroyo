@@ -30,6 +30,7 @@ from arroyo.processing.strategies.abstract import (
 from arroyo.types import BrokerValue, Message, Partition, Topic, TStrategyPayload
 from arroyo.utils.logging import handle_internal_error
 from arroyo.utils.metrics import get_metrics
+from arroyo.utils.stuck_detector import get_all_thread_stacks
 
 logger = logging.getLogger(__name__)
 
@@ -38,25 +39,6 @@ BACKPRESSURE_THRESHOLD = 5.0  # In seconds
 DEFAULT_JOIN_TIMEOUT = 25.0  # In seconds
 
 F = TypeVar("F", bound=Callable[[Any], Any])
-
-
-def get_all_thread_stacks() -> str:
-    """Get stack traces from all threads without using signals."""
-    import sys
-    import threading
-    import traceback
-
-    stacks = []
-    frames = sys._current_frames()
-    threads_by_id = {t.ident: t for t in threading.enumerate()}
-
-    for thread_id, frame in frames.items():
-        thread = threads_by_id.get(thread_id)
-        thread_name = thread.name if thread else f"Unknown-{thread_id}"
-        stack = "".join(traceback.format_stack(frame))
-        stacks.append(f"Thread {thread_name} ({thread_id}):\n{stack}")
-
-    return "\n\n".join(stacks)
 
 
 def _rdkafka_callback(metrics: MetricsBuffer) -> Callable[[F], F]:
@@ -166,9 +148,9 @@ class StreamProcessor(Generic[TStrategyPayload]):
         self.__processor_factory = processor_factory
         self.__metrics_buffer = MetricsBuffer()
 
-        self.__processing_strategy: Optional[
-            ProcessingStrategy[TStrategyPayload]
-        ] = None
+        self.__processing_strategy: Optional[ProcessingStrategy[TStrategyPayload]] = (
+            None
+        )
 
         self.__message: Optional[BrokerValue[TStrategyPayload]] = None
 
