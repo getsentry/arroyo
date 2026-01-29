@@ -29,7 +29,7 @@ def get_all_thread_stacks() -> str:
 @contextmanager
 def stuck_detector(
     name: str = "stuck-detector",
-    timeout_seconds: int = 30,
+    timeout_seconds: float = 30.0,
 ) -> Iterator[None]:
     """
     Context manager that spawns a daemon thread to detect stuck operations.
