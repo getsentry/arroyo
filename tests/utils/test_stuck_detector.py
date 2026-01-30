@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from arroyo.utils.stuck_detector import get_all_thread_stacks, stuck_detector
 
