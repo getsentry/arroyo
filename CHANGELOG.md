@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.38.0
+
+### New Features ✨
+
+- (stuck-detector) Add context manager for stuck detector by @lvthanh03 in [#519](https://github.com/getsentry/arroyo/pull/519)
+
 ## 2.37.1
 
 ### Bug Fixes 🐛
