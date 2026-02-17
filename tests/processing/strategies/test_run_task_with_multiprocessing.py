@@ -3,7 +3,7 @@ import signal
 import time
 from datetime import datetime
 from multiprocessing.managers import SharedMemoryManager
-from typing import Any, Generator
+from typing import Any, Generator, cast
 from unittest.mock import Mock, call
 
 import pytest
@@ -127,11 +127,16 @@ def test_parallel_run_task_worker_apply() -> None:
 NO_KEY = "No Key"
 
 
+@pytest.fixture(params=[False, True])
+def spawn_shared_memory_process(request: pytest.FixtureRequest) -> bool:
+    return cast(bool, getattr(request, "param", False))
+
+
 def get_subprocess_count() -> int:
     return len(multiprocessing.active_children())
 
 
-def test_parallel_transform_step() -> None:
+def test_parallel_transform_step(spawn_shared_memory_process: bool) -> None:
     next_step = Mock()
 
     messages = [
@@ -232,6 +237,7 @@ def test_parallel_transform_step() -> None:
             pool=pool,
             input_block_size=16384,
             output_block_size=16384,
+            spawn_shared_memory_process=spawn_shared_memory_process,
         )
 
         for message in messages:

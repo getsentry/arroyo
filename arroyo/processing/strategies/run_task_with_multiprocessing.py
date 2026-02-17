@@ -424,6 +424,8 @@ class RunTaskWithMultiprocessing(
     :param max_output_block_size: Same as `max_input_block_size` but for output
         blocks.
 
+    :spawn_shared_memory_process: Forces the SharedMemoryManager to fork the
+        subprocess it needs via spawn rather than the default.
 
     Number of processes
     ~~~~~~~~~~~~~~~~~~~
@@ -547,6 +549,7 @@ class RunTaskWithMultiprocessing(
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
         prefetch_batches: bool = False,
+        spawn_shared_memory_process: bool = False,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
@@ -562,7 +565,11 @@ class RunTaskWithMultiprocessing(
         self.__pool.maybe_create_pool()
         num_processes = self.__pool.num_processes
 
-        self.__shared_memory_manager = SharedMemoryManager()
+        self.__shared_memory_manager = (
+            SharedMemoryManager(ctx=multiprocessing.get_context("spawn"))
+            if spawn_shared_memory_process
+            else SharedMemoryManager()
+        )
         self.__shared_memory_manager.start()
 
         block_count = num_processes
