@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.38.1
+
+- Customize SharedMemoryManager subprocess start mode by @fpacifici in [#520](https://github.com/getsentry/arroyo/pull/520)
+
 ## 2.38.0
 
 ### New Features ✨
