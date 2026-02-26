@@ -549,7 +549,7 @@ class RunTaskWithMultiprocessing(
         max_input_block_size: Optional[int] = None,
         max_output_block_size: Optional[int] = None,
         prefetch_batches: bool = False,
-        spawn_shared_memory_process: bool = False,
+        spawn_shared_memory_process: bool = True,
     ) -> None:
         self.__transform_function = function
         self.__next_step = next_step
