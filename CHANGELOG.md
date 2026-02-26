@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.38.2
+
+- Invert the default when initializing the shared memory manager by @fpacifici in [#522](https://github.com/getsentry/arroyo/pull/522)
+
 ## 2.38.1
 
 - Customize SharedMemoryManager subprocess start mode by @fpacifici in [#520](https://github.com/getsentry/arroyo/pull/520)
