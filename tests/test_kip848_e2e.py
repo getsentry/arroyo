@@ -1,21 +1,20 @@
-from typing import Any
-
-import time
 import contextlib
-from contextlib import closing
+import logging
 import os
 import threading
-import logging
-from typing import Iterator, Mapping
+import time
+from contextlib import closing
+from typing import Any, Iterator, Mapping
 
 from confluent_kafka.admin import AdminClient, NewTopic
-from arroyo.types import Commit, Message, Partition, Topic
+
+from arroyo.backends.kafka import KafkaProducer
 from arroyo.backends.kafka.configuration import build_kafka_consumer_configuration
 from arroyo.backends.kafka.consumer import KafkaConsumer, KafkaPayload
-from arroyo.processing.strategies import RunTask, CommitOffsets, ProcessingStrategy
-from arroyo.processing.strategies.abstract import ProcessingStrategyFactory
 from arroyo.processing.processor import StreamProcessor
-from arroyo.backends.kafka import KafkaProducer
+from arroyo.processing.strategies import CommitOffsets, ProcessingStrategy, RunTask
+from arroyo.processing.strategies.abstract import ProcessingStrategyFactory
+from arroyo.types import Commit, Message, Partition, Topic
 
 logging.basicConfig(level=logging.INFO)
 
@@ -67,7 +66,7 @@ def test_kip848_e2e() -> None:
             return Strat(print_msg, CommitOffsets(commit))
 
     default_config = {
-        "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")
+        "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "0.0.0.0:9092")
     }
 
     with get_topic(default_config, 2) as topic:

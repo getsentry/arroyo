@@ -16,4 +16,4 @@ docker run \
     -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
     -e KAFKA_GROUP_COORDINATOR_REBALANCE_PROTOCOLS=classic,consumer \
     -e KAFKA_TRANSACTION_PARTITION_VERIFICATION_ENABLE=false \
-    confluentinc/cp-kafka:7.8.0
+    confluentinc/cp-kafka:8.0.0

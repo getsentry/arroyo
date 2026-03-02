@@ -176,6 +176,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__is_cooperative_sticky = (
             configuration.get("partition.assignment.strategy") == "cooperative-sticky"
+            or configuration.get("group.protocol") == "consumer"
         )
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
