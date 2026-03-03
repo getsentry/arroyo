@@ -66,7 +66,7 @@ def test_kip848_e2e() -> None:
             return Strat(print_msg, CommitOffsets(commit))
 
     default_config = {
-        "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "0.0.0.0:9092")
+        "bootstrap.servers": os.environ.get("DEFAULT_BROKERS", "localhost:9092")
     }
 
     with get_topic(default_config, 2) as topic:
