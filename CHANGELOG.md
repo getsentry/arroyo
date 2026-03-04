@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.38.3
+
+### Bug Fixes 🐛
+
+- (confluent) Upgrade confluent-kafka and fix kip-848 bugs by @evanh in [#523](https://github.com/getsentry/arroyo/pull/523)
+
 ## 2.38.2
 
 - Invert the default when initializing the shared memory manager by @fpacifici in [#522](https://github.com/getsentry/arroyo/pull/522)
