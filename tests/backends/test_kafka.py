@@ -10,7 +10,7 @@ from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import mock
 
 import pytest
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import AdminClient, NewTopic  # type: ignore[attr-defined]
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
