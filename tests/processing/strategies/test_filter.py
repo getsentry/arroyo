@@ -170,7 +170,7 @@ def test_no_commit_policy_does_not_forward_filtered_messages() -> None:
 def test_backpressure_in_join() -> None:
     topic = Topic("topic")
     next_step = Mock()
-    next_step.submit.side_effect = [None] * 6 + [MessageRejected]  # type: ignore
+    next_step.submit.side_effect = [None] * 6 + [MessageRejected]
 
     now = datetime.now()
 
