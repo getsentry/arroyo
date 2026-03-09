@@ -28,6 +28,15 @@ def get_topic(
     name = TOPIC
     configuration = dict(configuration)
     client = AdminClient(configuration)
+
+    # Delete the topic if it already exists from a previous test run
+    existing = client.list_topics(timeout=5).topics
+    if name in existing:
+        [[key, future]] = client.delete_topics([name]).items()
+        assert key == name
+        future.result()
+        time.sleep(1)
+
     [[key, future]] = client.create_topics(
         [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
     ).items()
