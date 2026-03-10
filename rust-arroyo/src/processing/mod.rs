@@ -413,7 +413,6 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
-                            tracing::error!(?e, "Invalid message");
                             consumer_state.dlq_policy.produce(msg);
                         }
                         None => {
