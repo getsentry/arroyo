@@ -323,7 +323,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
-                            tracing::error!(?e, "Invalid message");
+                            counter!("arroyo.consumer.dlq.write.count", 1);
                             consumer_state.dlq_policy.produce(msg);
                         }
                         None => {
@@ -414,7 +414,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
-                            tracing::error!(?e, "Invalid message");
+                            counter!("arroyo.consumer.dlq.write.count", 1);
                             consumer_state.dlq_policy.produce(msg);
                         }
                         None => {
