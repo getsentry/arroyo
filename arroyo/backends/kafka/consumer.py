@@ -251,8 +251,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         self.__offsets: MutableMapping[Partition, int] = {}
         self.__staged_offsets: MutableMapping[Partition, int] = {}
         self.__paused: Set[Partition] = set()
-        # Seeks deferred during on_assign for KIP-848 (applied before next poll)
-        self.__pending_seeks: MutableMapping[Partition, int] = {}
 
         self.__commit_retry_policy = commit_retry_policy
 
@@ -390,7 +388,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                         if p in self.__offsets
                     ]
                     self.__consumer.incremental_assign(kip848_partitions)
-                    self.__pending_seeks.clear()
                 self.__state = KafkaConsumerState.CONSUMING
                 logger.info("Paused partitions after assignment: %s", self.__paused)
 
@@ -431,7 +428,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                         )
 
                     self.__paused.discard(partition)
-                    self.__pending_seeks.pop(partition, None)
 
                 self.__state = KafkaConsumerState.CONSUMING
                 logger.info("Paused partitions after revocation: %s", self.__paused)
@@ -577,8 +573,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         if self.__is_kip848 and self.__state == KafkaConsumerState.ASSIGNING:
             # With KIP-848, seeking inside on_assign fails because rdkafka
-            # hasn't fully processed incremental_assign yet. Defer until poll().
-            self.__pending_seeks.update(offsets)
+            # hasn't fully processed incremental_assign yet. The seek offset
+            # is captured in self.__offsets and applied via incremental_assign
+            # after the callback completes.
+            pass
         else:
             for partition, offset in offsets.items():
                 self.__consumer.seek(
