@@ -323,6 +323,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
+                            counter!("arroyo.consumer.dlq.write.count", 1);
                             consumer_state.dlq_policy.produce(msg);
                         }
                         None => {
