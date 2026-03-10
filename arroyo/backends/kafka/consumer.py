@@ -163,7 +163,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             KafkaError.REQUEST_TIMED_OUT,
             KafkaError.NOT_COORDINATOR,
             KafkaError._WAIT_COORD,
-            # KafkaError.STALE_MEMBER_EPOCH,  # kip-848
             KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
         )
 
@@ -486,20 +485,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         """
         if self.__state is not KafkaConsumerState.CONSUMING:
             raise InvalidState(self.__state)
-
-        # For KIP-848 consumers, seek() calls made inside the on_assign callback
-        # cannot be applied immediately via rdkafka (the partition isn't yet
-        # registered as seekable at that point). Instead they are stored in
-        # __pending_seeks and applied here, before the next rdkafka poll, so
-        # the consumer fetches from the correct position.
-        if self.__pending_seeks:
-            for partition, offset in self.__pending_seeks.items():
-                self.__consumer.seek(
-                    ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
-                    )
-                )
-            self.__pending_seeks.clear()
 
         message: Optional[ConfluentMessage] = self.__consumer.poll(
             *[timeout] if timeout is not None else []
