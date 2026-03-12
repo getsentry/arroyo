@@ -14,7 +14,6 @@ from tests.assertions import assert_changes, assert_does_not_change
 
 
 class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
-    cooperative_sticky = False
     kip_848 = False
 
     @abstractmethod
@@ -454,7 +453,7 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
 
             wait_until_rebalancing(consumer_a, consumer_b)
 
-            if self.cooperative_sticky or self.kip_848:
+            if self.kip_848:
                 # within incremental rebalancing, only one partition should have been reassigned to the consumer_b, and consumer_a should remain paused
                 # Either partition 0 or 1 might be the paused one
                 assert len(consumer_a.paused()) == 1
@@ -483,7 +482,7 @@ class StreamsTestMixin(ABC, Generic[TStrategyPayload]):
 
             assert len(consumer_b.tell()) == 2
 
-            if self.cooperative_sticky or self.kip_848:
+            if self.kip_848:
                 consumer_a_on_assign.assert_has_calls(
                     [
                         mock.call({Partition(topic, 0): 0, Partition(topic, 1): 0}),

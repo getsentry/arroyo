@@ -6,7 +6,10 @@ import time
 from contextlib import closing
 from typing import Any, Iterator, Mapping
 
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import (  # type: ignore[attr-defined, unused-ignore]
+    AdminClient,
+    NewTopic,
+)
 
 from arroyo.backends.kafka import KafkaProducer
 from arroyo.backends.kafka.configuration import build_kafka_consumer_configuration

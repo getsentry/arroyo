@@ -23,7 +23,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    cast,
 )
 
 from confluent_kafka import (
@@ -170,14 +169,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             3,
             1,
             lambda e: isinstance(e, KafkaException)
+            and isinstance(e.args[0], KafkaError)
             and e.args[0].code() in retryable_errors,
         )
 
         self.__is_kip848 = configuration.get("group.protocol") == "consumer"
-        self.__is_cooperative_sticky = (
-            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
-            or self.__is_kip848
-        )
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
         # This is a special flag that controls the auto offset behavior for
@@ -375,19 +371,17 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                     on_assign(offsets)
             finally:
                 if self.__is_kip848:
-                    # For KIP-848, incremental_assign is called here (after the
-                    # user's on_assign callback) so that any seek() calls made
-                    # in the callback are incorporated into the starting offsets.
-                    # Calling seek() inside on_assign for KIP-848 fails because
-                    # rdkafka hasn't processed the partition yet at that point.
-                    kip848_partitions = [
-                        ConfluentTopicPartition(
-                            p.topic.name, p.index, self.__offsets[p]
-                        )
-                        for p in offsets
-                        if p in self.__offsets
-                    ]
-                    self.__consumer.incremental_assign(kip848_partitions)
+                    # For KIP-848, incremental_assign must be called after
+                    # on_assign to set the starting offsets for newly assigned
+                    # partitions. Calling it before on_assign (in __assign)
+                    # would fail with _UNKNOWN_PARTITION because rdkafka hasn't
+                    # fully processed the assignment at that point.
+                    self.__consumer.incremental_assign(
+                        [
+                            ConfluentTopicPartition(p.topic.name, p.index, offsets[p])
+                            for p in offsets
+                        ]
+                    )
                 self.__state = KafkaConsumerState.CONSUMING
                 logger.info("Paused partitions after assignment: %s", self.__paused)
 
@@ -492,9 +486,15 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if error is not None:
             code = error.code()
             if code == KafkaError._PARTITION_EOF:
+                topic = message.topic()
+                partition = message.partition()
+                offset = message.offset()
+                assert topic is not None
+                assert partition is not None
+                assert offset is not None
                 raise EndOfPartition(
-                    Partition(Topic(message.topic() or ""), message.partition() or 0),
-                    message.offset() or 0,
+                    Partition(Topic(topic), partition),
+                    offset,
                 )
             elif code == KafkaError._TRANSPORT:
                 raise TransportError(str(error))
@@ -506,7 +506,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             else:
                 raise ConsumerError(str(error))
 
-        headers: Optional[Headers] = message.headers()
+        headers: Optional[Headers] = message.headers()  # type: ignore[assignment, unused-ignore]
         broker_value = BrokerValue(
             KafkaPayload(
                 message.key(),
@@ -547,12 +547,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             for partition, offset in offsets.items()
         ]
         if self.__is_kip848:
-            # For KIP-848, incremental_assign is called after the on_assign
-            # callback so user seek()s in the callback are reflected in the
-            # starting offsets passed to rdkafka.
+            # For KIP-848, incremental_assign is deferred to after on_assign
+            # in the assignment_callback finally block. Calling it here would
+            # fail with _UNKNOWN_PARTITION because rdkafka hasn't fully
+            # processed the assignment yet at this point in the callback.
             pass
-        elif self.__is_cooperative_sticky:
-            self.__consumer.incremental_assign(partitions)
         else:
             self.__consumer.assign(partitions)
         self.__offsets.update(offsets)
@@ -571,19 +570,10 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
         self.__validate_offsets(offsets)
 
-        if self.__is_kip848 and self.__state == KafkaConsumerState.ASSIGNING:
-            # With KIP-848, seeking inside on_assign fails because rdkafka
-            # hasn't fully processed incremental_assign yet. The seek offset
-            # is captured in self.__offsets and applied via incremental_assign
-            # after the callback completes.
-            pass
-        else:
-            for partition, offset in offsets.items():
-                self.__consumer.seek(
-                    ConfluentTopicPartition(
-                        partition.topic.name, partition.index, offset
-                    )
-                )
+        for partition, offset in offsets.items():
+            self.__consumer.seek(
+                ConfluentTopicPartition(partition.topic.name, partition.index, offset)
+            )
         self.__offsets.update(offsets)
 
     def pause(self, partitions: Sequence[Partition]) -> None:
@@ -846,7 +836,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         produce(
             value=payload.value,
             key=payload.key,
-            headers=dict(payload.headers),
+            headers=list(payload.headers),
             on_delivery=partial(self.__delivery_callback, future, payload),
         )
         return future
@@ -863,7 +853,7 @@ DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 METRICS_FREQUENCY_SEC = 1.0
 
 
-class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
+class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ignore]
     """
     A thin wrapper for confluent_kafka.Producer that adds metrics reporting.
     """
@@ -904,7 +894,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         on_delivery = kwargs.pop("on_delivery", None)
         user_callback = callback or on_delivery
         wrapped_callback = self.__delivery_callback(user_callback)
-        super().produce(*args, **kwargs, on_delivery=wrapped_callback)
+        super().produce(*args, **kwargs, on_delivery=wrapped_callback)  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
         for status, count in self.__produce_counters.items():
@@ -921,7 +911,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     def flush(self, timeout: float | None = -1) -> int:
         # Kafka producer flush should flush metrics too
         self.__flush_metrics()
-        return cast(int, super().flush(timeout))
+        return super().flush(timeout)  # type: ignore[arg-type, unused-ignore]
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()

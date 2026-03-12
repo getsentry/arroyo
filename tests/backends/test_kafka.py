@@ -10,7 +10,10 @@ from typing import Any, Iterator, Mapping, MutableSequence, Optional
 from unittest import mock
 
 import pytest
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import (  # type: ignore[attr-defined, unused-ignore]
+    AdminClient,
+    NewTopic,
+)
 
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
@@ -118,9 +121,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             # session timeout cannot be higher than max poll interval
             if max_poll_interval_ms < 45000:
                 configuration["session.timeout.ms"] = max_poll_interval_ms
-
-        if self.cooperative_sticky:
-            configuration["partition.assignment.strategy"] = "cooperative-sticky"
 
         if self.kip_848:
             configuration["group.protocol"] = "consumer"
@@ -233,8 +233,8 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
 
     @mock.patch("arroyo.processing.processor.BACKPRESSURE_THRESHOLD", 0)
     def test_assign_partition_during_pause(self) -> None:
-        if self.cooperative_sticky or self.kip_848:
-            pytest.skip("test does not work with cooperative-sticky rebalancing")
+        if self.kip_848:
+            pytest.skip("test does not work with incremental rebalancing")
 
         payloads = self.get_payloads()
 
@@ -421,11 +421,6 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     # Verify we got EndOfPartition at offset 5
                     assert e.offset == 5
                     assert e.partition == Partition(topic, 0)
-
-
-class TestKafkaStreamsIncrementalRebalancing(TestKafkaStreams):
-    # re-test the kafka consumer with cooperative-sticky rebalancing
-    cooperative_sticky = True
 
 
 class TestKafkaStreamsKip848(TestKafkaStreams):
