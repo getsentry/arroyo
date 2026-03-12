@@ -6,7 +6,10 @@ import time
 from contextlib import closing
 from typing import Any, Iterator, Mapping
 
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import (  # type: ignore[attr-defined, unused-ignore]
+    AdminClient,
+    NewTopic,
+)
 
 from arroyo.backends.kafka import KafkaProducer
 from arroyo.backends.kafka.configuration import build_kafka_consumer_configuration
@@ -28,6 +31,15 @@ def get_topic(
     name = TOPIC
     configuration = dict(configuration)
     client = AdminClient(configuration)
+
+    # Delete the topic if it already exists from a previous test run
+    existing = client.list_topics(timeout=5).topics
+    if name in existing:
+        [[key, future]] = client.delete_topics([name]).items()
+        assert key == name
+        future.result()
+        time.sleep(1)
+
     [[key, future]] = client.create_topics(
         [NewTopic(name, num_partitions=partitions_count, replication_factor=1)]
     ).items()

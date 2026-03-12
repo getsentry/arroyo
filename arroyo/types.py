@@ -125,7 +125,7 @@ class Value(BaseValue[TMessagePayload]):
     """
 
     __slots__ = ["__payload", "__committable"]
-    __payload: TMessagePayload
+    __payload: TMessagePayload  # type: ignore[misc]
     __committable: Mapping[Partition, int]
     __timestamp: Optional[datetime]
 
@@ -163,7 +163,7 @@ class BrokerValue(BaseValue[TMessagePayload]):
     """
 
     __slots__ = ["__payload", "partition", "offset", "timestamp"]
-    __payload: TMessagePayload
+    __payload: TMessagePayload  # type: ignore[misc]
     partition: Partition
     offset: int
     timestamp: datetime
