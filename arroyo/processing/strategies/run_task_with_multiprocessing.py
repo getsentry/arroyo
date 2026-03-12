@@ -116,6 +116,7 @@ class MessageBatch(Generic[TBatchValue]):
             pickle.loads(
                 data,
                 buffers=[
+                    # mypy doesn't support slice indexing on memoryview
                     self.block.buf[offset : offset + length].tobytes()  # type: ignore[index]
                     for offset, length in buffers
                 ],
@@ -159,6 +160,7 @@ class MessageBatch(Generic[TBatchValue]):
                     f"Value exceeds available space in block, {length} "
                     f"bytes needed but {self.block.size - offset} bytes free."
                 )
+            # mypy doesn't support slice indexing on memoryview
             self.block.buf[offset : offset + length] = value  # type: ignore[index]
             self.__offset += length
             buffers.append((offset, length))
