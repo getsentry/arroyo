@@ -507,14 +507,20 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 raise ConsumerError(str(error))
 
         headers: Optional[Headers] = message.headers()  # type: ignore[assignment, unused-ignore]
+        topic = message.topic()
+        partition = message.partition()
+        offset = message.offset()
+        assert topic is not None
+        assert partition is not None
+        assert offset is not None
         broker_value = BrokerValue(
             KafkaPayload(
                 message.key(),
                 message.value() or b"",
                 headers if headers is not None else [],
             ),
-            Partition(Topic(message.topic() or ""), message.partition() or 0),
-            message.offset() or 0,
+            Partition(Topic(topic), partition),
+            offset,
             datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
         self.__offsets[broker_value.partition] = broker_value.next_offset
