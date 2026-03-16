@@ -28,7 +28,9 @@ class TestConfluentProducer:
             {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
         )
         mock_message = mock.Mock(spec=ConfluentMessage)
-        producer._ConfluentProducer__metrics_delivery_callback(None, mock_message)
+        getattr(
+            producer, "_ConfluentProducer__metrics_delivery_callback"
+        )(None, mock_message)
         producer.flush()  # Flush buffered metrics
         assert (
             Increment(
@@ -44,7 +46,9 @@ class TestConfluentProducer:
         producer = ConfluentProducer({"bootstrap.servers": "fake:9092"})
         mock_error = mock.Mock(spec=KafkaError)
         mock_message = mock.Mock(spec=ConfluentMessage)
-        producer._ConfluentProducer__metrics_delivery_callback(mock_error, mock_message)
+        getattr(
+            producer, "_ConfluentProducer__metrics_delivery_callback"
+        )(mock_error, mock_message)
         producer.flush()  # Flush buffered metrics
         assert (
             Increment("arroyo.producer.produce_status", 1, {"status": "error"})
@@ -63,7 +67,9 @@ class TestConfluentProducer:
         ) -> None:
             user_callback_invoked.append((error, message))
 
-        wrapped = producer._ConfluentProducer__delivery_callback(user_callback)
+        wrapped = getattr(
+            producer, "_ConfluentProducer__delivery_callback"
+        )(user_callback)
         mock_message = mock.Mock(spec=ConfluentMessage)
         wrapped(None, mock_message)
         producer.flush()  # Flush buffered metrics

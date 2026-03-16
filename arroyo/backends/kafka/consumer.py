@@ -346,7 +346,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             try:
                 assignment: MutableSequence[ConfluentTopicPartition] = []
 
-                for partition in self.__consumer.committed(partitions):
+                for partition in self.__consumer.committed(list(partitions)):
                     if partition.offset >= 0:
                         assignment.append(partition)
                     elif partition.offset == OFFSET_INVALID:
@@ -364,7 +364,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
                 # Ensure that all partitions are resumed on assignment to avoid
                 # carrying over state from a previous assignment.
-                self.resume([p for p in offsets])
+                self.resume(list(offsets.keys()))
 
             except Exception:
                 self.__state = KafkaConsumerState.ERROR
@@ -382,13 +382,15 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         ) -> None:
             self.__state = KafkaConsumerState.REVOKING
 
-            partitions = [Partition(Topic(i.topic), i.partition) for i in partitions]
+            revoked_partitions = [
+                Partition(Topic(i.topic), i.partition) for i in partitions
+            ]
 
             try:
                 if on_revoke is not None:
-                    on_revoke(partitions)
+                    on_revoke(revoked_partitions)
             finally:
-                for partition in partitions:
+                for partition in revoked_partitions:
                     # Staged offsets are deleted during partition revocation to
                     # prevent later committing offsets for partitions that are
                     # no longer owned by this consumer.
@@ -476,8 +478,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             code = error.code()
             if code == KafkaError._PARTITION_EOF:
                 raise EndOfPartition(
-                    Partition(Topic(message.topic()), message.partition()),
-                    message.offset(),
+                    Partition(
+                        Topic(cast(str, message.topic())),
+                        cast(int, message.partition()),
+                    ),
+                    cast(int, message.offset()),
                 )
             elif code == KafkaError._TRANSPORT:
                 raise TransportError(str(error))
@@ -489,15 +494,33 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             else:
                 raise ConsumerError(str(error))
 
-        headers: Optional[Headers] = message.headers()
+        raw_headers = message.headers()
+        if raw_headers is None:
+            headers = []
+        elif isinstance(raw_headers, dict):
+            headers = [
+                (k, v if isinstance(v, bytes) else b"")
+                for k, v in raw_headers.items()
+            ]
+        else:
+            headers = [
+                (k, v if isinstance(v, bytes) else b"")
+                for k, v in raw_headers
+            ]
+        value = message.value()
+        if value is None:
+            value = b""
         broker_value = BrokerValue(
             KafkaPayload(
                 message.key(),
-                message.value(),
-                headers if headers is not None else [],
+                value,
+                headers,
             ),
-            Partition(Topic(message.topic()), message.partition()),
-            message.offset(),
+            Partition(
+                Topic(cast(str, message.topic())),
+                cast(int, message.partition()),
+            ),
+            cast(int, message.offset()),
             datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
         self.__offsets[broker_value.partition] = broker_value.next_offset
@@ -737,8 +760,8 @@ class KafkaProducer(Producer[KafkaPayload]):
     def __init__(
         self, configuration: Mapping[str, Any], use_simple_futures: bool = False
     ) -> None:
-        self.__configuration = configuration
-        self.__producer = ConfluentKafkaProducer(configuration)
+        self.__configuration = dict(configuration)
+        self.__producer = ConfluentKafkaProducer(self.__configuration)
         self.__shutdown_requested = Event()
 
         # The worker must execute in a separate thread to ensure that callbacks
@@ -778,8 +801,11 @@ class KafkaProducer(Producer[KafkaPayload]):
                 future.set_result(
                     BrokerValue(
                         payload,
-                        Partition(Topic(message.topic()), message.partition()),
-                        message.offset(),
+                        Partition(
+                            Topic(cast(str, message.topic())),
+                            cast(int, message.partition()),
+                        ),
+                        cast(int, message.offset()),
                         datetime.utcfromtimestamp(timestamp_value / 1000.0),
                     ),
                 )
@@ -815,7 +841,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         produce(
             value=payload.value,
             key=payload.key,
-            headers=payload.headers,
+            headers=cast(Any, payload.headers),
             on_delivery=partial(self.__delivery_callback, future, payload),
         )
         return future
@@ -832,14 +858,15 @@ DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 METRICS_FREQUENCY_SEC = 1.0
 
 
-class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
+class ConfluentProducer(ConfluentKafkaProducer):
     """
     A thin wrapper for confluent_kafka.Producer that adds metrics reporting.
     """
 
     def __init__(self, configuration: Mapping[str, Any]) -> None:
-        super().__init__(configuration)
-        self.producer_name = configuration.get("client.id") or None
+        config_dict = dict(configuration)
+        super().__init__(config_dict)
+        self.producer_name = config_dict.get("client.id") or None
         self.__metrics = get_metrics()
         self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
         self.__reset_metrics()
@@ -873,7 +900,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         on_delivery = kwargs.pop("on_delivery", None)
         user_callback = callback or on_delivery
         wrapped_callback = self.__delivery_callback(user_callback)
-        super().produce(*args, on_delivery=wrapped_callback, **kwargs)
+        super().produce(*args, on_delivery=wrapped_callback, **kwargs)  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
         for status, count in self.__produce_counters.items():
@@ -890,7 +917,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
     def flush(self, timeout: float = -1) -> int:
         # Kafka producer flush should flush metrics too
         self.__flush_metrics()
-        return cast(int, super().flush(timeout))
+        return super().flush(timeout)
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()

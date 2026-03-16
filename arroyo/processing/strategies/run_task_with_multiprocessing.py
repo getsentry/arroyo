@@ -111,12 +111,15 @@ class MessageBatch(Generic[TBatchValue]):
         # was still "alive" in a different part of the processing pipeline, the
         # contents of the message would be liable to be corrupted (at best --
         # possibly causing a data leak/security issue at worst.)
+        buf = self.block.buf
+        if buf is None:
+            raise RuntimeError("shared memory block has no buffer")
         return cast(
             TBatchValue,
             pickle.loads(
                 data,
                 buffers=[
-                    self.block.buf[offset : offset + length].tobytes()
+                    buf[offset : offset + length].tobytes()
                     for offset, length in buffers
                 ],
             ),
@@ -159,7 +162,10 @@ class MessageBatch(Generic[TBatchValue]):
                     f"Value exceeds available space in block, {length} "
                     f"bytes needed but {self.block.size - offset} bytes free."
                 )
-            self.block.buf[offset : offset + length] = value
+            buf = self.block.buf
+            if buf is None:
+                raise RuntimeError("shared memory block has no buffer")
+            buf[offset : offset + length] = value
             self.__offset += length
             buffers.append((offset, length))
 
