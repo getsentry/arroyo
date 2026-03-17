@@ -358,6 +358,20 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
                 self.__assign(offsets)
 
+                if self.__is_kip848:
+                    # For KIP-848, incremental_assign must be called after
+                    # offset resolution but before on_assign, so that seeks
+                    # issued inside on_assign work correctly. Calling it
+                    # earlier (inside __assign at the top of the callback)
+                    # fails with _UNKNOWN_PARTITION because rdkafka hasn't
+                    # fully processed the assignment at that point.
+                    self.__consumer.incremental_assign(
+                        [
+                            ConfluentTopicPartition(p.topic.name, p.index, offsets[p])
+                            for p in offsets
+                        ]
+                    )
+
                 # Ensure that all partitions are resumed on assignment to avoid
                 # carrying over state from a previous assignment.
                 self.resume([p for p in offsets])
@@ -370,18 +384,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 if on_assign is not None:
                     on_assign(offsets)
             finally:
-                if self.__is_kip848:
-                    # For KIP-848, incremental_assign must be called after
-                    # on_assign to set the starting offsets for newly assigned
-                    # partitions. Calling it before on_assign (in __assign)
-                    # would fail with _UNKNOWN_PARTITION because rdkafka hasn't
-                    # fully processed the assignment at that point.
-                    self.__consumer.incremental_assign(
-                        [
-                            ConfluentTopicPartition(p.topic.name, p.index, offsets[p])
-                            for p in offsets
-                        ]
-                    )
                 self.__state = KafkaConsumerState.CONSUMING
                 logger.info("Paused partitions after assignment: %s", self.__paused)
 
@@ -552,13 +554,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             ConfluentTopicPartition(partition.topic.name, partition.index, offset)
             for partition, offset in offsets.items()
         ]
-        if self.__is_kip848:
-            # For KIP-848, incremental_assign is deferred to after on_assign
-            # in the assignment_callback finally block. Calling it here would
-            # fail with _UNKNOWN_PARTITION because rdkafka hasn't fully
-            # processed the assignment yet at this point in the callback.
-            pass
-        else:
+        if not self.__is_kip848:
             self.__consumer.assign(partitions)
         self.__offsets.update(offsets)
 
