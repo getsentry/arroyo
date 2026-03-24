@@ -44,10 +44,8 @@ def build_kafka_configuration(
 
 
 def stats_callback(stats_json: str) -> None:
-    stats = json.loads(stats_json)
-    get_metrics().gauge(
-        "arroyo.consumer.librdkafka.total_queue_size", stats.get("replyq", 0)
-    )
+    # We can keep this for the future
+    pass
 
 
 def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> None:
