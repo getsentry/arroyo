@@ -48,14 +48,6 @@ impl ClientContext for ProducerContext {
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
-
-                let avg_latency_ms = int_latency.avg as f64 / 1000.0;
-                timer!(
-                    "arroyo.producer.librdkafka.avg_int_latency",
-                    Duration::from_millis(avg_latency_ms as u64),
-                    "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
             }
 
             if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
@@ -66,14 +58,6 @@ impl ClientContext for ProducerContext {
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
-
-                let avg_latency_ms = outbuf_latency.avg as f64 / 1000.0;
-                timer!(
-                    "arroyo.producer.librdkafka.avg_outbuf_latency",
-                    Duration::from_millis(avg_latency_ms as u64),
-                    "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
             }
 
             if let Some(rtt) = &broker_stats.rtt {
@@ -81,14 +65,6 @@ impl ClientContext for ProducerContext {
                 timer!(
                     "arroyo.producer.librdkafka.p99_rtt",
                     Duration::from_millis(p99_rtt_ms as u64),
-                    "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
-
-                let avg_rtt_ms = rtt.avg as f64 / 1000.0;
-                timer!(
-                    "arroyo.producer.librdkafka.avg_rtt",
-                    Duration::from_millis(avg_rtt_ms as u64),
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
