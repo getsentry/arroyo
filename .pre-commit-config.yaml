@@ -22,11 +22,13 @@ repos:
       - id: flake8
         language_version: python3.12
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v0.961'
+    rev: 'v1.19.1'
     hooks:
     -   id: mypy
         args: [--config-file, mypy.ini, --strict]
-        additional_dependencies: [pytest==7.1.2]
+        additional_dependencies: [pytest==7.1.2, confluent-kafka==2.13.2]
+        pass_filenames: false
+        entry: mypy . --config-file mypy.ini --strict
   - repo: https://github.com/pycqa/isort
     rev: 5.12.0
     hooks:

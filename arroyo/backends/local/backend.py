@@ -216,6 +216,7 @@ class LocalConsumer(Consumer[TStrategyPayload]):
             if self.__closed:
                 raise RuntimeError("consumer is closed")
 
+            assert self.__subscription is not None
             self.__pending_callbacks.append(
                 partial(
                     self.__revoke,

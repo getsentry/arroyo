@@ -23,7 +23,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    cast,
 )
 
 from confluent_kafka import (
@@ -163,7 +162,6 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             KafkaError.REQUEST_TIMED_OUT,
             KafkaError.NOT_COORDINATOR,
             KafkaError._WAIT_COORD,
-            KafkaError.STALE_MEMBER_EPOCH,  # kip-848
             KafkaError.COORDINATOR_LOAD_IN_PROGRESS,
         )
 
@@ -171,13 +169,11 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             3,
             1,
             lambda e: isinstance(e, KafkaException)
+            and isinstance(e.args[0], KafkaError)
             and e.args[0].code() in retryable_errors,
         )
 
-        self.__is_cooperative_sticky = (
-            configuration.get("partition.assignment.strategy") == "cooperative-sticky"
-            or configuration.get("group.protocol") == "consumer"
-        )
+        self.__is_kip848 = configuration.get("group.protocol") == "consumer"
         auto_offset_reset = configuration.get("auto.offset.reset", "largest")
 
         # This is a special flag that controls the auto offset behavior for
@@ -335,7 +331,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             raise InvalidState(self.__state)
 
         def assignment_callback(
-            consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
+            consumer: ConfluentConsumer, partitions: list[ConfluentTopicPartition]
         ) -> None:
             if not partitions:
                 logger.info("skipping empty assignment")
@@ -362,6 +358,20 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
                 self.__assign(offsets)
 
+                if self.__is_kip848:
+                    # For KIP-848, incremental_assign must be called after
+                    # offset resolution but before on_assign, so that seeks
+                    # issued inside on_assign work correctly. Calling it
+                    # earlier (inside __assign at the top of the callback)
+                    # fails with _UNKNOWN_PARTITION because rdkafka hasn't
+                    # fully processed the assignment at that point.
+                    self.__consumer.incremental_assign(
+                        [
+                            ConfluentTopicPartition(p.topic.name, p.index, offsets[p])
+                            for p in offsets
+                        ]
+                    )
+
                 # Ensure that all partitions are resumed on assignment to avoid
                 # carrying over state from a previous assignment.
                 self.resume([p for p in offsets])
@@ -378,11 +388,14 @@ class KafkaConsumer(Consumer[KafkaPayload]):
                 logger.info("Paused partitions after assignment: %s", self.__paused)
 
         def revocation_callback(
-            consumer: ConfluentConsumer, partitions: Sequence[ConfluentTopicPartition]
+            consumer: ConfluentConsumer,
+            confluent_partitions: Sequence[ConfluentTopicPartition],
         ) -> None:
             self.__state = KafkaConsumerState.REVOKING
 
-            partitions = [Partition(Topic(i.topic), i.partition) for i in partitions]
+            partitions = [
+                Partition(Topic(i.topic), i.partition) for i in confluent_partitions
+            ]
 
             try:
                 if on_revoke is not None:
@@ -475,9 +488,15 @@ class KafkaConsumer(Consumer[KafkaPayload]):
         if error is not None:
             code = error.code()
             if code == KafkaError._PARTITION_EOF:
+                topic = message.topic()
+                partition = message.partition()
+                offset = message.offset()
+                assert topic is not None
+                assert partition is not None
+                assert offset is not None
                 raise EndOfPartition(
-                    Partition(Topic(message.topic()), message.partition()),
-                    message.offset(),
+                    Partition(Topic(topic), partition),
+                    offset,
                 )
             elif code == KafkaError._TRANSPORT:
                 raise TransportError(str(error))
@@ -489,15 +508,21 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             else:
                 raise ConsumerError(str(error))
 
-        headers: Optional[Headers] = message.headers()
+        headers: Optional[Headers] = message.headers()  # type: ignore[assignment, unused-ignore]
+        topic = message.topic()
+        partition = message.partition()
+        offset = message.offset()
+        assert topic is not None
+        assert partition is not None
+        assert offset is not None
         broker_value = BrokerValue(
             KafkaPayload(
                 message.key(),
-                message.value(),
+                message.value() or b"",
                 headers if headers is not None else [],
             ),
-            Partition(Topic(message.topic()), message.partition()),
-            message.offset(),
+            Partition(Topic(topic), partition),
+            offset,
             datetime.utcfromtimestamp(message.timestamp()[1] / 1000.0),
         )
         self.__offsets[broker_value.partition] = broker_value.next_offset
@@ -529,9 +554,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             ConfluentTopicPartition(partition.topic.name, partition.index, offset)
             for partition, offset in offsets.items()
         ]
-        if self.__is_cooperative_sticky:
-            self.__consumer.incremental_assign(partitions)
-        else:
+        if not self.__is_kip848:
             self.__consumer.assign(partitions)
         self.__offsets.update(offsets)
 
@@ -729,7 +752,7 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
     @property
     def member_id(self) -> str:
-        member_id: str = self.__consumer.memberid()
+        member_id: str = self.__consumer.memberid() or ""
         return member_id
 
 
@@ -738,7 +761,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         self, configuration: Mapping[str, Any], use_simple_futures: bool = False
     ) -> None:
         self.__configuration = configuration
-        self.__producer = ConfluentKafkaProducer(configuration)
+        self.__producer = ConfluentKafkaProducer(dict(configuration))
         self.__shutdown_requested = Event()
 
         # The worker must execute in a separate thread to ensure that callbacks
@@ -815,7 +838,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         produce(
             value=payload.value,
             key=payload.key,
-            headers=payload.headers,
+            headers=list(payload.headers),
             on_delivery=partial(self.__delivery_callback, future, payload),
         )
         return future
@@ -832,13 +855,13 @@ DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 METRICS_FREQUENCY_SEC = 1.0
 
 
-class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
+class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ignore]
     """
     A thin wrapper for confluent_kafka.Producer that adds metrics reporting.
     """
 
     def __init__(self, configuration: Mapping[str, Any]) -> None:
-        super().__init__(configuration)
+        super().__init__(dict(configuration))
         self.producer_name = configuration.get("client.id") or None
         self.__metrics = get_metrics()
         self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
@@ -873,7 +896,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
         on_delivery = kwargs.pop("on_delivery", None)
         user_callback = callback or on_delivery
         wrapped_callback = self.__delivery_callback(user_callback)
-        super().produce(*args, on_delivery=wrapped_callback, **kwargs)
+        super().produce(*args, **kwargs, on_delivery=wrapped_callback)  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
         for status, count in self.__produce_counters.items():
@@ -887,10 +910,10 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc]
             )
         self.__reset_metrics()
 
-    def flush(self, timeout: float = -1) -> int:
+    def flush(self, timeout: float | None = -1) -> int:
         # Kafka producer flush should flush metrics too
         self.__flush_metrics()
-        return cast(int, super().flush(timeout))
+        return super().flush(timeout)  # type: ignore[arg-type, unused-ignore]
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()

@@ -16,7 +16,7 @@ jobs:
         name: Checkout code
       - uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
         with:
-          python-version: 3.12
+          python-version: 3.13
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -34,7 +34,7 @@ jobs:
         name: Checkout code
       - uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
         with:
-          python-version: 3.12
+          python-version: 3.13
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -48,7 +48,7 @@ jobs:
     strategy:
       max-parallel: 5
       matrix:
-        python: [3.9, "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
