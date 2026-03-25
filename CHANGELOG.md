@@ -1,5 +1,16 @@
 # Changelog and versioning
 
+## 2.38.4
+
+### Internal Changes 🔧
+
+- (deps) Bump black from 24.10.0 to 26.3.1 by @dependabot in [#527](https://github.com/getsentry/arroyo/pull/527)
+- Pin GitHub Actions to full-length commit SHAs by @joshuarli in [#528](https://github.com/getsentry/arroyo/pull/528)
+
+### Other
+
+- remove unused producer latency metrics by @bmckerry in [#529](https://github.com/getsentry/arroyo/pull/529)
+
 ## 2.38.3
 
 ### Bug Fixes 🐛
