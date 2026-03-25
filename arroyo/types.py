@@ -2,9 +2,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Generic, Mapping, Optional, Protocol, TypeVar
+from typing import Any, Generic, Mapping, Optional, Protocol, TypeVar, Union
 
 TReplaced = TypeVar("TReplaced")
+
+
+def _coerce_timestamp(timestamp: Union[datetime, str, None]) -> Optional[datetime]:
+    """
+    Coerce a timestamp value to a datetime object.
+
+    If the value is already a datetime, return it as-is. If it is an
+    ISO8601 string, parse it into a datetime. This prevents downstream
+    consumers (e.g. Snuba) from receiving string timestamps where
+    datetime objects are expected.
+    """
+    if timestamp is None or isinstance(timestamp, datetime):
+        return timestamp
+    if isinstance(timestamp, str):
+        return datetime.fromisoformat(timestamp)
+    raise TypeError(f"Expected datetime or ISO8601 string, got {type(timestamp)}")
 
 
 @dataclass(order=True, unsafe_hash=True)
@@ -133,11 +149,11 @@ class Value(BaseValue[TMessagePayload]):
         self,
         payload: TMessagePayload,
         committable: Mapping[Partition, int],
-        timestamp: Optional[datetime] = None,
+        timestamp: Optional[Union[datetime, str]] = None,
     ) -> None:
         self.__payload = payload
         self.__committable = committable
-        self.__timestamp = timestamp
+        self.__timestamp = _coerce_timestamp(timestamp)
 
     @property
     def payload(self) -> TMessagePayload:
@@ -173,12 +189,12 @@ class BrokerValue(BaseValue[TMessagePayload]):
         payload: TMessagePayload,
         partition: Partition,
         offset: int,
-        timestamp: datetime,
+        timestamp: Union[datetime, str],
     ):
         self.__payload = payload
         self.partition = partition
         self.offset = offset
-        self.timestamp = timestamp
+        self.timestamp = _coerce_timestamp(timestamp)  # type: ignore[assignment]
 
     def replace(self, value: TReplaced) -> BaseValue[TReplaced]:
         return BrokerValue(value, self.partition, self.offset, self.timestamp)

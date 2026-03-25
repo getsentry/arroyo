@@ -1,6 +1,8 @@
 import pickle
 from datetime import datetime
 
+import pytest
+
 from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 
 
@@ -49,3 +51,78 @@ def test_broker_value() -> None:
 
     # Hashable
     _ = {broker_value}
+
+
+def test_broker_value_string_timestamp() -> None:
+    """BrokerValue should coerce ISO8601 string timestamps to datetime objects."""
+    partition = Partition(Topic("topic"), 0)
+    now = datetime(2024, 1, 15, 10, 30, 0)
+    iso_string = now.isoformat()
+
+    broker_value = BrokerValue(
+        b"asdf",
+        partition,
+        5,
+        iso_string,  # type: ignore[arg-type]
+    )
+
+    assert isinstance(broker_value.timestamp, datetime)
+    assert broker_value.timestamp == now
+
+
+def test_value_string_timestamp() -> None:
+    """Value should coerce ISO8601 string timestamps to datetime objects."""
+    partition = Partition(Topic("topic"), 0)
+    now = datetime(2024, 1, 15, 10, 30, 0)
+    iso_string = now.isoformat()
+
+    value = Value(
+        b"asdf",
+        {partition: 1},
+        iso_string,  # type: ignore[arg-type]
+    )
+
+    assert isinstance(value.timestamp, datetime)
+    assert value.timestamp == now
+
+
+def test_message_string_timestamp() -> None:
+    """Message.timestamp should return datetime even when string was passed."""
+    partition = Partition(Topic("topic"), 0)
+    now = datetime(2024, 1, 15, 10, 30, 0)
+    iso_string = now.isoformat()
+
+    message = Message(BrokerValue(b"", partition, 0, iso_string))  # type: ignore[arg-type]
+
+    assert isinstance(message.timestamp, datetime)
+    assert message.timestamp == now
+
+
+def test_timestamp_coercion_with_timezone_offset() -> None:
+    """String timestamps with timezone info should be parsed correctly."""
+    partition = Partition(Topic("topic"), 0)
+
+    broker_value = BrokerValue(
+        b"asdf",
+        partition,
+        5,
+        "2024-01-15T10:30:00+00:00",  # type: ignore[arg-type]
+    )
+
+    assert isinstance(broker_value.timestamp, datetime)
+    assert broker_value.timestamp.year == 2024
+    assert broker_value.timestamp.month == 1
+    assert broker_value.timestamp.day == 15
+
+
+def test_timestamp_coercion_invalid_type() -> None:
+    """Non-string, non-datetime timestamps should raise TypeError."""
+    partition = Partition(Topic("topic"), 0)
+
+    with pytest.raises(TypeError):
+        BrokerValue(
+            b"asdf",
+            partition,
+            5,
+            12345,  # type: ignore[arg-type]
+        )
