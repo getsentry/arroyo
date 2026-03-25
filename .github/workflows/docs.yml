@@ -11,9 +11,9 @@ jobs:
     name: Sphinx
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
         with:
           python-version: '3.13'
 
@@ -21,7 +21,7 @@ jobs:
         run: |
           pip install virtualenv
           make docs
-      - uses: peaceiris/actions-gh-pages@v3.7.3
+      - uses: peaceiris/actions-gh-pages@9ff5650f8afb92c8ab30c4ba4ff4261dd7eeb9c3 # v3.7.3
         if: ${{ (github.ref_name == 'main') }}
         name: Publish to GitHub Pages
         with:
@@ -30,7 +30,7 @@ jobs:
           force_orphan: true
 
       - name: Archive Docs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: docs
           path: docs/build
