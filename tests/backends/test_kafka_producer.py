@@ -46,7 +46,7 @@ def test_producer_stats_callback_no_brokers(mock_get_metrics: mock.Mock) -> None
 
     producer_stats_callback(stats_json, None)
 
-    mock_metrics.timing.assert_not_called()
+    mock_metrics.gauge.assert_not_called()
 
 
 @mock.patch("arroyo.backends.kafka.configuration.get_metrics")
@@ -60,7 +60,7 @@ def test_producer_stats_callback_empty_broker_stats(
 
     producer_stats_callback(stats_json, None)
 
-    mock_metrics.timing.assert_not_called()
+    mock_metrics.gauge.assert_not_called()
 
 
 @mock.patch("arroyo.backends.kafka.configuration.get_metrics")
