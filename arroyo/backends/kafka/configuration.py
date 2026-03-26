@@ -66,7 +66,7 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         int_latency = broker_stats.get("int_latency", {})
         if int_latency:
             p99_latency_ms = int_latency.get("p99", 0) / 1000.0
-            metrics.timing(
+            metrics.gauge(
                 "arroyo.producer.librdkafka.p99_int_latency",
                 p99_latency_ms,
                 tags=broker_tags,
@@ -75,7 +75,7 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         outbuf_latency = broker_stats.get("outbuf_latency", {})
         if outbuf_latency:
             p99_latency_ms = outbuf_latency.get("p99", 0) / 1000.0
-            metrics.timing(
+            metrics.gauge(
                 "arroyo.producer.librdkafka.p99_outbuf_latency",
                 p99_latency_ms,
                 tags=broker_tags,
@@ -84,7 +84,7 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         rtt = broker_stats.get("rtt", {})
         if rtt:
             p99_rtt_ms = rtt.get("p99", 0) / 1000.0
-            metrics.timing(
+            metrics.gauge(
                 "arroyo.producer.librdkafka.p99_rtt",
                 p99_rtt_ms,
                 tags=broker_tags,
