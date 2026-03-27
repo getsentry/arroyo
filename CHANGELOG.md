@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.38.5
+
+### Bug Fixes 🐛
+
+- (confluent) Fix KIP-848 consumer assignment and seek handling by @evanh in [#525](https://github.com/getsentry/arroyo/pull/525)
+- (metrics) Change producer latency p99 to a gauge by @bmckerry in [#530](https://github.com/getsentry/arroyo/pull/530)
+
 ## 2.38.4
 
 ### Internal Changes 🔧
