@@ -7,7 +7,6 @@ use crate::backends::{
 };
 use crate::counter;
 use crate::gauge;
-use crate::timer;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
@@ -16,7 +15,6 @@ use rdkafka::producer::{
     DeliveryResult, FutureProducer, ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
 use rdkafka::Statistics;
-use std::time::Duration;
 
 pub struct ProducerContext {
     producer_name: String,
@@ -42,9 +40,9 @@ impl ClientContext for ProducerContext {
             // Record broker latency metrics
             if let Some(int_latency) = &broker_stats.int_latency {
                 let p99_latency_ms = int_latency.p99 as f64 / 1000.0;
-                timer!(
+                gauge!(
                     "arroyo.producer.librdkafka.p99_int_latency",
-                    Duration::from_millis(p99_latency_ms as u64),
+                    p99_latency_ms as u64,
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
@@ -52,9 +50,9 @@ impl ClientContext for ProducerContext {
 
             if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
                 let p99_latency_ms = outbuf_latency.p99 as f64 / 1000.0;
-                timer!(
+                gauge!(
                     "arroyo.producer.librdkafka.p99_outbuf_latency",
-                    Duration::from_millis(p99_latency_ms as u64),
+                    p99_latency_ms as u64,
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
@@ -62,9 +60,9 @@ impl ClientContext for ProducerContext {
 
             if let Some(rtt) = &broker_stats.rtt {
                 let p99_rtt_ms = rtt.p99 as f64 / 1000.0;
-                timer!(
+                gauge!(
                     "arroyo.producer.librdkafka.p99_rtt",
-                    Duration::from_millis(p99_rtt_ms as u64),
+                    p99_rtt_ms as u64,
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );
