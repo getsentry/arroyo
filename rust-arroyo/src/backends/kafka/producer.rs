@@ -109,35 +109,11 @@ impl ClientContext for ProducerContext {
                 "producer_name" => producer_name
             );
 
-            // Record broker buffer metrics
-            gauge!(
-                "arroyo.producer.librdkafka.broker_outbuf_requests",
-                broker_stats.outbuf_cnt as i64,
-                "broker_id" => broker_id_str.clone(),
-                "producer_name" => producer_name
-            );
-
-            gauge!(
-                "arroyo.producer.librdkafka.broker_outbuf_messages",
-                broker_stats.outbuf_msg_cnt as i64,
-                "broker_id" => broker_id_str.clone(),
-                "producer_name" => producer_name
-            );
-
             // Record broker connection metrics (if available)
             if let Some(connects) = broker_stats.connects {
                 gauge!(
                     "arroyo.producer.librdkafka.broker_connects",
                     connects as i64,
-                    "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
-            }
-
-            if let Some(disconnects) = broker_stats.disconnects {
-                gauge!(
-                    "arroyo.producer.librdkafka.broker_disconnects",
-                    disconnects as i64,
                     "broker_id" => broker_id_str.clone(),
                     "producer_name" => producer_name
                 );

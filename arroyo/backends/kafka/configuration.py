@@ -121,33 +121,11 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
                 tags=broker_tags,
             )
 
-        # Record broker buffer metrics
-        if broker_stats.get("outbuf_cnt"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_outbuf_requests",
-                broker_stats["outbuf_cnt"],
-                tags=broker_tags,
-            )
-
-        if broker_stats.get("outbuf_msg_cnt"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_outbuf_messages",
-                broker_stats["outbuf_msg_cnt"],
-                tags=broker_tags,
-            )
-
         # Record broker connection metrics
         if broker_stats.get("connects"):
             metrics.gauge(
                 "arroyo.producer.librdkafka.broker_connects",
                 broker_stats["connects"],
-                tags=broker_tags,
-            )
-
-        if broker_stats.get("disconnects"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_disconnects",
-                broker_stats["disconnects"],
                 tags=broker_tags,
             )
 
