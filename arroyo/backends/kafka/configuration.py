@@ -159,27 +159,6 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
             tags={"producer_name": producer_name_tag},
         )
 
-    if stats.get("msg_size"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.message_size",
-            stats["msg_size"],
-            tags={"producer_name": producer_name_tag},
-        )
-
-    if stats.get("msg_size_max"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.message_size_max",
-            stats["msg_size_max"],
-            tags={"producer_name": producer_name_tag},
-        )
-
-    if stats.get("txmsgs"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.txmsgs",
-            stats["txmsgs"],
-            tags={"producer_name": producer_name_tag},
-        )
-
 
 def build_kafka_producer_configuration(
     default_config: Mapping[str, Any],
