@@ -109,7 +109,7 @@ impl ClientContext for ProducerContext {
                 "producer_name" => producer_name
             );
 
-            // Record broker connection metrics (if available)
+            // Record broker connection metrics if available
             if let Some(connects) = broker_stats.connects {
                 gauge!(
                     "arroyo.producer.librdkafka.broker_connects",
