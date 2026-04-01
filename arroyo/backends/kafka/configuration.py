@@ -105,33 +105,11 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
                 tags=broker_tags,
             )
 
-        # Record broker buffer metrics
-        if broker_stats.get("outbuf_cnt"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_outbuf_requests",
-                broker_stats["outbuf_cnt"],
-                tags=broker_tags,
-            )
-
-        if broker_stats.get("outbuf_msg_cnt"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_outbuf_messages",
-                broker_stats["outbuf_msg_cnt"],
-                tags=broker_tags,
-            )
-
         # Record broker connection metrics
         if broker_stats.get("connects"):
             metrics.gauge(
                 "arroyo.producer.librdkafka.broker_connects",
                 broker_stats["connects"],
-                tags=broker_tags,
-            )
-
-        if broker_stats.get("disconnects"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_disconnects",
-                broker_stats["disconnects"],
                 tags=broker_tags,
             )
 
@@ -162,27 +140,6 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         metrics.gauge(
             "arroyo.producer.librdkafka.message_count_max",
             stats["msg_max"],
-            tags={"producer_name": producer_name_tag},
-        )
-
-    if stats.get("msg_size"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.message_size",
-            stats["msg_size"],
-            tags={"producer_name": producer_name_tag},
-        )
-
-    if stats.get("msg_size_max"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.message_size_max",
-            stats["msg_size_max"],
-            tags={"producer_name": producer_name_tag},
-        )
-
-    if stats.get("txmsgs"):
-        metrics.gauge(
-            "arroyo.producer.librdkafka.txmsgs",
-            stats["txmsgs"],
             tags={"producer_name": producer_name_tag},
         )
 

@@ -181,12 +181,6 @@ impl<C: AssignmentCallbacks + Send + Sync> ClientContext for CustomContext<C> {
                     "topic" => topic_name,
                     "partition" => partition_num.to_string()
                 );
-                gauge!(
-                    "arroyo.consumer.librdkafka.fetch_queue_size",
-                    partition.fetchq_size as u64,
-                    "topic" => topic_name,
-                    "partition" => partition_num.to_string()
-                );
             }
         }
     }
