@@ -128,15 +128,6 @@ MetricName = Literal[
     # Gauge: Maximum producer message count from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count_max",
-    # Gauge: Total number of transmission requests from librdkafka statistics
-    # Tagged by broker_id, producer_name
-    "arroyo.producer.librdkafka.broker_tx",
-    # Gauge: Total number of bytes transmitted from librdkafka statistics
-    # Tagged by broker_id, producer_name
-    "arroyo.producer.librdkafka.broker_txbytes",
-    # Gauge: Number of connection attempts to broker from librdkafka statistics
-    # Tagged by broker_id, producer_name
-    "arroyo.producer.librdkafka.broker_connects",
     # Gauge: Total number of transmission errors from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_txerrs",

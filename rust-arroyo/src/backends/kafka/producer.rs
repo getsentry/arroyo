@@ -68,31 +68,6 @@ impl ClientContext for ProducerContext {
                 );
             }
 
-            // Record broker transmission metrics
-            gauge!(
-                "arroyo.producer.librdkafka.broker_tx",
-                broker_stats.tx as i64,
-                "broker_id" => broker_id_str.clone(),
-                "producer_name" => producer_name
-            );
-
-            gauge!(
-                "arroyo.producer.librdkafka.broker_txbytes",
-                broker_stats.txbytes as i64,
-                "broker_id" => broker_id_str.clone(),
-                "producer_name" => producer_name
-            );
-
-            // Record broker connection metrics (if available)
-            if let Some(connects) = broker_stats.connects {
-                gauge!(
-                    "arroyo.producer.librdkafka.broker_connects",
-                    connects as i64,
-                    "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
-            }
-
             // Record broker transmission error metrics
             gauge!(
                 "arroyo.producer.librdkafka.broker_txerrs",

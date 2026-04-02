@@ -90,29 +90,6 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
                 tags=broker_tags,
             )
 
-        # Record broker transmission metrics
-        if broker_stats.get("tx"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_tx",
-                broker_stats["tx"],
-                tags=broker_tags,
-            )
-
-        if broker_stats.get("txbytes"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_txbytes",
-                broker_stats["txbytes"],
-                tags=broker_tags,
-            )
-
-        # Record broker connection metrics
-        if broker_stats.get("connects"):
-            metrics.gauge(
-                "arroyo.producer.librdkafka.broker_connects",
-                broker_stats["connects"],
-                tags=broker_tags,
-            )
-
         # Record broker transmission error metrics
         if broker_stats.get("txerrs"):
             metrics.gauge(
