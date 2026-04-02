@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.38.6
+
+### Internal Changes 🔧
+
+- (metrics) Remove Unused `librdkafka` Metrics by @george-sentry in [#531](https://github.com/getsentry/arroyo/pull/531)
+
 ## 2.38.5
 
 ### Bug Fixes 🐛
