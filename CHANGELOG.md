@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.38.7
+
+### Internal Changes 🔧
+
+- (metrics) Remove unused producer broker metrics by @bmckerry in [#532](https://github.com/getsentry/arroyo/pull/532)
+
 ## 2.38.6
 
 ### Internal Changes 🔧
