@@ -31,7 +31,7 @@ class Produce(ProcessingStrategy[Union[FilteredPayload, TStrategyPayload]]):
     stream processor to slow down.
 
     On poll we check for completion of the produced messages. If the message has been successfully
-    produced then the message is submitted to the next step. If an error occured the exception will
+    produced then the message is submitted to the next step. If an error occurred the exception will
     be raised.
 
     Important: The destination topic is always the `topic` passed into the constructor and not the
