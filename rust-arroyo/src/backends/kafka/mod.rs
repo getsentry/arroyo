@@ -81,6 +81,15 @@ impl KafkaConsumerState {
     }
 }
 
+/// Treat `RD_KAFKA_RESP_ERR__TRANSPORT` errors from `librdkafka` like an empty poll the same way Python treats `KafkaError._TRANSPORT`.
+fn kafka_poll_error_is_recoverable_transport(err: &KafkaError) -> bool {
+    matches!(
+        err,
+        KafkaError::MessageConsumption(RDKafkaErrorCode::BrokerTransportFailure)
+            | KafkaError::Global(RDKafkaErrorCode::BrokerTransportFailure)
+    )
+}
+
 fn create_kafka_message(topics: &[Topic], msg: BorrowedMessage) -> BrokerMessage<KafkaPayload> {
     let topic = msg.topic();
     // NOTE: We avoid calling `Topic::new` here, as that uses a lock to intern the `topic` name.
@@ -387,8 +396,17 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
 
         match res {
             None => Ok(None),
-            Some(res) => {
-                let msg = create_kafka_message(&self.topics, res?);
+
+            Some(Err(err)) if kafka_poll_error_is_recoverable_transport(&err) => {
+                let error: &dyn std::error::Error = &err;
+                tracing::warn!(error, "kafka poll transport error, retrying");
+                Ok(None)
+            }
+
+            Some(Err(err)) => Err(err.into()),
+
+            Some(Ok(msg)) => {
+                let msg = create_kafka_message(&self.topics, msg);
                 self.offset_state
                     .lock()
                     .offsets
