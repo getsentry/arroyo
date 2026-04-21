@@ -48,7 +48,6 @@ class RunTask(
         self.__next_step = next_step
         self.__better_backpressure = better_backpressure
         self.__message_carried_over: Optional[Message[TResult]] = None
-        self.__closed = False
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
@@ -102,7 +101,6 @@ class RunTask(
             self.__next_step.join(timeout=timeout)
 
     def close(self) -> None:
-        self.__closed = True
         if not self.__better_backpressure:
             self.__next_step.close()
 
