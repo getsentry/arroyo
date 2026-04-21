@@ -48,6 +48,7 @@ class RunTask(
         self.__next_step = next_step
         self.__better_backpressure = better_backpressure
         self.__message_carried_over: Optional[Message[TResult]] = None
+        self.__closed = False
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
@@ -80,24 +81,30 @@ class RunTask(
                 pass
 
     def join(self, timeout: Optional[float] = None) -> None:
-        msg = self.__message_carried_over
-        if self.__better_backpressure and msg is not None:
-            deadline = time.time() + timeout if timeout is not None else None
-            while deadline is None or time.time() < deadline:
-                self.__next_step.poll()
-                try:
-                    self.__next_step.submit(msg)
-                    self.__message_carried_over = None
-                    break
-                except MessageRejected:
-                    pass
+        deadline = time.time() + timeout if timeout is not None else None
+
+        if self.__better_backpressure:
+            msg = self.__message_carried_over
+            if msg is not None:
+                while deadline is None or time.time() < deadline:
+                    self.__next_step.poll()
+                    try:
+                        self.__next_step.submit(msg)
+                        self.__message_carried_over = None
+                        break
+                    except MessageRejected:
+                        pass
+
             remaining = max(deadline - time.time(), 0) if deadline is not None else None
+            self.__next_step.close()
             self.__next_step.join(timeout=remaining)
         else:
             self.__next_step.join(timeout=timeout)
 
     def close(self) -> None:
-        self.__next_step.close()
+        self.__closed = True
+        if not self.__better_backpressure:
+            self.__next_step.close()
 
     def terminate(self) -> None:
         self.__next_step.terminate()
