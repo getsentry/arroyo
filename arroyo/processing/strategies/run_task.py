@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Callable, Generic, Optional, TypeVar, Union, cast
 
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
@@ -79,7 +80,21 @@ class RunTask(
                 pass
 
     def join(self, timeout: Optional[float] = None) -> None:
-        self.__next_step.join(timeout=timeout)
+        msg = self.__message_carried_over
+        if self.__better_backpressure and msg is not None:
+            deadline = time.time() + timeout if timeout is not None else None
+            while deadline is None or time.time() < deadline:
+                self.__next_step.poll()
+                try:
+                    self.__next_step.submit(msg)
+                    self.__message_carried_over = None
+                    break
+                except MessageRejected:
+                    pass
+            remaining = max(deadline - time.time(), 0) if deadline is not None else None
+            self.__next_step.join(timeout=remaining)
+        else:
+            self.__next_step.join(timeout=timeout)
 
     def close(self) -> None:
         self.__next_step.close()
