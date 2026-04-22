@@ -1,5 +1,19 @@
 # Changelog and versioning
 
+## 2.39.0
+
+### New Features ✨
+
+- (run_task) Add better_backpressure flag to avoid re-running function by @untitaker in [#536](https://github.com/getsentry/arroyo/pull/536)
+
+### Bug Fixes 🐛
+
+- Correct typo "occured" to "occurred" by @harshadkhetpal in [#533](https://github.com/getsentry/arroyo/pull/533)
+
+### Internal Changes 🔧
+
+- (deps) Bump pytest from 8.4.1 to 9.0.3 by @dependabot in [#534](https://github.com/getsentry/arroyo/pull/534)
+
 ## 2.38.7
 
 ### Internal Changes 🔧
