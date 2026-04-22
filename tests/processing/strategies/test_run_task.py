@@ -2,17 +2,21 @@ import time
 from datetime import datetime
 from unittest.mock import Mock, call
 
+import pytest
+
+from arroyo.processing.strategies.abstract import MessageRejected
 from arroyo.processing.strategies.run_task import RunTask
 from arroyo.types import BrokerValue, Message, Partition, Topic, Value
 from tests.assertions import assert_changes
 
 
-def test_run_task() -> None:
+@pytest.mark.parametrize("better_backpressure", [False, True])
+def test_run_task(better_backpressure: bool) -> None:
     mock_func = Mock()
     next_step = Mock()
     now = datetime.now()
 
-    strategy = RunTask(mock_func, next_step)
+    strategy = RunTask(mock_func, next_step, better_backpressure=better_backpressure)
     partition = Partition(Topic("topic"), 0)
 
     strategy.submit(Message(Value(b"hello", {partition: 1}, now)))
@@ -42,14 +46,17 @@ def test_run_task() -> None:
     assert next_step.submit.call_count == 2
 
 
-def test_transform() -> None:
+@pytest.mark.parametrize("better_backpressure", [False, True])
+def test_transform(better_backpressure: bool) -> None:
     next_step = Mock()
     now = datetime.now()
 
     def transform_function(value: Message[int]) -> int:
         return value.payload * 2
 
-    transform_step = RunTask(transform_function, next_step)
+    transform_step = RunTask(
+        transform_function, next_step, better_backpressure=better_backpressure
+    )
 
     original_message = Message(Value(1, {Partition(Topic("topic"), 0): 1}, now))
 
@@ -95,3 +102,63 @@ def test_transform() -> None:
             )
         )
     )
+
+
+def test_backpressure_function_called_once() -> None:
+    """
+    With better_backpressure=True, the function should only be called once
+    per message even when next_step raises MessageRejected.
+    """
+    call_count = 0
+
+    def counting_function(msg: Message[bytes]) -> bytes:
+        nonlocal call_count
+        call_count += 1
+        return msg.payload
+
+    next_step = Mock()
+    # First call rejects, second accepts
+    next_step.submit.side_effect = [MessageRejected(Mock()), None]
+
+    strategy = RunTask(counting_function, next_step, better_backpressure=True)
+    partition = Partition(Topic("topic"), 0)
+    now = datetime.now()
+
+    msg = Message(Value(b"hello", {partition: 1}, now))
+    strategy.submit(msg)
+
+    assert call_count == 1
+
+    # poll() should retry and succeed
+    strategy.poll()
+
+    assert call_count == 1
+    assert next_step.submit.call_count == 2
+
+
+def test_backpressure_join_flushes_message() -> None:
+    """
+    With better_backpressure=True, join() should flush carried-over messages.
+    """
+
+    def identity(msg: Message[bytes]) -> bytes:
+        return msg.payload
+
+    next_step = Mock()
+    # First submit rejects, then accepts during join
+    next_step.submit.side_effect = [MessageRejected(Mock()), None]
+
+    strategy = RunTask(identity, next_step, better_backpressure=True)
+    partition = Partition(Topic("topic"), 0)
+    now = datetime.now()
+
+    msg = Message(Value(b"hello", {partition: 1}, now))
+    strategy.submit(msg)
+
+    assert next_step.submit.call_count == 1
+
+    # join() should flush the carried-over message
+    strategy.join(timeout=1.0)
+
+    assert next_step.submit.call_count == 2
+    assert next_step.join.call_count == 1
