@@ -81,8 +81,8 @@ impl KafkaConsumerState {
     }
 }
 
-/// Treat `RD_KAFKA_RESP_ERR__TRANSPORT` errors from `librdkafka` like an empty poll the same way Python treats `KafkaError._TRANSPORT`.
-fn kafka_poll_error_is_recoverable_transport(err: &KafkaError) -> bool {
+/// Treat recoverable `librdkafka` errors as an empty poll the same way Python treats `KafkaError._TRANSPORT`.
+fn kafka_error_is_recoverable(err: &KafkaError) -> bool {
     matches!(
         err,
         KafkaError::MessageConsumption(RDKafkaErrorCode::BrokerTransportFailure)
@@ -397,9 +397,9 @@ impl<C: AssignmentCallbacks> ArroyoConsumer<KafkaPayload, C> for KafkaConsumer<C
         match res {
             None => Ok(None),
 
-            Some(Err(err)) if kafka_poll_error_is_recoverable_transport(&err) => {
+            Some(Err(err)) if kafka_error_is_recoverable(&err) => {
                 let error: &dyn std::error::Error = &err;
-                tracing::warn!(error, "kafka poll transport error, retrying");
+                tracing::warn!(error, "Kafka poll transport error, retrying...");
                 Ok(None)
             }
 
