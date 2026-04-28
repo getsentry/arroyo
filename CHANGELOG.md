@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.39.1
+
+### Bug Fixes 🐛
+
+- (consumer) Don't Crash Rust Consumer on Transport Error by @george-sentry in [#535](https://github.com/getsentry/arroyo/pull/535)
+
 ## 2.39.0
 
 ### New Features ✨
