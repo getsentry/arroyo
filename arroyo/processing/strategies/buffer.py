@@ -1,14 +1,6 @@
 import time
 from datetime import datetime
-from typing import (
-    Generic,
-    MutableMapping,
-    Optional,
-    TypeVar,
-    Union,
-    cast,
-    Protocol,
-)
+from typing import Generic, MutableMapping, Optional, Protocol, TypeVar, Union, cast
 
 from arroyo.processing.strategies import MessageRejected, ProcessingStrategy
 from arroyo.types import BaseValue, FilteredPayload, Message, Partition, Value
@@ -187,6 +179,7 @@ class Buffer(
                 self.__flush(force=True)
                 break
             except MessageRejected:
+                self.__metrics.increment("arroyo.strategies.buffer.join.backpressure")
                 pass
 
         self.__next_step.close()

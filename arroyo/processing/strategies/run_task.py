@@ -6,6 +6,7 @@ from typing import Callable, Generic, Optional, TypeVar, Union, cast
 from arroyo.processing.strategies.abstract import MessageRejected, ProcessingStrategy
 from arroyo.processing.strategies.guard import StrategyGuard
 from arroyo.types import FilteredPayload, Message, TStrategyPayload
+from arroyo.utils.metrics import get_metrics
 
 TResult = TypeVar("TResult")
 
@@ -48,6 +49,7 @@ class RunTask(
         self.__next_step = next_step
         self.__better_backpressure = better_backpressure
         self.__message_carried_over: Optional[Message[TResult]] = None
+        self.__metrics = get_metrics()
 
     def submit(
         self, message: Message[Union[FilteredPayload, TStrategyPayload]]
@@ -92,6 +94,9 @@ class RunTask(
                         self.__message_carried_over = None
                         break
                     except MessageRejected:
+                        self.__metrics.increment(
+                            "arroyo.strategies.run_task.join.backpressure"
+                        )
                         pass
 
             remaining = max(deadline - time.time(), 0) if deadline is not None else None
