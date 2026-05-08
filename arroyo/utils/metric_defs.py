@@ -134,4 +134,10 @@ MetricName = Literal[
     # Gauge: Total number of request retries from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_txretries",
+    # Counter: Incremented when backpressure is hit during join() in the
+    # RunTask strategy (better_backpressure mode).
+    "arroyo.strategies.run_task.join.backpressure",
+    # Counter: Incremented when backpressure is hit during join() in the
+    # Buffer strategy.
+    "arroyo.strategies.buffer.join.backpressure",
 ]
