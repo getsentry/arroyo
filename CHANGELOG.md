@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.39.2
+
+### New Features ✨
+
+- Add backpressure metrics to Buffer and RunTask join() by @untitaker in [#537](https://github.com/getsentry/arroyo/pull/537)
+
+### Bug Fixes 🐛
+
+- Retry on Transient Commit Errors in Rust by @george-sentry in [#538](https://github.com/getsentry/arroyo/pull/538)
+
 ## 2.39.1
 
 ### Bug Fixes 🐛
