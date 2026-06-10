@@ -12,7 +12,9 @@ use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::kafka::KafkaConsumer;
 use crate::backends::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError};
 use crate::processing::dlq::{DlqPolicy, DlqPolicyWrapper};
-use crate::processing::strategies::{MessageRejected, StrategyError, SubmitError};
+use crate::processing::strategies::{
+    InvalidMessageReason, MessageRejected, StrategyError, SubmitError,
+};
 use crate::types::{InnerMessage, Message, Partition, Topic};
 use crate::utils::timing::Deadline;
 use crate::{counter, timer};
@@ -323,15 +325,22 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
-                            tracing::error!(?e, "Invalid message");
-                            consumer_state.dlq_policy.produce(msg);
+                            match e.reason {
+                                InvalidMessageReason::Invalid => {
+                                    tracing::error!(?e, "Invalid message");
+                                }
+                                InvalidMessageReason::Ignored => {
+                                    tracing::debug!(?e, "Ignored message");
+                                }
+                            };
+                            consumer_state.dlq_policy.produce(msg, e.reason);
                         }
                         None => {
-                            tracing::error!("Could not find invalid message in buffer");
+                            tracing::error!(?e, "Could not find message in DLQ buffer");
                         }
                     }
                 } else {
-                    tracing::error!(?e, "Invalid message, but no DLQ policy configured");
+                    tracing::error!(?e, "No DLQ policy configured");
                 }
             }
 
@@ -414,15 +423,22 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
 
                     match message {
                         Some(msg) => {
-                            tracing::error!(?e, "Invalid message");
-                            consumer_state.dlq_policy.produce(msg);
+                            match e.reason {
+                                InvalidMessageReason::Invalid => {
+                                    tracing::error!(?e, "Invalid message");
+                                }
+                                InvalidMessageReason::Ignored => {
+                                    tracing::debug!(?e, "Ignored message");
+                                }
+                            };
+                            consumer_state.dlq_policy.produce(msg, e.reason);
                         }
                         None => {
-                            tracing::error!("Could not find invalid message in buffer");
+                            tracing::error!(?e, "Could not find message in DLQ buffer");
                         }
                     }
                 } else {
-                    tracing::error!(?e, "Invalid message, but no DLQ policy configured");
+                    tracing::error!(?e, "No DLQ policy configured");
                 }
             }
         }
