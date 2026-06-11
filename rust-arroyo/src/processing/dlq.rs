@@ -13,6 +13,7 @@ use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
 use crate::counter;
 use crate::gauge;
+use crate::processing::strategies::InvalidMessageReason;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
 // This is a per-partition max
@@ -323,7 +324,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
 
     // Removes all completed futures, then appends a future with message to be produced
     // to the queue. Blocks if there are too many pending futures until some are done.
-    pub fn produce(&mut self, message: BrokerMessage<TPayload>) {
+    pub fn produce(&mut self, message: BrokerMessage<TPayload>, reason: InvalidMessageReason) {
         let Some(inner) = self.inner.as_mut() else {
             tracing::info!("dlq policy missing, dropping message");
             return;
@@ -345,7 +346,14 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
         }
 
         if inner.dlq_limit_state.record_invalid_message(&message) {
-            tracing::info!("producing message to dlq");
+            match reason {
+                InvalidMessageReason::Ignored => {
+                    tracing::debug!("producing ignored message to dlq");
+                }
+                InvalidMessageReason::Invalid => {
+                    tracing::info!("producing invalid message to dlq");
+                }
+            }
             let (partition, offset) = (message.partition, message.offset);
 
             let task = inner.dlq_policy.producer.produce(message);
@@ -630,12 +638,15 @@ mod tests {
         wrapper.reset_dlq_limits(&HashMap::from([(partition, 0)]));
 
         for i in 0..10 {
-            wrapper.produce(BrokerMessage {
-                partition,
-                offset: i,
-                payload: i,
-                timestamp: Utc::now(),
-            });
+            wrapper.produce(
+                BrokerMessage {
+                    partition,
+                    offset: i,
+                    payload: i,
+                    timestamp: Utc::now(),
+                },
+                InvalidMessageReason::Invalid,
+            );
         }
 
         wrapper.flush(&HashMap::from([(partition, 11)]));
@@ -667,12 +678,15 @@ mod tests {
         wrapper.reset_dlq_limits(&HashMap::from([(partition, 0)]));
 
         for i in 0..10 {
-            wrapper.produce(BrokerMessage {
-                partition,
-                offset: i,
-                payload: i,
-                timestamp: Utc::now(),
-            });
+            wrapper.produce(
+                BrokerMessage {
+                    partition,
+                    offset: i,
+                    payload: i,
+                    timestamp: Utc::now(),
+                },
+                InvalidMessageReason::Invalid,
+            );
         }
 
         wrapper.flush(&HashMap::from([(partition, 11)]));

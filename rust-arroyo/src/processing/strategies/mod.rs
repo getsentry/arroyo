@@ -31,6 +31,13 @@ pub struct MessageRejected<T> {
 pub struct InvalidMessage {
     pub partition: Partition,
     pub offset: u64,
+    pub reason: InvalidMessageReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidMessageReason {
+    Invalid,
+    Ignored,
 }
 
 impl<TPayload> From<&BrokerMessage<TPayload>> for InvalidMessage {
@@ -38,6 +45,7 @@ impl<TPayload> From<&BrokerMessage<TPayload>> for InvalidMessage {
         Self {
             partition: value.partition,
             offset: value.offset,
+            reason: InvalidMessageReason::Invalid,
         }
     }
 }
