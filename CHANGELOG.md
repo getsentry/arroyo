@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.40.0
+
+### New Features ✨
+
+- Add reason to InvalidMessage by @lcian in [#540](https://github.com/getsentry/arroyo/pull/540)
+
+### Internal Changes 🔧
+
+- (metrics) Remove too_many_handles metric by @MeredithAnya in [#539](https://github.com/getsentry/arroyo/pull/539)
+
 ## 2.39.2
 
 ### New Features ✨
