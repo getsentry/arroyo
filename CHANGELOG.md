@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.40.1
+
+### New Features ✨
+
+- (producer) Add metrics for librdkafka reply queue size by @bmckerry in [#541](https://github.com/getsentry/arroyo/pull/541)
+
 ## 2.40.0
 
 ### New Features ✨
