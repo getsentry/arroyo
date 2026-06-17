@@ -120,6 +120,13 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
             tags={"producer_name": producer_name_tag},
         )
 
+    if stats.get("replyq") is not None:
+        metrics.gauge(
+            "arroyo.producer.librdkafka.reply_queue_size",
+            stats["replyq"],
+            tags={"producer_name": producer_name_tag},
+        )
+
 
 def build_kafka_producer_configuration(
     default_config: Mapping[str, Any],
