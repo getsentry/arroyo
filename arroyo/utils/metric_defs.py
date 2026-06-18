@@ -125,6 +125,9 @@ MetricName = Literal[
     # Gauge: Producer message count metric from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count",
+    # Time: Latency between when a message is produced, and when its delivery callback is called
+    # Tagged by producer_name
+    "arroyo.producer.callback_latency",
     # Gauge: Maximum producer message count from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count_max",
