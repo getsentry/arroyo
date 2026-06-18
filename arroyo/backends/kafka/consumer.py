@@ -767,6 +767,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         self.producer_name = configuration.get("client.id") or None
         self.__metrics = get_metrics()
         self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__callback_latency: list[float] = []
         self.__reset_metrics()
 
         # The worker must execute in a separate thread to ensure that callbacks
@@ -795,8 +796,10 @@ class KafkaProducer(Producer[KafkaPayload]):
         payload: KafkaPayload,
         error: KafkaError,
         message: ConfluentMessage,
+        time_of_produce: float,
     ) -> None:
         self.__produce_counters["error" if error is not None else "success"] += 1
+        self.__callback_latency.append(time.time() - time_of_produce)
         self.__throttled_record()
 
         if error is not None:
@@ -844,11 +847,17 @@ class KafkaProducer(Producer[KafkaPayload]):
             future = Future()
             future.set_running_or_notify_cancel()
 
+        time_of_produce = time.time()
         produce(
             value=payload.value,
             key=payload.key,
             headers=list(payload.headers),
-            on_delivery=partial(self.__delivery_callback, future, payload),
+            on_delivery=partial(
+                self.__delivery_callback,
+                future,
+                payload,
+                time_of_produce=time_of_produce,
+            ),
         )
         return future
 
@@ -866,10 +875,19 @@ class KafkaProducer(Producer[KafkaPayload]):
                 value=count,
                 tags=tags,
             )
+        for latency in self.__callback_latency:
+            self.__metrics.timing(
+                name="arroyo.producer.callback_latency",
+                value=latency,
+                tags={
+                    "producer_name": self.producer_name if self.producer_name else "N/A"
+                },
+            )
         self.__reset_metrics()
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()
+        self.__callback_latency.clear()
         self.__last_record_time = time.time()
 
     def __throttled_record(self) -> None:
@@ -894,37 +912,46 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
         self.producer_name = configuration.get("client.id") or None
         self.__metrics = get_metrics()
         self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__callback_latency: list[float] = []
         self.__reset_metrics()
 
     def __metrics_delivery_callback(
         self,
         error: Optional[KafkaError],
         _message: ConfluentMessage,
+        time_of_produce: float,
     ) -> None:
         if error is not None:
             status = "error"
         else:
             status = "success"
         self.__produce_counters[status] += 1
+        self.__callback_latency.append(time.time() - time_of_produce)
         self.__throttled_record()
 
     def __delivery_callback(
         self,
         user_callback: Optional[DeliveryCallback],
+        time_of_produce: float,
     ) -> DeliveryCallback:
-        def wrapped(error: Optional[KafkaError], message: ConfluentMessage) -> None:
-            self.__metrics_delivery_callback(error, message)
+        def wrapped(
+            error: Optional[KafkaError],
+            message: ConfluentMessage,
+            time_of_produce: float,
+        ) -> None:
+            self.__metrics_delivery_callback(error, message, time_of_produce)
             if user_callback is not None:
                 user_callback(error, message)
 
-        return wrapped
+        return partial(wrapped, time_of_produce=time_of_produce)
 
     def produce(self, *args: Any, **kwargs: Any) -> None:
         # callback and on_delivery are aliases, callback takes precedence over on_delivery
         callback = kwargs.pop("callback", None)
         on_delivery = kwargs.pop("on_delivery", None)
         user_callback = callback or on_delivery
-        wrapped_callback = self.__delivery_callback(user_callback)
+        time_of_produce = time.time()
+        wrapped_callback = self.__delivery_callback(user_callback, time_of_produce)
         super().produce(*args, **kwargs, on_delivery=wrapped_callback)  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
@@ -937,6 +964,14 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
                 value=count,
                 tags=tags,
             )
+        for latency in self.__callback_latency:
+            self.__metrics.timing(
+                name="arroyo.producer.callback_latency",
+                value=latency,
+                tags={
+                    "producer_name": self.producer_name if self.producer_name else "N/A"
+                },
+            )
         self.__reset_metrics()
 
     def flush(self, timeout: float | None = -1) -> int:
@@ -946,6 +981,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()
+        self.__callback_latency.clear()
         self.__last_record_time = time.time()
 
     def __throttled_record(self) -> None:

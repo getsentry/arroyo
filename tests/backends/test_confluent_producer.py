@@ -6,7 +6,7 @@ from confluent_kafka import Message as ConfluentMessage
 from confluent_kafka import Producer as ConfluentKafkaProducer
 
 from arroyo.backends.kafka.consumer import ConfluentProducer
-from tests.metrics import Increment, TestingMetricsBackend
+from tests.metrics import Increment, TestingMetricsBackend, Timing
 
 
 class TestConfluentProducer:
@@ -48,6 +48,31 @@ class TestConfluentProducer:
         producer.flush()  # Flush buffered metrics
         assert (
             Increment("arroyo.producer.produce_status", 1, {"status": "error"})
+            in TestingMetricsBackend.calls
+        )
+
+    @mock.patch("arroyo.backends.kafka.consumer.time.time")
+    def test_metrics_callback_records_callback_latency(
+        self, mock_time: mock.Mock
+    ) -> None:
+        """Test that the metrics callback records a callback_latency timing metric"""
+        mock_time.return_value = 1000.5
+
+        producer = ConfluentProducer(
+            {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
+        )
+        mock_message = mock.Mock(spec=ConfluentMessage)
+        producer._ConfluentProducer__metrics_delivery_callback(  # type: ignore[attr-defined]
+            None, mock_message, time_of_produce=1000.0
+        )
+        producer.flush()
+
+        assert (
+            Timing(
+                "arroyo.producer.callback_latency",
+                0.5,
+                {"producer_name": "test-producer-name"},
+            )
             in TestingMetricsBackend.calls
         )
 

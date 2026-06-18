@@ -8,7 +8,7 @@ from confluent_kafka import Message as ConfluentMessage
 from arroyo.backends.kafka.configuration import producer_stats_callback
 from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
 from arroyo.types import BrokerValue
-from tests.metrics import Increment, TestingMetricsBackend
+from tests.metrics import Increment, TestingMetricsBackend, Timing
 
 
 @mock.patch("arroyo.backends.kafka.configuration.get_metrics")
@@ -157,5 +157,38 @@ class TestKafkaProducerMetrics:
         assert future.exception() is not None
         assert (
             Increment("arroyo.producer.produce_status", 1, {"status": "error"})
+            in TestingMetricsBackend.calls
+        )
+
+    @mock.patch("arroyo.backends.kafka.consumer.time.time")
+    def test_delivery_callback_records_callback_latency(
+        self, mock_time: mock.Mock
+    ) -> None:
+        """The delivery callback records a callback_latency timing metric"""
+        mock_time.return_value = 1000.5
+
+        producer = KafkaProducer(
+            {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
+        )
+        payload = KafkaPayload(None, b"value", [])
+        future: Future[BrokerValue[KafkaPayload]] = Future()
+
+        mock_message = mock.Mock(spec=ConfluentMessage)
+        mock_message.timestamp.return_value = (TIMESTAMP_CREATE_TIME, 1234567890000)
+        mock_message.topic.return_value = "test-topic"
+        mock_message.partition.return_value = 0
+        mock_message.offset.return_value = 0
+
+        producer._KafkaProducer__delivery_callback(  # type: ignore[attr-defined]
+            future, payload, None, mock_message, time_of_produce=1000.0
+        )
+        producer._KafkaProducer__flush_metrics()  # type: ignore[attr-defined]
+
+        assert (
+            Timing(
+                "arroyo.producer.callback_latency",
+                0.5,
+                {"producer_name": "test-producer-name"},
+            )
             in TestingMetricsBackend.calls
         )
