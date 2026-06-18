@@ -761,7 +761,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         self, configuration: Mapping[str, Any], use_simple_futures: bool = False
     ) -> None:
         self.__configuration = configuration
-        self.__producer = ConfluentKafkaProducer(dict(configuration))
+        self.__producer = ConfluentProducer(dict(configuration))
         self.__shutdown_requested = Event()
 
         # The worker must execute in a separate thread to ensure that callbacks

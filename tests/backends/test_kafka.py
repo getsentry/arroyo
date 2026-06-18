@@ -270,7 +270,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                     except EndOfPartition:
                         pass
 
-                    if processor._StreamProcessor__is_paused:  # type:ignore
+                    if processor._StreamProcessor__is_paused:  # type: ignore
                         return
                 raise RuntimeError("processor was not paused")
 
@@ -284,7 +284,7 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
             # consumer A has all partitions paused (both from consumer and from
             # StreamProcessor POV)
             assert consumer_a.paused()
-            assert processor_a._StreamProcessor__is_paused is True  # type:ignore
+            assert processor_a._StreamProcessor__is_paused is True  # type: ignore
 
             # subscribe with another consumer, now we should have rebalancing in the next few polls
             processor_b = StreamProcessor(consumer_b, topic, factory, IMMEDIATE)
