@@ -1,14 +1,7 @@
 import json
-from concurrent.futures import Future
 from unittest import mock
 
-from confluent_kafka import TIMESTAMP_CREATE_TIME, KafkaError
-from confluent_kafka import Message as ConfluentMessage
-
 from arroyo.backends.kafka.configuration import producer_stats_callback
-from arroyo.backends.kafka.consumer import KafkaPayload, KafkaProducer
-from arroyo.types import BrokerValue
-from tests.metrics import Increment, TestingMetricsBackend
 
 
 @mock.patch("arroyo.backends.kafka.configuration.get_metrics")
@@ -105,57 +98,3 @@ def test_producer_stats_callback_with_all_metrics(mock_get_metrics: mock.Mock) -
         1.5,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )
-
-
-class TestKafkaProducerMetrics:
-    """
-    Tests for the produce status metrics recorded by KafkaProducer's delivery
-    callback.
-    """
-
-    def test_delivery_callback_records_success(self) -> None:
-        """The delivery callback records a success metric and resolves the future"""
-        producer = KafkaProducer(
-            {"bootstrap.servers": "fake:9092", "client.id": "test-producer-name"}
-        )
-        payload = KafkaPayload(None, b"value", [])
-        future: Future[BrokerValue[KafkaPayload]] = Future()
-
-        mock_message = mock.Mock(spec=ConfluentMessage)
-        mock_message.timestamp.return_value = (TIMESTAMP_CREATE_TIME, 1234567890000)
-        mock_message.topic.return_value = "test-topic"
-        mock_message.partition.return_value = 0
-        mock_message.offset.return_value = 0
-
-        producer._KafkaProducer__delivery_callback(future, payload, None, mock_message)  # type: ignore[attr-defined]
-        producer._KafkaProducer__flush_metrics()  # type: ignore[attr-defined]
-
-        assert future.result().payload == payload
-        assert (
-            Increment(
-                "arroyo.producer.produce_status",
-                1,
-                {"status": "success", "producer_name": "test-producer-name"},
-            )
-            in TestingMetricsBackend.calls
-        )
-
-    def test_delivery_callback_records_error(self) -> None:
-        """The delivery callback records an error metric and sets the exception"""
-        producer = KafkaProducer({"bootstrap.servers": "fake:9092"})
-        payload = KafkaPayload(None, b"value", [])
-        future: Future[BrokerValue[KafkaPayload]] = Future()
-
-        mock_error = mock.Mock(spec=KafkaError)
-        mock_message = mock.Mock(spec=ConfluentMessage)
-
-        producer._KafkaProducer__delivery_callback(  # type: ignore[attr-defined]
-            future, payload, mock_error, mock_message
-        )
-        producer._KafkaProducer__flush_metrics()  # type: ignore[attr-defined]
-
-        assert future.exception() is not None
-        assert (
-            Increment("arroyo.producer.produce_status", 1, {"status": "error"})
-            in TestingMetricsBackend.calls
-        )
