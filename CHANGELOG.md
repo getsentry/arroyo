@@ -1,5 +1,18 @@
 # Changelog and versioning
 
+## 2.40.3
+
+### New Features ✨
+
+#### Producer
+
+- Add metrics for callback execution latency by @bmckerry in [#544](https://github.com/getsentry/arroyo/pull/544)
+- Add produce status metrics to KafkaProducer by @evanh in [#542](https://github.com/getsentry/arroyo/pull/542)
+
+### Bug Fixes 🐛
+
+- (producer) Use the ConfluentProducer wrapper by @bmckerry in [#543](https://github.com/getsentry/arroyo/pull/543)
+
 ## 2.40.1
 
 ### New Features ✨
