@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.40.2
+
+### New Features ✨
+
+- (producer) Add produce status metrics to KafkaProducer by @evanh in [#542](https://github.com/getsentry/arroyo/pull/542)
+
 ## 2.40.1
 
 ### New Features ✨
