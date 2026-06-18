@@ -764,6 +764,11 @@ class KafkaProducer(Producer[KafkaPayload]):
         self.__producer = ConfluentKafkaProducer(dict(configuration))
         self.__shutdown_requested = Event()
 
+        self.producer_name = configuration.get("client.id") or None
+        self.__metrics = get_metrics()
+        self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__reset_metrics()
+
         # The worker must execute in a separate thread to ensure that callbacks
         # are fired -- otherwise trying to produce "synchronously" via
         # ``produce(...).result()`` could result in a deadlock.
@@ -782,6 +787,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         while not self.__shutdown_requested.is_set():
             self.__producer.poll(0.1)
         self.__producer.flush()
+        self.__flush_metrics()
 
     def __delivery_callback(
         self,
@@ -790,6 +796,9 @@ class KafkaProducer(Producer[KafkaPayload]):
         error: KafkaError,
         message: ConfluentMessage,
     ) -> None:
+        self.__produce_counters["error" if error is not None else "success"] += 1
+        self.__throttled_record()
+
         if error is not None:
             future.set_exception(TransportError(error))
         else:
@@ -846,6 +855,26 @@ class KafkaProducer(Producer[KafkaPayload]):
     def close(self) -> Future[None]:
         self.__shutdown_requested.set()
         return self.__result
+
+    def __flush_metrics(self) -> None:
+        for status, count in self.__produce_counters.items():
+            tags = {"status": status}
+            if self.producer_name:
+                tags["producer_name"] = self.producer_name
+            self.__metrics.increment(
+                name="arroyo.producer.produce_status",
+                value=count,
+                tags=tags,
+            )
+        self.__reset_metrics()
+
+    def __reset_metrics(self) -> None:
+        self.__produce_counters.clear()
+        self.__last_record_time = time.time()
+
+    def __throttled_record(self) -> None:
+        if time.time() - self.__last_record_time > METRICS_FREQUENCY_SEC:
+            self.__flush_metrics()
 
 
 # Type alias for the delivery callback function
