@@ -2,6 +2,7 @@ import copy
 import functools
 import json
 import logging
+import os
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from arroyo.utils.logging import pylog_to_syslog_level
@@ -12,6 +13,12 @@ logger = logging.getLogger(__name__)
 KafkaBrokerConfig = Dict[str, Any]
 
 STATS_COLLECTION_FREQ_MS = 1000
+
+# Environment variable used to determine the availability zone the consumer is
+# running in. When set, it is propagated to librdkafka's `client.rack` config so
+# the consumer can advertise its placement to the broker. This is a prerequisite
+# for enabling a rack-aware fetch strategy (fetch-from-follower) later on.
+ZONE_ENV_VAR = "ZONE"
 
 
 DEFAULT_QUEUED_MAX_MESSAGE_KBYTES = 50000
@@ -193,6 +200,13 @@ def build_kafka_consumer_configuration(
         "statistics.interval.ms": STATS_COLLECTION_FREQ_MS,
         "stats_cb": stats_callback,
     }
+
+    # Set the consumer placement from the zone environment variable so that a
+    # rack-aware fetch strategy can be used. An explicit `client.rack` in the
+    # provided config (default or override) always takes precedence.
+    zone = os.environ.get(ZONE_ENV_VAR)
+    if zone and "client.rack" not in broker_config:
+        config_update["client.rack"] = zone
 
     broker_config.update(config_update)
     return broker_config

@@ -1,5 +1,13 @@
 # Changelog and versioning
 
+## Unreleased
+
+### New Features ✨
+
+#### Consumer
+
+- Set the consumer `client.rack` placement from the `ZONE` environment variable, enabling a rack-aware fetch strategy.
+
 ## 2.40.3
 
 ### New Features ✨
