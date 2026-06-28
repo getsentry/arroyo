@@ -18,8 +18,10 @@ from confluent_kafka.admin import (  # type: ignore[attr-defined, unused-ignore]
 from arroyo.backends.kafka import KafkaConsumer, KafkaPayload, KafkaProducer
 from arroyo.backends.kafka.commit import CommitCodec
 from arroyo.backends.kafka.configuration import (
+    ZONE_ENV_VAR,
     KafkaBrokerConfig,
     build_kafka_configuration,
+    build_kafka_consumer_configuration,
 )
 from arroyo.backends.kafka.consumer import as_kafka_configuration_bool
 from arroyo.commit import IMMEDIATE, Commit
@@ -466,3 +468,25 @@ def test_as_kafka_configuration_bool() -> None:
 
     with pytest.raises(TypeError):
         assert as_kafka_configuration_bool(0.0)
+
+
+def test_consumer_configuration_sets_client_rack_from_zone() -> None:
+    with mock.patch.dict(os.environ, {ZONE_ENV_VAR: "us-east-1a"}):
+        config = build_kafka_consumer_configuration({}, group_id="my-group")
+    assert config["client.rack"] == "us-east-1a"
+
+
+def test_consumer_configuration_no_client_rack_without_zone() -> None:
+    with mock.patch.dict(os.environ, {}, clear=True):
+        config = build_kafka_consumer_configuration({}, group_id="my-group")
+    assert "client.rack" not in config
+
+
+def test_consumer_configuration_explicit_client_rack_takes_precedence() -> None:
+    with mock.patch.dict(os.environ, {ZONE_ENV_VAR: "us-east-1a"}):
+        config = build_kafka_consumer_configuration(
+            {},
+            group_id="my-group",
+            override_params={"client.rack": "us-east-1b"},
+        )
+    assert config["client.rack"] == "us-east-1b"
