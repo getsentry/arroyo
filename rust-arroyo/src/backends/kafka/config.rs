@@ -5,6 +5,13 @@ use super::InitialOffset;
 
 const STATS_COLLECTION_FREQ_MS: u32 = 1000;
 
+/// Environment variable used to determine the availability zone the consumer is
+/// running in. When set, it is propagated to librdkafka's `client.rack` config
+/// so the consumer can advertise its placement to the broker. This is a
+/// prerequisite for enabling a rack-aware fetch strategy (fetch-from-follower)
+/// later on.
+const ZONE_ENV_VAR: &str = "ZONE";
+
 #[derive(Debug, Clone)]
 pub struct OffsetResetConfig {
     pub auto_offset_reset: InitialOffset,
@@ -68,6 +75,15 @@ impl KafkaConfig {
                 "session.timeout.ms".to_string(),
                 max_poll_interval_ms.to_string(),
             );
+        }
+
+        // Set the consumer placement from the zone environment variable so that a
+        // rack-aware fetch strategy can be used. This is applied before the override
+        // params so that an explicit `client.rack` always takes precedence.
+        if let Ok(zone) = std::env::var(ZONE_ENV_VAR) {
+            if !zone.is_empty() {
+                config.config_map.insert("client.rack".to_string(), zone);
+            }
         }
 
         apply_override_params(config, override_params)
@@ -156,5 +172,51 @@ mod tests {
             rdkafka_config.get("queued.max.messages.kbytes"),
             Some("1000000")
         );
+    }
+
+    #[test]
+    fn test_consumer_configuration_client_rack_from_zone() {
+        // `std::env` is process-global, so exercise all the zone cases within a
+        // single test to avoid races with other parallel tests.
+        let build = || {
+            KafkaConfig::new_consumer_config(
+                vec!["127.0.0.1:9092".to_string()],
+                "my-group".to_string(),
+                InitialOffset::Error,
+                false,
+                30_000,
+                None,
+            )
+        };
+
+        // No zone set: `client.rack` is absent.
+        std::env::remove_var(super::ZONE_ENV_VAR);
+        assert_eq!(build().get_config_value("client.rack"), None);
+
+        // Zone set: `client.rack` is populated from it.
+        std::env::set_var(super::ZONE_ENV_VAR, "us-east-1a");
+        assert_eq!(
+            build().get_config_value("client.rack"),
+            Some(&"us-east-1a".to_string())
+        );
+
+        // Explicit `client.rack` override takes precedence over the zone.
+        let overridden = KafkaConfig::new_consumer_config(
+            vec!["127.0.0.1:9092".to_string()],
+            "my-group".to_string(),
+            InitialOffset::Error,
+            false,
+            30_000,
+            Some(HashMap::from([(
+                "client.rack".to_string(),
+                "us-east-1b".to_string(),
+            )])),
+        );
+        assert_eq!(
+            overridden.get_config_value("client.rack"),
+            Some(&"us-east-1b".to_string())
+        );
+
+        std::env::remove_var(super::ZONE_ENV_VAR);
     }
 }

@@ -6,7 +6,7 @@
 
 #### Consumer
 
-- Set the consumer `client.rack` placement from the `ZONE` environment variable, enabling a rack-aware fetch strategy.
+- Set the consumer `client.rack` placement from the `ZONE` environment variable, enabling a rack-aware fetch strategy. Implemented in both the Python and Rust runtimes.
 
 ## 2.40.3
 
