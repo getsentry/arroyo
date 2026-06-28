@@ -35,6 +35,12 @@ This can be done like so:
             # Emit a timing metric with the given value.
             record_timing(name, value, tags)
 
+        def distribution(
+            self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
+        ) -> None:
+            # Emit a distribution metric with the given value.
+            record_distribution(name, value, tags)
+
     metrics_backend = MyMetrics()
 
     configure_metrics(metrics_backend)

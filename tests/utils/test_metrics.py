@@ -1,6 +1,7 @@
 import pytest
 
 from arroyo.utils.metrics import Gauge, MetricName, configure_metrics, get_metrics
+from tests.metrics import Distribution as DistributionCall
 from tests.metrics import Gauge as GaugeCall
 from tests.metrics import TestingMetricsBackend, _TestingMetricsBackend
 
@@ -19,6 +20,21 @@ def test_gauge_simple() -> None:
         GaugeCall(name, 0.0, tags),
         GaugeCall(name, 1.0, tags),
         GaugeCall(name, 0.0, tags),
+    ]
+
+
+def test_distribution_simple() -> None:
+    backend = _TestingMetricsBackend()
+
+    name: MetricName = "name"  # type: ignore
+    tags = {"tag": "value"}
+
+    backend.distribution(name, 1.0, tags)
+    backend.distribution(name, 2.0, tags)
+
+    assert backend.calls == [
+        DistributionCall(name, 1.0, tags),
+        DistributionCall(name, 2.0, tags),
     ]
 
 

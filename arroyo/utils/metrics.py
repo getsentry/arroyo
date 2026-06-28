@@ -44,6 +44,15 @@ class Metrics(Protocol):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def distribution(
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
+    ) -> None:
+        """
+        Records a distribution metric.
+        """
+        raise NotImplementedError
+
 
 class DummyMetricsBackend(Metrics):
     """
@@ -64,6 +73,11 @@ class DummyMetricsBackend(Metrics):
         pass
 
     def timing(
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
+    ) -> None:
+        pass
+
+    def distribution(
         self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         pass

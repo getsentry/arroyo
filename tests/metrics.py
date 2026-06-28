@@ -21,7 +21,13 @@ class Timing(NamedTuple):
     tags: Optional[Tags]
 
 
-MetricCall = Union[Increment, Gauge, Timing]
+class Distribution(NamedTuple):
+    name: MetricName
+    value: Union[int, float]
+    tags: Optional[Tags]
+
+
+MetricCall = Union[Increment, Gauge, Timing, Distribution]
 
 
 class _TestingMetricsBackend(Metrics):
@@ -32,7 +38,7 @@ class _TestingMetricsBackend(Metrics):
     """
 
     def __init__(self) -> None:
-        self.calls: MutableSequence[Union[Increment, Gauge, Timing]] = []
+        self.calls: MutableSequence[Union[Increment, Gauge, Timing, Distribution]] = []
 
     def increment(
         self,
@@ -51,6 +57,11 @@ class _TestingMetricsBackend(Metrics):
         self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
     ) -> None:
         self.calls.append(Timing(name, value, tags))
+
+    def distribution(
+        self, name: MetricName, value: Union[int, float], tags: Optional[Tags] = None
+    ) -> None:
+        self.calls.append(Distribution(name, value, tags))
 
 
 TestingMetricsBackend = _TestingMetricsBackend()
