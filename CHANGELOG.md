@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## Unreleased
+
+### New Features ✨
+
+- Add `distribution` method to the metrics backend interface for recording distribution metrics
+
 ## 2.40.3
 
 ### New Features ✨
