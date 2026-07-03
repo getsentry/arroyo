@@ -1,5 +1,6 @@
 import atexit
 import os
+import threading
 from collections import defaultdict, deque
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -9,11 +10,11 @@ from arroyo.backends.abstract import ProducerFuture, SimpleProducerFuture
 from arroyo.backends.kafka import KafkaPayload
 from arroyo.types import BrokerValue, Partition, Topic
 
-TASK_PRODUCER_MAX_PENDING_FUTURES = 10_000
+MAX_PENDING_FUTURES = 10_000
 
 _pending_futures: defaultdict[
     str, deque[ProducerFuture[BrokerValue[KafkaPayload]]]
-] = defaultdict(lambda: deque(maxlen=TASK_PRODUCER_MAX_PENDING_FUTURES))
+] = defaultdict(lambda: deque(maxlen=MAX_PENDING_FUTURES))
 """
 _pending_futures is global as a process may have several `FutureTrackingProducer` instances,
 and we want to collect futures from all running instances with a single call.
@@ -59,11 +60,16 @@ class FutureTrackingProducer:
         self._producer_factory = producer_factory
         self._inner_producer: CloseableProducerProtocol | None = None
         self._track_futures = self._should_track_futures()
+        # Used to ensure we don't instantiate duplicate producers when calling produce() from different threads.
+        self._producer_lock = threading.Lock()
 
     def _get(self) -> CloseableProducerProtocol:
+        # None check first so we don't have any lock contention on produces
         if self._inner_producer is None:
-            self._inner_producer = self._producer_factory()
-            atexit.register(self._shutdown)
+            with self._producer_lock:
+                if self._inner_producer is None:
+                    self._inner_producer = self._producer_factory()
+                    atexit.register(self._shutdown)
         return self._inner_producer
 
     def track_future(self, future: ProducerFuture[BrokerValue[KafkaPayload]]) -> None:
@@ -77,8 +83,8 @@ class FutureTrackingProducer:
         do something based on the outcome of a _group_ of futures, and not just the outcomes of individual futures.
         For the latter, use delivery callbacks.
 
-        This operation should also always be called in the same thread as the one calling `produce()`, since there's
-        no locking around `_pending_futures`.
+        TODO: Add locking around `_pending_futures`. For now, his operation should also always be called
+        in the same thread as the one calling `produce()`.
         """
 
         pending_copy = _pending_futures.copy()
