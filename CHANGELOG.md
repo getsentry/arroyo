@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.41.0
+
+### New Features ✨
+
+- (producer) Add FutureTrackingProducer by @bmckerry in [#547](https://github.com/getsentry/arroyo/pull/547)
+
 ## 2.40.3
 
 ### New Features ✨
