@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from arroyo.backends.abstract import ProducerFuture, SimpleProducerFuture
-from arroyo.backends.kafka import KafkaPayload
-from arroyo.backends.kafka.producer import FutureTrackingProducer, _pending_futures
+from arroyo.backends.kafka import FutureTrackingProducer, KafkaPayload
+from arroyo.backends.kafka.producer import _pending_futures
 from arroyo.types import BrokerValue, Partition, Topic
 
 
