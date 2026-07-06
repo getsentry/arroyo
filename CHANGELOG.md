@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.41.1
+
+### Bug Fixes 🐛
+
+- (kafka) Explicitly export FutureTrackingProducer by @bmckerry in [#548](https://github.com/getsentry/arroyo/pull/548)
+
 ## 2.41.0
 
 ### New Features ✨
