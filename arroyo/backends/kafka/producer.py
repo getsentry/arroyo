@@ -59,7 +59,7 @@ class FutureTrackingProducer:
         self.name = name
         self._producer_factory = producer_factory
         self._inner_producer: CloseableProducerProtocol | None = None
-        self._track_futures = self._should_track_futures()
+        self._track_futures = False
         # Used to ensure we don't instantiate duplicate producers when calling produce() from different threads.
         self._producer_lock = threading.Lock()
 
@@ -68,6 +68,7 @@ class FutureTrackingProducer:
         if self._inner_producer is None:
             with self._producer_lock:
                 if self._inner_producer is None:
+                    self._track_futures = self._should_track_futures()
                     self._inner_producer = self._producer_factory()
                     atexit.register(self._shutdown)
         return self._inner_producer
