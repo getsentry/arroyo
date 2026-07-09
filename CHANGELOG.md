@@ -8,6 +8,18 @@
 
 - Set the consumer `client.rack` placement from the `ZONE` environment variable, enabling a rack-aware fetch strategy. Implemented in both the Python and Rust runtimes.
 
+## 2.41.1
+
+### Bug Fixes 🐛
+
+- (kafka) Explicitly export FutureTrackingProducer by @bmckerry in [#548](https://github.com/getsentry/arroyo/pull/548)
+
+## 2.41.0
+
+### New Features ✨
+
+- (producer) Add FutureTrackingProducer by @bmckerry in [#547](https://github.com/getsentry/arroyo/pull/547)
+
 ## 2.40.3
 
 ### New Features ✨
