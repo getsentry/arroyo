@@ -106,7 +106,7 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
             )
 
     # Record global producer metrics (librdkafka namespace)
-    if stats.get("msg_cnt"):
+    if stats.get("msg_cnt") is not None:
         metrics.gauge(
             "arroyo.producer.librdkafka.message_count",
             stats["msg_cnt"],
@@ -117,6 +117,20 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         metrics.gauge(
             "arroyo.producer.librdkafka.message_count_max",
             stats["msg_max"],
+            tags={"producer_name": producer_name_tag},
+        )
+
+    if stats.get("msg_size") is not None:
+        metrics.gauge(
+            "arroyo.producer.librdkafka.message_size",
+            stats["msg_size"],
+            tags={"producer_name": producer_name_tag},
+        )
+
+    if stats.get("msg_size_max"):
+        metrics.gauge(
+            "arroyo.producer.librdkafka.message_size_max",
+            stats["msg_size_max"],
             tags={"producer_name": producer_name_tag},
         )
 
