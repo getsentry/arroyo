@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.41.3
+
+### New Features ✨
+
+- (producer) Add ability to get configuration by @bmckerry in [#550](https://github.com/getsentry/arroyo/pull/550)
+
 ## 2.41.2
 
 ### New Features ✨
