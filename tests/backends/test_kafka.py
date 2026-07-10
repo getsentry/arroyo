@@ -176,6 +176,10 @@ class TestKafkaStreams(StreamsTestMixin[KafkaPayload]):
                 assert future.result(5.0)
                 assert future.done()
 
+    def test_producer_get_configuration(self) -> None:
+        producer = self.get_producer()
+        assert producer.get_config() == self.configuration
+
     def test_lenient_offset_reset_latest(self) -> None:
         payload = KafkaPayload(b"a", b"0", [])
         with self.get_topic() as topic:
