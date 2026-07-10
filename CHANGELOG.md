@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.41.2
+
+### New Features ✨
+
+- (producer) Add rdkafka produce queue size metrics by @bmckerry in [#549](https://github.com/getsentry/arroyo/pull/549)
+
 ## 2.41.1
 
 ### Bug Fixes 🐛
