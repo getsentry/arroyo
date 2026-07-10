@@ -847,6 +847,12 @@ class KafkaProducer(Producer[KafkaPayload]):
         self.__shutdown_requested.set()
         return self.__result
 
+    def get_config(self) -> dict[str, Any]:
+        """
+        Returns the configuration the producer was instantiated with.
+        """
+        return dict(self.__configuration)
+
 
 # Type alias for the delivery callback function
 DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
