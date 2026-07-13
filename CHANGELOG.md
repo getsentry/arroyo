@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.41.4
+
+### New Features ✨
+
+- (producer) Add metrics for poll frequency by @bmckerry in [#551](https://github.com/getsentry/arroyo/pull/551)
+
 ## 2.41.3
 
 ### New Features ✨
