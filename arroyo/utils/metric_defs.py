@@ -146,6 +146,10 @@ MetricName = Literal[
     # Gauge: Total number of request retries from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_txretries",
+    # Counter: Incremented when the KafkaProducer worker thread polls the
+    # internal librdkafka producer.
+    # Tagged by producer_name
+    "arroyo.producer.worker.poll",
     # Counter: Incremented when backpressure is hit during join() in the
     # RunTask strategy (better_backpressure mode).
     "arroyo.strategies.run_task.join.backpressure",
