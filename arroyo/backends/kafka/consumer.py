@@ -762,6 +762,7 @@ class KafkaProducer(Producer[KafkaPayload]):
         configuration: Mapping[str, Any],
         use_simple_futures: bool = False,
         record_poll_metrics: bool = False,
+        poll_metric_frequency: int = 10,
     ) -> None:
         self.producer_name = configuration.get("client.id") or None
         self.__configuration = configuration
@@ -769,6 +770,8 @@ class KafkaProducer(Producer[KafkaPayload]):
         self.__shutdown_requested = Event()
         self.__metrics = get_metrics()
         self.__record_poll_metrics = record_poll_metrics
+        # Poll metrics are recorded every X poll iterations
+        self.__poll_metric_frequency = poll_metric_frequency
 
         # The worker must execute in a separate thread to ensure that callbacks
         # are fired -- otherwise trying to produce "synchronously" via
@@ -785,21 +788,21 @@ class KafkaProducer(Producer[KafkaPayload]):
         after a shutdown request has been issued (via ``close``) and all
         in-flight messages have been delivered.
         """
-        POLL_METRIC_FREQUENCY = 10
-        poll_count = 0
+        poll_count = 1
         while not self.__shutdown_requested.is_set():
             self.__producer.poll(0.1)
             if self.__record_poll_metrics:
-                if poll_count % POLL_METRIC_FREQUENCY == 0:
+                if poll_count % self.__poll_metric_frequency == 0:
                     self.__metrics.increment(
                         "arroyo.producer.worker.poll",
-                        value=POLL_METRIC_FREQUENCY,
+                        value=self.__poll_metric_frequency,
                         tags={
                             "producer_name": (
                                 self.producer_name if self.producer_name else "N/A"
                             )
                         },
                     )
+                    poll_count = 0
                 poll_count += 1
         self.__producer.flush()
 
