@@ -5,11 +5,6 @@ use super::InitialOffset;
 
 const STATS_COLLECTION_FREQ_MS: u32 = 1000;
 
-/// Environment variable used to determine the placement (availability zone) the
-/// consumer is running in. When set, it is propagated to librdkafka's
-/// `client.rack` config so the consumer can advertise its placement to the
-/// broker. This is a prerequisite for enabling a rack-aware fetch strategy
-/// (fetch-from-follower) later on.
 const CLIENT_RACK_ENV_VAR: &str = "ARROYO_CLIENT_RACK";
 
 #[derive(Debug, Clone)]
@@ -77,9 +72,6 @@ impl KafkaConfig {
             );
         }
 
-        // Set the consumer placement from the environment variable so that a
-        // rack-aware fetch strategy can be used. This is applied before the override
-        // params so that an explicit `client.rack` always takes precedence.
         if let Ok(client_rack) = std::env::var(CLIENT_RACK_ENV_VAR) {
             if !client_rack.is_empty() {
                 config
@@ -178,8 +170,6 @@ mod tests {
 
     #[test]
     fn test_consumer_configuration_client_rack_from_env() {
-        // `std::env` is process-global, so exercise all the cases within a
-        // single test to avoid races with other parallel tests.
         let build = || {
             KafkaConfig::new_consumer_config(
                 vec!["127.0.0.1:9092".to_string()],
@@ -191,18 +181,15 @@ mod tests {
             )
         };
 
-        // Not set: `client.rack` is absent.
         std::env::remove_var(super::CLIENT_RACK_ENV_VAR);
         assert_eq!(build().get_config_value("client.rack"), None);
 
-        // Set: `client.rack` is populated from it.
         std::env::set_var(super::CLIENT_RACK_ENV_VAR, "us-east-1a");
         assert_eq!(
             build().get_config_value("client.rack"),
             Some(&"us-east-1a".to_string())
         );
 
-        // Explicit `client.rack` override takes precedence over the env var.
         let overridden = KafkaConfig::new_consumer_config(
             vec!["127.0.0.1:9092".to_string()],
             "my-group".to_string(),

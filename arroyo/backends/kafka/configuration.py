@@ -14,11 +14,6 @@ KafkaBrokerConfig = Dict[str, Any]
 
 STATS_COLLECTION_FREQ_MS = 1000
 
-# Environment variable used to determine the placement (availability zone) the
-# consumer is running in. When set, it is propagated to librdkafka's
-# `client.rack` config so the consumer can advertise its placement to the
-# broker. This is a prerequisite for enabling a rack-aware fetch strategy
-# (fetch-from-follower) later on.
 CLIENT_RACK_ENV_VAR = "ARROYO_CLIENT_RACK"
 
 
@@ -216,9 +211,6 @@ def build_kafka_consumer_configuration(
         "stats_cb": stats_callback,
     }
 
-    # Set the consumer placement from the environment variable so that a
-    # rack-aware fetch strategy can be used. An explicit `client.rack` in the
-    # provided config (default or override) always takes precedence.
     client_rack = os.environ.get(CLIENT_RACK_ENV_VAR)
     if client_rack and "client.rack" not in broker_config:
         config_update["client.rack"] = client_rack
