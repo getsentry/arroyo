@@ -72,13 +72,10 @@ impl KafkaConfig {
             );
         }
 
-        if let Ok(client_rack) = std::env::var(CLIENT_RACK_ENV_VAR) {
-            if !client_rack.is_empty() {
-                config
-                    .config_map
-                    .insert("client.rack".to_string(), client_rack);
-            }
-        }
+        set_client_rack(
+            &mut config.config_map,
+            std::env::var(CLIENT_RACK_ENV_VAR).ok(),
+        );
 
         apply_override_params(config, override_params)
     }
@@ -127,6 +124,12 @@ impl From<KafkaConfig> for RdKafkaConfig {
     }
 }
 
+fn set_client_rack(config_map: &mut HashMap<String, String>, client_rack: Option<String>) {
+    if let Some(client_rack) = client_rack.filter(|rack| !rack.is_empty()) {
+        config_map.insert("client.rack".to_string(), client_rack);
+    }
+}
+
 fn apply_override_params(
     mut config: KafkaConfig,
     override_params: Option<HashMap<String, String>>,
@@ -169,27 +172,24 @@ mod tests {
     }
 
     #[test]
-    fn test_consumer_configuration_client_rack_from_env() {
-        let build = || {
-            KafkaConfig::new_consumer_config(
-                vec!["127.0.0.1:9092".to_string()],
-                "my-group".to_string(),
-                InitialOffset::Error,
-                false,
-                30_000,
-                None,
-            )
-        };
+    fn test_set_client_rack() {
+        let mut config_map = HashMap::new();
 
-        std::env::remove_var(super::CLIENT_RACK_ENV_VAR);
-        assert_eq!(build().get_config_value("client.rack"), None);
+        super::set_client_rack(&mut config_map, None);
+        assert_eq!(config_map.get("client.rack"), None);
 
-        std::env::set_var(super::CLIENT_RACK_ENV_VAR, "us-east-1a");
+        super::set_client_rack(&mut config_map, Some(String::new()));
+        assert_eq!(config_map.get("client.rack"), None);
+
+        super::set_client_rack(&mut config_map, Some("us-east-1a".to_string()));
         assert_eq!(
-            build().get_config_value("client.rack"),
+            config_map.get("client.rack"),
             Some(&"us-east-1a".to_string())
         );
+    }
 
+    #[test]
+    fn test_consumer_configuration_client_rack_override() {
         let overridden = KafkaConfig::new_consumer_config(
             vec!["127.0.0.1:9092".to_string()],
             "my-group".to_string(),
@@ -205,7 +205,5 @@ mod tests {
             overridden.get_config_value("client.rack"),
             Some(&"us-east-1b".to_string())
         );
-
-        std::env::remove_var(super::CLIENT_RACK_ENV_VAR);
     }
 }
