@@ -758,11 +758,20 @@ class KafkaConsumer(Consumer[KafkaPayload]):
 
 class KafkaProducer(Producer[KafkaPayload]):
     def __init__(
-        self, configuration: Mapping[str, Any], use_simple_futures: bool = False
+        self,
+        configuration: Mapping[str, Any],
+        use_simple_futures: bool = False,
+        record_poll_metrics: bool = False,
+        poll_metric_frequency: int = 10,
     ) -> None:
+        self.producer_name = configuration.get("client.id") or None
         self.__configuration = configuration
         self.__producer = ConfluentProducer(dict(configuration))
         self.__shutdown_requested = Event()
+        self.__metrics = get_metrics()
+        self.__record_poll_metrics = record_poll_metrics
+        # Poll metrics are recorded every X poll iterations
+        self.__poll_metric_frequency = poll_metric_frequency
 
         # The worker must execute in a separate thread to ensure that callbacks
         # are fired -- otherwise trying to produce "synchronously" via
@@ -779,8 +788,22 @@ class KafkaProducer(Producer[KafkaPayload]):
         after a shutdown request has been issued (via ``close``) and all
         in-flight messages have been delivered.
         """
+        poll_count = 1
         while not self.__shutdown_requested.is_set():
             self.__producer.poll(0.1)
+            if self.__record_poll_metrics:
+                if poll_count % self.__poll_metric_frequency == 0:
+                    self.__metrics.increment(
+                        "arroyo.producer.worker.poll",
+                        value=self.__poll_metric_frequency,
+                        tags={
+                            "producer_name": (
+                                self.producer_name if self.producer_name else "N/A"
+                            )
+                        },
+                    )
+                    poll_count = 0
+                poll_count += 1
         self.__producer.flush()
 
     def __delivery_callback(
@@ -846,6 +869,12 @@ class KafkaProducer(Producer[KafkaPayload]):
     def close(self) -> Future[None]:
         self.__shutdown_requested.set()
         return self.__result
+
+    def get_config(self) -> dict[str, Any]:
+        """
+        Returns the configuration the producer was instantiated with.
+        """
+        return dict(self.__configuration)
 
 
 # Type alias for the delivery callback function

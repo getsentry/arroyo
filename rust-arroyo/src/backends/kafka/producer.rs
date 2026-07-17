@@ -96,6 +96,24 @@ impl ClientContext for ProducerContext {
             stats.msg_max as i64,
             "producer_name" => producer_name
         );
+
+        gauge!(
+            "arroyo.producer.librdkafka.message_size",
+            stats.msg_size as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.message_size_max",
+            stats.msg_size_max as i64,
+            "producer_name" => producer_name
+        );
+
+        gauge!(
+            "arroyo.producer.librdkafka.reply_queue_size",
+            stats.replyq as i64,
+            "producer_name" => producer_name
+        );
     }
 }
 

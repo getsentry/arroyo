@@ -14,11 +14,12 @@ KafkaBrokerConfig = Dict[str, Any]
 
 STATS_COLLECTION_FREQ_MS = 1000
 
-# Environment variable used to determine the availability zone the consumer is
-# running in. When set, it is propagated to librdkafka's `client.rack` config so
-# the consumer can advertise its placement to the broker. This is a prerequisite
-# for enabling a rack-aware fetch strategy (fetch-from-follower) later on.
-ZONE_ENV_VAR = "ZONE"
+# Environment variable used to determine the placement (availability zone) the
+# consumer is running in. When set, it is propagated to librdkafka's
+# `client.rack` config so the consumer can advertise its placement to the
+# broker. This is a prerequisite for enabling a rack-aware fetch strategy
+# (fetch-from-follower) later on.
+CLIENT_RACK_ENV_VAR = "ARROYO_CLIENT_RACK"
 
 
 DEFAULT_QUEUED_MAX_MESSAGE_KBYTES = 50000
@@ -113,7 +114,7 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
             )
 
     # Record global producer metrics (librdkafka namespace)
-    if stats.get("msg_cnt"):
+    if stats.get("msg_cnt") is not None:
         metrics.gauge(
             "arroyo.producer.librdkafka.message_count",
             stats["msg_cnt"],
@@ -124,6 +125,20 @@ def producer_stats_callback(stats_json: str, producer_name: Optional[str]) -> No
         metrics.gauge(
             "arroyo.producer.librdkafka.message_count_max",
             stats["msg_max"],
+            tags={"producer_name": producer_name_tag},
+        )
+
+    if stats.get("msg_size") is not None:
+        metrics.gauge(
+            "arroyo.producer.librdkafka.message_size",
+            stats["msg_size"],
+            tags={"producer_name": producer_name_tag},
+        )
+
+    if stats.get("msg_size_max"):
+        metrics.gauge(
+            "arroyo.producer.librdkafka.message_size_max",
+            stats["msg_size_max"],
             tags={"producer_name": producer_name_tag},
         )
 
@@ -201,12 +216,12 @@ def build_kafka_consumer_configuration(
         "stats_cb": stats_callback,
     }
 
-    # Set the consumer placement from the zone environment variable so that a
+    # Set the consumer placement from the environment variable so that a
     # rack-aware fetch strategy can be used. An explicit `client.rack` in the
     # provided config (default or override) always takes precedence.
-    zone = os.environ.get(ZONE_ENV_VAR)
-    if zone and "client.rack" not in broker_config:
-        config_update["client.rack"] = zone
+    client_rack = os.environ.get(CLIENT_RACK_ENV_VAR)
+    if client_rack and "client.rack" not in broker_config:
+        config_update["client.rack"] = client_rack
 
     broker_config.update(config_update)
     return broker_config

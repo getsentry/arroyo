@@ -6,7 +6,25 @@
 
 #### Consumer
 
-- Set the consumer `client.rack` placement from the `ZONE` environment variable, enabling a rack-aware fetch strategy. Implemented in both the Python and Rust runtimes.
+- Set the consumer `client.rack` placement from the `ARROYO_CLIENT_RACK` environment variable, enabling a rack-aware fetch strategy. Implemented in both the Python and Rust runtimes.
+
+## 2.41.4
+
+### New Features ✨
+
+- (producer) Add metrics for poll frequency by @bmckerry in [#551](https://github.com/getsentry/arroyo/pull/551)
+
+## 2.41.3
+
+### New Features ✨
+
+- (producer) Add ability to get configuration by @bmckerry in [#550](https://github.com/getsentry/arroyo/pull/550)
+
+## 2.41.2
+
+### New Features ✨
+
+- (producer) Add rdkafka produce queue size metrics by @bmckerry in [#549](https://github.com/getsentry/arroyo/pull/549)
 
 ## 2.41.1
 

@@ -125,12 +125,18 @@ MetricName = Literal[
     # Gauge: Producer message count metric from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count",
+    # Gauge: Total size of all messages in the librdkafka producer queue
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_size",
     # Time: Latency between when a message is produced, and when its delivery callback is called
     # Tagged by producer_name
     "arroyo.producer.callback_latency",
     # Gauge: Maximum producer message count from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count_max",
+    # Gauge: maximum size of all messages in the librdkafka producer queue
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.message_size_max",
     # Gauge: Number of ops (callbacks, events, etc) waiting in librdkafka reply queue
     # Tagged by producer_name
     "arroyo.producer.librdkafka.reply_queue_size",
@@ -140,6 +146,10 @@ MetricName = Literal[
     # Gauge: Total number of request retries from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_txretries",
+    # Counter: Incremented when the KafkaProducer worker thread polls the
+    # internal librdkafka producer.
+    # Tagged by producer_name
+    "arroyo.producer.worker.poll",
     # Counter: Incremented when backpressure is hit during join() in the
     # RunTask strategy (better_backpressure mode).
     "arroyo.strategies.run_task.join.backpressure",

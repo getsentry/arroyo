@@ -5,12 +5,12 @@ use super::InitialOffset;
 
 const STATS_COLLECTION_FREQ_MS: u32 = 1000;
 
-/// Environment variable used to determine the availability zone the consumer is
-/// running in. When set, it is propagated to librdkafka's `client.rack` config
-/// so the consumer can advertise its placement to the broker. This is a
-/// prerequisite for enabling a rack-aware fetch strategy (fetch-from-follower)
-/// later on.
-const ZONE_ENV_VAR: &str = "ZONE";
+/// Environment variable used to determine the placement (availability zone) the
+/// consumer is running in. When set, it is propagated to librdkafka's
+/// `client.rack` config so the consumer can advertise its placement to the
+/// broker. This is a prerequisite for enabling a rack-aware fetch strategy
+/// (fetch-from-follower) later on.
+const CLIENT_RACK_ENV_VAR: &str = "ARROYO_CLIENT_RACK";
 
 #[derive(Debug, Clone)]
 pub struct OffsetResetConfig {
@@ -77,12 +77,14 @@ impl KafkaConfig {
             );
         }
 
-        // Set the consumer placement from the zone environment variable so that a
+        // Set the consumer placement from the environment variable so that a
         // rack-aware fetch strategy can be used. This is applied before the override
         // params so that an explicit `client.rack` always takes precedence.
-        if let Ok(zone) = std::env::var(ZONE_ENV_VAR) {
-            if !zone.is_empty() {
-                config.config_map.insert("client.rack".to_string(), zone);
+        if let Ok(client_rack) = std::env::var(CLIENT_RACK_ENV_VAR) {
+            if !client_rack.is_empty() {
+                config
+                    .config_map
+                    .insert("client.rack".to_string(), client_rack);
             }
         }
 
@@ -175,8 +177,8 @@ mod tests {
     }
 
     #[test]
-    fn test_consumer_configuration_client_rack_from_zone() {
-        // `std::env` is process-global, so exercise all the zone cases within a
+    fn test_consumer_configuration_client_rack_from_env() {
+        // `std::env` is process-global, so exercise all the cases within a
         // single test to avoid races with other parallel tests.
         let build = || {
             KafkaConfig::new_consumer_config(
@@ -189,18 +191,18 @@ mod tests {
             )
         };
 
-        // No zone set: `client.rack` is absent.
-        std::env::remove_var(super::ZONE_ENV_VAR);
+        // Not set: `client.rack` is absent.
+        std::env::remove_var(super::CLIENT_RACK_ENV_VAR);
         assert_eq!(build().get_config_value("client.rack"), None);
 
-        // Zone set: `client.rack` is populated from it.
-        std::env::set_var(super::ZONE_ENV_VAR, "us-east-1a");
+        // Set: `client.rack` is populated from it.
+        std::env::set_var(super::CLIENT_RACK_ENV_VAR, "us-east-1a");
         assert_eq!(
             build().get_config_value("client.rack"),
             Some(&"us-east-1a".to_string())
         );
 
-        // Explicit `client.rack` override takes precedence over the zone.
+        // Explicit `client.rack` override takes precedence over the env var.
         let overridden = KafkaConfig::new_consumer_config(
             vec!["127.0.0.1:9092".to_string()],
             "my-group".to_string(),
@@ -217,6 +219,6 @@ mod tests {
             Some(&"us-east-1b".to_string())
         );
 
-        std::env::remove_var(super::ZONE_ENV_VAR);
+        std::env::remove_var(super::CLIENT_RACK_ENV_VAR);
     }
 }
