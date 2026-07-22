@@ -1,5 +1,4 @@
 import atexit
-import os
 import threading
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -39,27 +38,27 @@ class CloseableProducerProtocol(Protocol):
 class FutureTrackingProducer:
     """
     FutureTrackingProducer is a producer abstraction that optionally registers futures
-    within the `_pending_futures` dict (depending on if the `ARROYO_TRACK_PRODUCER_FUTURES`
-    env var is set). Applications can then call the `collect_futures()` static method to
+    within the `_pending_futures` dict. Applications can then call the `collect_futures()` static method to
     get all registered futures, await them, etc.
 
     Args:
         name: Unique identifying name of this FutureTrackingProducer. Used to key `_pending_futures`.
         producer_factory: Callable that returns a producer object.
+        should_track_futures: Whether futures should be tracked in `_pending_futures`. Should only be True
+                              if you plan on calling `FutureTrackingProducer.collect_futures()` in your application,
+                              meaning you care about the results of batches of producer futures. Default False.
     """
-
-    def _should_track_futures(self) -> bool:
-        return os.environ.get("ARROYO_TRACK_PRODUCER_FUTURES", "").lower() == "true"
 
     def __init__(
         self,
         name: str,
         producer_factory: Callable[[], CloseableProducerProtocol],
+        should_track_futures: bool = False,
     ) -> None:
         self.name = name
         self._producer_factory = producer_factory
         self._inner_producer: CloseableProducerProtocol | None = None
-        self._track_futures = self._should_track_futures()
+        self._track_futures = should_track_futures
         # Used to ensure we don't instantiate duplicate producers when calling produce() from different threads.
         self._producer_lock = threading.Lock()
 
