@@ -2,7 +2,6 @@ from collections.abc import Iterator
 from concurrent.futures import Future
 from datetime import datetime
 from functools import partial
-from unittest.mock import patch
 
 import pytest
 
@@ -56,17 +55,11 @@ def clear_pending_futures() -> Iterator[None]:
     _pending_futures.clear()
 
 
-@pytest.fixture
-def track_futures() -> Iterator[None]:
-    with patch.object(
-        FutureTrackingProducer, "_should_track_futures", return_value=True
-    ):
-        yield
-
-
-def test_producer_tracks_futures(track_futures: None) -> None:
+def test_producer_tracks_futures() -> None:
     producer = FutureTrackingProducer(
-        "test.producer", partial(get_dummy_producer, use_simple_futures=True)
+        "test.producer",
+        partial(get_dummy_producer, use_simple_futures=True),
+        should_track_futures=True,
     )
     producer.produce(Topic("test"), make_kafka_payload())
     assert len(_pending_futures) == 1
@@ -76,9 +69,11 @@ def test_producer_tracks_futures(track_futures: None) -> None:
     assert len(_pending_futures) == 0
 
 
-def test_producer_executes_callbacks(track_futures: None) -> None:
+def test_producer_executes_callbacks() -> None:
     producer = FutureTrackingProducer(
-        "test.producer", partial(get_dummy_producer, use_simple_futures=False)
+        "test.producer",
+        partial(get_dummy_producer, use_simple_futures=False),
+        should_track_futures=True,
     )
     received: list[Future[BrokerValue[KafkaPayload]]] = []
 
@@ -94,9 +89,11 @@ def test_producer_executes_callbacks(track_futures: None) -> None:
     assert received[0].done()
 
 
-def test_producer_rejects_callbacks_for_simple_futures(track_futures: None) -> None:
+def test_producer_rejects_callbacks_for_simple_futures() -> None:
     producer = FutureTrackingProducer(
-        "test.producer", partial(get_dummy_producer, use_simple_futures=True)
+        "test.producer",
+        partial(get_dummy_producer, use_simple_futures=True),
+        should_track_futures=True,
     )
 
     def callback(future: Future[BrokerValue[KafkaPayload]]) -> None:
@@ -106,9 +103,11 @@ def test_producer_rejects_callbacks_for_simple_futures(track_futures: None) -> N
         producer.produce(Topic("test"), make_kafka_payload(), callbacks=[callback])
 
 
-def test_pending_futures_max_len(track_futures: None) -> None:
+def test_pending_futures_max_len() -> None:
     producer = FutureTrackingProducer(
-        "test.producer", partial(get_dummy_producer, use_simple_futures=True)
+        "test.producer",
+        partial(get_dummy_producer, use_simple_futures=True),
+        should_track_futures=True,
     )
     for _ in range(10001):
         producer.produce(Topic("test"), make_kafka_payload())
@@ -116,12 +115,11 @@ def test_pending_futures_max_len(track_futures: None) -> None:
 
 
 def test_producer_does_not_track_futures_when_disabled() -> None:
-    with patch.object(
-        FutureTrackingProducer, "_should_track_futures", return_value=False
-    ):
-        producer = FutureTrackingProducer(
-            "test.producer", partial(get_dummy_producer, use_simple_futures=True)
-        )
-        producer.produce(Topic("test"), make_kafka_payload())
+    producer = FutureTrackingProducer(
+        "test.producer",
+        partial(get_dummy_producer, use_simple_futures=True),
+        should_track_futures=False,
+    )
+    producer.produce(Topic("test"), make_kafka_payload())
     assert len(_pending_futures) == 0
     assert FutureTrackingProducer.collect_futures() == {}
