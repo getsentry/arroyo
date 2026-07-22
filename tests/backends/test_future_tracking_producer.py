@@ -105,7 +105,7 @@ def test_producer_tracks_futures() -> None:
     collected = FutureTrackingProducer.collect_futures()
     future = next(iter(collected["test.producer"]))
     assert future.result() == make_broker_value()
-    assert len(_pending_futures) == 0
+    assert len(_pending_futures["test.producer"]) == 0
 
 
 def test_producer_executes_callbacks() -> None:
@@ -160,8 +160,8 @@ def test_producer_does_not_track_futures_when_disabled() -> None:
         should_track_futures=False,
     )
     producer.produce(Topic("test"), make_kafka_payload())
-    assert len(_pending_futures) == 0
-    assert FutureTrackingProducer.collect_futures() == {}
+    assert len(_pending_futures["test.producer"]) == 0
+    assert FutureTrackingProducer.collect_futures() == {"test.producer": set()}
 
 
 def test_backpressure_queue_awaits_oldest_future_when_full() -> None:
@@ -171,23 +171,20 @@ def test_backpressure_queue_awaits_oldest_future_when_full() -> None:
         partial(
             get_dummy_producer,
             use_simple_futures=False,
-            queue_max_messages=3,
+            queue_max_messages=6,
             produced_futures=produced,
             track_results=True,
         ),
         should_backpressure=True,
-        queue_size_scale=1.0,
+        queue_size_scale=0.5,
     )
 
-    # Fill the queue exactly to its maxlen of 3. No backpressure applied yet.
     for _ in range(3):
         producer.produce(Topic("test"), make_kafka_payload())
     assert all(cast(ResultTrackingFuture, f).result_call_count == 0 for f in produced)
 
-    # The 4th produce finds the queue full and awaits the oldest (first) future.
     producer.produce(Topic("test"), make_kafka_payload())
     assert cast(ResultTrackingFuture, produced[0]).result_call_count == 1
-    # The evicted future should no longer be in the queue.
     assert produced[0] not in producer._backpressure_queue
     assert len(producer._backpressure_queue) == 3
     assert list(producer._backpressure_queue) == produced[1:]
@@ -196,9 +193,9 @@ def test_backpressure_queue_awaits_oldest_future_when_full() -> None:
 def test_backpressure_queue_disabled() -> None:
     producer = FutureTrackingProducer(
         "test.producer",
-        partial(get_dummy_producer, use_simple_futures=True, queue_max_messages=3),
+        partial(get_dummy_producer, use_simple_futures=True, queue_max_messages=6),
         should_backpressure=False,
-        queue_size_scale=1.0,
+        queue_size_scale=0.5,
     )
     for _ in range(10):
         producer.produce(Topic("test"), make_kafka_payload())

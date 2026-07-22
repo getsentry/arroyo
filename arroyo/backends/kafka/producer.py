@@ -57,7 +57,7 @@ class FutureTrackingProducer:
                              Default True.
         backpressure_queue_size_scale: How large the maxlen of this producer's future queues should be relative to
                                        the internal producer's producer queue max length. Must be a float in the
-                                       range (0, 1.0]. Default 0.8.
+                                       range (0, 1.0). Default 0.8.
     """
 
     def __init__(
@@ -71,6 +71,9 @@ class FutureTrackingProducer:
         assert (
             name not in _pending_futures
         ), "All FutureTrackingProducer instances in a single process must have a unique name."
+        assert (
+            queue_size_scale > 0 and queue_size_scale < 1
+        ), "queue_size_scale must be in the range (0, 1.0)."
         self.name = name
         self._producer_factory = producer_factory
         self._inner_producer: CloseableProducerProtocol | None = None
@@ -82,6 +85,7 @@ class FutureTrackingProducer:
         self._backpressure_queue: deque[
             ProducerFuture[BrokerValue[KafkaPayload]]
         ] = deque(maxlen=0)
+        _pending_futures[name] = deque(maxlen=0)
 
     def _get_queue_max_len(self) -> int:
         """
@@ -90,13 +94,15 @@ class FutureTrackingProducer:
         """
         if self._inner_producer:
             # queue.buffering.max.messages has a default value of 100k
-            internal_producer_queue_max_size = self._inner_producer.get_config().get(
-                "queue.buffering.max.messages", 100_000
+            internal_producer_queue_max_size = int(
+                self._inner_producer.get_config().get(
+                    "queue.buffering.max.messages", 100_000
+                )
             )
             return int(internal_producer_queue_max_size * self._queue_size_scale)
         return 0
 
-    def _initialize_producer(self) -> None:
+    def _initialize_producer_and_queues(self) -> None:
         self._inner_producer = self._producer_factory()
         atexit.register(self._shutdown)
         queues_max_len = self._get_queue_max_len()
@@ -110,7 +116,7 @@ class FutureTrackingProducer:
         if self._inner_producer is None:
             with self._producer_lock:
                 if self._inner_producer is None:
-                    self._initialize_producer()
+                    self._initialize_producer_and_queues()
         return cast(CloseableProducerProtocol, self._inner_producer)
 
     def track_future(self, future: ProducerFuture[BrokerValue[KafkaPayload]]) -> None:
@@ -137,9 +143,10 @@ class FutureTrackingProducer:
         in the same thread as the one calling `produce()`.
         """
 
-        pending_copy = _pending_futures.copy()
-        _pending_futures.clear()
-        return {name: set(val) for name, val in pending_copy.items()}
+        collected = {name: set(val) for name, val in _pending_futures.items()}
+        for producer in _pending_futures:
+            _pending_futures[producer].clear()
+        return collected
 
     def produce(
         self,
@@ -177,5 +184,6 @@ class FutureTrackingProducer:
                 )
 
     def _shutdown(self) -> None:
+        _pending_futures.pop(self.name, None)
         if self._inner_producer is not None:
             self._inner_producer.close().result()
