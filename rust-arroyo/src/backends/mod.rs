@@ -38,7 +38,7 @@ pub enum ConsumerError {
 }
 
 #[non_exhaustive]
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ProducerError {
     #[error("The producer errored")]
     ProducerErrored,
@@ -172,4 +172,19 @@ type ProducerFuture = Pin<Box<dyn Future<Output = Result<(), ProducerError>> + S
 pub trait AsyncProducer<TPayload>: Send + Sync {
     /// Produce to a topic or partition.
     fn produce(&self, destination: &TopicOrPartition, payload: TPayload) -> ProducerFuture;
+
+    /// Produce to a topic or partition. The callback is called with the result of the produce operation, including errors.
+    fn produce_with_callback(
+        &self,
+        destination: &TopicOrPartition,
+        payload: TPayload,
+        callback: Box<dyn FnOnce(Result<(), ProducerError>) + Send>,
+    ) -> ProducerFuture {
+        let future = self.produce(destination, payload);
+        Box::pin(async move {
+            let result = future.await;
+            callback(result.clone());
+            result
+        })
+    }
 }

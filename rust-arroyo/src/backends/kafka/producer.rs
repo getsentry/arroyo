@@ -217,6 +217,15 @@ fn record_producer_error(
 
 impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
     fn produce(&self, destination: &TopicOrPartition, payload: KafkaPayload) -> ProducerFuture {
+        self.produce_with_callback(destination, payload, Box::new(|_| {}))
+    }
+
+    fn produce_with_callback(
+        &self,
+        destination: &TopicOrPartition,
+        payload: KafkaPayload,
+        callback: Box<dyn FnOnce(Result<(), ProducerError>) + Send>,
+    ) -> ProducerFuture {
         let base_record = payload.to_future_record(destination);
 
         let producer_name = self.producer_name.clone();
@@ -228,6 +237,7 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
                 "queue_full",
                 &producer_name,
             );
+            callback(Err(producer_error.clone()));
             return Box::pin(async move { Err(producer_error) });
         }
 
@@ -236,7 +246,10 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
         Box::pin(async move {
             let produce_result = match future.await {
                 Ok(delivery_result) => match delivery_result {
-                    Ok(_) => Ok(()),
+                    Ok(_) => {
+                        callback(Ok(()));
+                        Ok(())
+                    }
                     Err((kafka_error, _record)) => {
                         // The producer failed when flushing the message out of the queue
                         let producer_error = record_producer_error(
@@ -244,6 +257,7 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
                             "produce_error",
                             &producer_name,
                         );
+                        callback(Err(producer_error.clone()));
                         Err(producer_error)
                     }
                 },
@@ -251,6 +265,7 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
                     // The future was canceled, which means the producer was closed
                     let producer_error =
                         record_producer_error(None, "future_canceled", &producer_name);
+                    callback(Err(producer_error.clone()));
                     Err(producer_error)
                 }
             };
@@ -270,6 +285,8 @@ mod tests {
     use rdkafka::client::ClientContext;
     use rdkafka::statistics::{Broker, Statistics, Window};
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     fn create_test_statistics_with_all_metrics() -> Statistics {
         let mut brokers = HashMap::new();
@@ -429,6 +446,36 @@ mod tests {
         assert!(
             result.is_err(),
             "Message should not be produced successfully"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_async_producer_with_callback() {
+        let topic = Topic::new("test");
+        let destination = TopicOrPartition::Topic(topic);
+        let configuration =
+            KafkaConfig::new_producer_config(vec!["127.0.0.1:9092".to_string()], None);
+
+        let producer = AsyncKafkaProducer::new(configuration);
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
+        let result = producer
+            .produce_with_callback(
+                &destination,
+                payload,
+                Box::new(move |_| {
+                    counter_clone.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .await;
+
+        assert!(result.is_ok(), "Message should be produced successfully");
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            1,
+            "Callback should be called exactly once"
         );
     }
 }
