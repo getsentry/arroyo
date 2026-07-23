@@ -10,7 +10,7 @@ def get_requirements() -> Sequence[str]:
 
 setup(
     name="sentry-arroyo",
-    version="2.41.4",
+    version="2.42.0",
     author="Sentry",
     author_email="oss@sentry.io",
     license="Apache-2.0",

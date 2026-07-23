@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.42.0
+
+### New Features ✨
+
+- (producer) Add backpressure to FutureTrackingProducer by @bmckerry in [#554](https://github.com/getsentry/arroyo/pull/554)
+
+### Internal Changes 🔧
+
+- (producer) Track futures based on arg, not env var by @bmckerry in [#553](https://github.com/getsentry/arroyo/pull/553)
+
 ## 2.41.4
 
 ### New Features ✨
