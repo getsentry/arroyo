@@ -5,6 +5,7 @@ use std::time::Duration;
 pub mod commit_offsets;
 pub mod healthcheck;
 pub mod noop;
+pub mod offset_tracker;
 pub mod produce;
 pub mod reduce;
 pub mod run_task;
