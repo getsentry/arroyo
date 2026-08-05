@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.42.2
+
+### Bug Fixes 🐛
+
+- (producer) Add synchronous mode to FTP by @bmckerry in [#558](https://github.com/getsentry/arroyo/pull/558)
+
 ## 2.42.1
 
 ### Bug Fixes 🐛
