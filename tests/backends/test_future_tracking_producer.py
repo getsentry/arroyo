@@ -115,6 +115,33 @@ def test_pending_futures_max_len(track_futures: None) -> None:
     assert len(_pending_futures["test.producer"]) == 10000
 
 
+def test_registers_shutdown_at_construction() -> None:
+    # The shutdown must be registered eagerly, not on the first produce, so that
+    # atexit's reverse ordering runs it after handlers registered by callers that
+    # flush buffered messages into this producer at exit.
+    with patch("arroyo.backends.kafka.producer.atexit.register") as register:
+        producer = FutureTrackingProducer(
+            "test.producer", partial(get_dummy_producer, use_simple_futures=True)
+        )
+
+    register.assert_called_once_with(producer._shutdown)
+
+    # A producer that never produced closes cleanly.
+    producer._shutdown()
+
+
+def test_shutdown_closes_inner_producer() -> None:
+    producer = FutureTrackingProducer(
+        "test.producer", partial(get_dummy_producer, use_simple_futures=True)
+    )
+    producer.produce(Topic("test"), make_kafka_payload())
+
+    with patch.object(DummyProducer, "close", wraps=producer._get().close) as close:
+        producer._shutdown()
+
+    assert close.call_count == 1
+
+
 def test_producer_does_not_track_futures_when_disabled() -> None:
     with patch.object(
         FutureTrackingProducer, "_should_track_futures", return_value=False

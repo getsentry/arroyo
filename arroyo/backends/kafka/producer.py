@@ -62,6 +62,13 @@ class FutureTrackingProducer:
         self._track_futures = self._should_track_futures()
         # Used to ensure we don't instantiate duplicate producers when calling produce() from different threads.
         self._producer_lock = threading.Lock()
+        # Registered here rather than lazily on the first produce, because atexit runs
+        # handlers in reverse registration order. Callers that buffer messages and flush
+        # them into this producer from their own atexit handler register that handler at
+        # construction time, which is before our first produce. Registering lazily would
+        # put our close ahead of their flush and the flush would hit a closed producer.
+        # `_shutdown` is a no-op if the inner producer was never created.
+        atexit.register(self._shutdown)
 
     def _get(self) -> CloseableProducerProtocol:
         # None check first so we don't have any lock contention on produces
@@ -69,7 +76,6 @@ class FutureTrackingProducer:
             with self._producer_lock:
                 if self._inner_producer is None:
                     self._inner_producer = self._producer_factory()
-                    atexit.register(self._shutdown)
         return self._inner_producer
 
     def track_future(self, future: ProducerFuture[BrokerValue[KafkaPayload]]) -> None:
