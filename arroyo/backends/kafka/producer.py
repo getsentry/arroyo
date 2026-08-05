@@ -86,6 +86,13 @@ class FutureTrackingProducer:
             ProducerFuture[BrokerValue[KafkaPayload]]
         ] = deque(maxlen=0)
         _pending_futures[name] = deque(maxlen=0)
+        # Registered here rather than lazily on the first produce, because atexit runs
+        # handlers in reverse registration order. Callers that buffer messages and flush
+        # them into this producer from their own atexit handler register that handler at
+        # construction time, which is before our first produce. Registering lazily would
+        # put our close ahead of their flush and the flush would hit a closed producer.
+        # `_shutdown` is a no-op if the inner producer was never created.
+        atexit.register(self._shutdown)
 
     def _get_queue_max_len(self) -> int:
         """
@@ -104,7 +111,6 @@ class FutureTrackingProducer:
 
     def _initialize_producer_and_queues(self) -> None:
         self._inner_producer = self._producer_factory()
-        atexit.register(self._shutdown)
         queues_max_len = self._get_queue_max_len()
         if self._backpressure:
             self._backpressure_queue = deque(maxlen=queues_max_len)
