@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.42.1
+
+### Bug Fixes 🐛
+
+- (producer) Register FutureTrackingProducer shutdown eagerly by @untitaker in [#557](https://github.com/getsentry/arroyo/pull/557)
+
 ## 2.42.0
 
 ### New Features ✨
