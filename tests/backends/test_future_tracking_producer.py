@@ -226,6 +226,28 @@ def test_backpressure_queue_awaits_oldest_future_when_full() -> None:
     assert list(producer._backpressure_queue) == produced[1:]
 
 
+def test_produce_synchronous_awaits_future() -> None:
+    produced: list[ProducerFuture[BrokerValue[KafkaPayload]]] = []
+    producer = FutureTrackingProducer(
+        "test.producer",
+        partial(
+            get_dummy_producer,
+            use_simple_futures=False,
+            produced_futures=produced,
+            track_results=True,
+        ),
+        should_backpressure=False,
+    )
+
+    producer.produce(Topic("test"), make_kafka_payload(), asynchronous=False)
+
+    assert len(produced) == 1
+    assert cast(ResultTrackingFuture, produced[0]).result_call_count == 1
+
+    producer.produce(Topic("test"), make_kafka_payload())
+    assert cast(ResultTrackingFuture, produced[1]).result_call_count == 0
+
+
 def test_backpressure_queue_disabled() -> None:
     producer = FutureTrackingProducer(
         "test.producer",

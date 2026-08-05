@@ -125,16 +125,22 @@ class FutureTrackingProducer:
                     self._initialize_producer_and_queues()
         return cast(CloseableProducerProtocol, self._inner_producer)
 
+    def _await_future(self, future: ProducerFuture[BrokerValue[KafkaPayload]]) -> None:
+        """
+        Blocks until the given future completes. Ignores any errors raised by the future.
+        """
+        try:
+            future.result()
+        except Exception:
+            pass
+
     def track_future(self, future: ProducerFuture[BrokerValue[KafkaPayload]]) -> None:
         if self._track_futures:
             _pending_futures[self.name].append(future)
         if self._backpressure:
             if len(self._backpressure_queue) == self._backpressure_queue.maxlen:
-                try:
-                    # Backpressure on the result of the oldest future in the backpressure queue
-                    self._backpressure_queue[0].result()
-                except Exception:
-                    pass
+                # Backpressure on the result of the oldest future in the backpressure queue
+                self._await_future(self._backpressure_queue[0])
             self._backpressure_queue.append(future)
 
     @staticmethod
@@ -159,6 +165,7 @@ class FutureTrackingProducer:
         dest: Topic | Partition,
         payload: KafkaPayload,
         callbacks: Sequence[Callable[[Future[BrokerValue[KafkaPayload]]], Any]] = [],
+        asynchronous: bool = True,
     ) -> None:
         """
         Produces the given payload to the given topic.
@@ -171,6 +178,8 @@ class FutureTrackingProducer:
             payload: KafkaPayload to produce.
             callbacks: List of Callables to add to the future as done callbacks. The future itself
                        is the only arg passed to the callback.
+            asynchronous: If False, `produce()` will wait until the message has been delivered
+                          before returning. Default True.
         """
 
         future = self._get().produce(dest, payload)
@@ -188,6 +197,8 @@ class FutureTrackingProducer:
                         "or instantiate your producer with `use_simple_futures=False`."
                     )
                 )
+        if not asynchronous:
+            self._await_future(future)
 
     def _shutdown(self) -> None:
         _pending_futures.pop(self.name, None)
