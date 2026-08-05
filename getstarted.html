@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Getting started with Arroyo - Arroyo documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Arroyo Architecture" href="architecture.html" /><link rel="prev" title="What is Arroyo for?" href="what_for.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=ad592e98" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=14737038" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=d78f5285" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/><meta property="og:title" content="Getting started with Arroyo"/>
+    <meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      <img class="light-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <strong>Arroyo</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">What is Arroyo for?</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting started with Arroyo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Arroyo Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="strategies/index.html">Processing Strategies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="strategies/filter.html">Filter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/reduce.html">Reduce (Fold)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/unfold.html">Unfold</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/batching.html">Batch and Unbatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task.html">Run Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_in_threads.html">Run Task in Threads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_with_multiprocessing.html">Run Task with Multiprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/produce.html">Produce</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/commit_offsets.html">Commit offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/noop.html">Noop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/healthcheck.html">Healthchecks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="offsets.html">Committing offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dlqs.html">Dead letter queues</a></li>
+<li class="toctree-l1"><a class="reference internal" href="backpressure.html">Backpressure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="metrics.html">Metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameters.html">Common consumer parameters</a></li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#setup">Setup</a><ul>
+<li><a class="reference internal" href="#kafka-and-zookeeper">Kafka and Zookeeper</a></li>
+<li><a class="reference internal" href="#install-kafkacat">Install Kafkacat</a></li>
+<li><a class="reference internal" href="#development-environment">Development environment</a></li>
+<li><a class="reference internal" href="#create-two-kafka-topics">Create two Kafka topics</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#create-a-basic-consumer">Create a basic consumer</a><ul>
+<li><a class="reference internal" href="#creating-a-basic-consumer">Creating a basic consumer</a></li>
+<li><a class="reference internal" href="#create-a-streaming-consumer">Create a streaming consumer</a></li>
+<li><a class="reference internal" href="#add-some-useful-logic">Add some useful logic</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#further-examples">Further examples</a></li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">Arroyo</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Getting started with Arroyo</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="getting-started-with-arroyo">
+<h1>Getting started with Arroyo<a class="headerlink" href="#getting-started-with-arroyo" title="Link to this heading">¶</a></h1>
+<p>This tutorial shows how to create a Kafka consumer with Arroyo from scratch.</p>
+<section id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Link to this heading">¶</a></h2>
+<p>This section explains how to setup Kafka, Zookeeper and install the library</p>
+<section id="kafka-and-zookeeper">
+<h3>Kafka and Zookeeper<a class="headerlink" href="#kafka-and-zookeeper" title="Link to this heading">¶</a></h3>
+<p>In order to run an arroyo Kafka consumer you will need a working Kafka broker.
+If you already have one, you can skip this step.
+If you do not have a running Kafka broker, this command will install and start
+a Kafka docker container. (It requires Docker to be installed).</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">docker<span class="w"> </span>network<span class="w"> </span>create<span class="w"> </span>arroyo
+</span><span data-line="2">
+</span><span data-line="3">docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+</span><span data-line="4"><span class="w">    </span>-v<span class="w"> </span>zookeeper_volume:/var/lib/zookeeper<span class="w"> </span><span class="se">\</span>
+</span><span data-line="5"><span class="w">    </span>--env<span class="w"> </span><span class="nv">ZOOKEEPER_CLIENT_PORT</span><span class="o">=</span><span class="m">2181</span><span class="w"> </span><span class="se">\</span>
+</span><span data-line="6"><span class="w">    </span>--name<span class="o">=</span>sentry_zookeeper<span class="w"> </span><span class="se">\</span>
+</span><span data-line="7"><span class="w">    </span>--network<span class="o">=</span>arroyo<span class="w"> </span><span class="se">\</span>
+</span><span data-line="8"><span class="w">    </span>-p<span class="w"> </span><span class="m">2181</span>:2181<span class="w"> </span><span class="se">\</span>
+</span><span data-line="9"><span class="w">    </span>confluentinc/cp-zookeeper:6.2.0
+</span><span data-line="10">
+</span><span data-line="11">docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+</span><span data-line="12"><span class="w">    </span>-v<span class="w"> </span>kafka_volume:/var/lib/kafka<span class="w"> </span><span class="se">\</span>
+</span><span data-line="13"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_ZOOKEEPER_CONNECT</span><span class="o">=</span>sentry_zookeeper:2181<span class="w"> </span><span class="se">\</span>
+</span><span data-line="14"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_LISTENERS</span><span class="o">=</span>INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092<span class="w"> </span><span class="se">\</span>
+</span><span data-line="15"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_ADVERTISED_LISTENERS</span><span class="o">=</span>INTERNAL://127.0.0.1:9093,EXTERNAL://127.0.0.1:9092<span class="w"> </span><span class="se">\</span>
+</span><span data-line="16"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_LISTENER_SECURITY_PROTOCOL_MAP</span><span class="o">=</span>INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT<span class="w"> </span><span class="se">\</span>
+</span><span data-line="17"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_INTER_BROKER_LISTENER_NAME</span><span class="o">=</span>INTERNAL<span class="w"> </span><span class="se">\</span>
+</span><span data-line="18"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+</span><span data-line="19"><span class="w">    </span>--env<span class="w"> </span><span class="nv">CONFLUENT_SUPPORT_METRICS_ENABLE</span><span class="o">=</span><span class="nb">false</span><span class="w"> </span><span class="se">\</span>
+</span><span data-line="20"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_LOG4J_LOGGERS</span><span class="o">=</span>kafka.cluster<span class="o">=</span>WARN,kafka.controller<span class="o">=</span>WARN,kafka.coordinator<span class="o">=</span>WARN,kafka.log<span class="o">=</span>WARN,kafka.server<span class="o">=</span>WARN,kafka.zookeeper<span class="o">=</span>WARN,state.change.logger<span class="o">=</span>WARN<span class="w"> </span><span class="se">\</span>
+</span><span data-line="21"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_LOG4J_ROOT_LOGLEVEL</span><span class="o">=</span>WARN<span class="w"> </span><span class="se">\</span>
+</span><span data-line="22"><span class="w">    </span>--env<span class="w"> </span><span class="nv">KAFKA_TOOLS_LOG4J_LOGLEVEL</span><span class="o">=</span>WARN<span class="w"> </span><span class="se">\</span>
+</span><span data-line="23"><span class="w">    </span>--name<span class="o">=</span>sentry_kafka<span class="w"> </span><span class="se">\</span>
+</span><span data-line="24"><span class="w">    </span>--network<span class="o">=</span>arroyo<span class="w"> </span><span class="se">\</span>
+</span><span data-line="25"><span class="w">    </span>-p<span class="w"> </span><span class="m">9092</span>:9092<span class="w"> </span><span class="se">\</span>
+</span><span data-line="26"><span class="w">    </span>confluentinc/cp-kafka:6.2.0
+</span></pre></div>
+</div>
+<p>Now you should see Kafka and Zookeeper running with</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">docker<span class="w"> </span>ps
+</span></pre></div>
+</div>
+</section>
+<section id="install-kafkacat">
+<h3>Install Kafkacat<a class="headerlink" href="#install-kafkacat" title="Link to this heading">¶</a></h3>
+<p>This tool will be useful to produce onto and consume from topics.</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">https://docs.confluent.io/platform/current/app-development/kafkacat-usage.html#kcat-formerly-kafkacat-utility
+</span></pre></div>
+</div>
+</section>
+<section id="development-environment">
+<h3>Development environment<a class="headerlink" href="#development-environment" title="Link to this heading">¶</a></h3>
+<p>You will need to install the library. Most likely in a python venv. So first, create a python virtual
+environment. Then you can install arroyo with this.</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pip<span class="w"> </span>install<span class="w"> </span>sentry-arroyo
+</span></pre></div>
+</div>
+</section>
+<section id="create-two-kafka-topics">
+<h3>Create two Kafka topics<a class="headerlink" href="#create-two-kafka-topics" title="Link to this heading">¶</a></h3>
+<p>Our example will consume from one topic and produce the same messages on another topic. So we need
+two topics.</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>sentry_kafka<span class="w"> </span>kafka-topics<span class="w"> </span><span class="se">\</span>
+</span><span data-line="2"><span class="w">    </span>--create<span class="w"> </span><span class="se">\</span>
+</span><span data-line="3"><span class="w">    </span>--topic<span class="w"> </span>source-topic<span class="w"> </span><span class="se">\</span>
+</span><span data-line="4"><span class="w">    </span>--bootstrap-server<span class="w"> </span><span class="m">127</span>.0.0.1:9092
+</span><span data-line="5">
+</span><span data-line="6">docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>sentry_kafka<span class="w"> </span>kafka-topics<span class="w"> </span><span class="se">\</span>
+</span><span data-line="7"><span class="w">    </span>--create<span class="w"> </span><span class="se">\</span>
+</span><span data-line="8"><span class="w">    </span>--topic<span class="w"> </span>dest-topic<span class="w"> </span><span class="se">\</span>
+</span><span data-line="9"><span class="w">    </span>--bootstrap-server<span class="w"> </span><span class="m">127</span>.0.0.1:9092
+</span></pre></div>
+</div>
+<p>Now you should be ready to develop with Arroyo.</p>
+</section>
+</section>
+<section id="create-a-basic-consumer">
+<h2>Create a basic consumer<a class="headerlink" href="#create-a-basic-consumer" title="Link to this heading">¶</a></h2>
+<p>Arroyo provides two level of abstractions when writing a consumer: the basic consumer/producer library
+and the Streaming library. The first is just a thin wrapper around a librdkafka consumer/producer that
+adds some features around offset management. The second provides a more abstract streaming interface
+that hides details like rebalancing and the consumer lifecycle.</p>
+<section id="creating-a-basic-consumer">
+<h3>Creating a basic consumer<a class="headerlink" href="#creating-a-basic-consumer" title="Link to this heading">¶</a></h3>
+<p>This initializes a basic consumer and consumes a message.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.backends.kafka.configuration</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span data-line="2">    <span class="n">build_kafka_consumer_configuration</span><span class="p">,</span>
+</span><span data-line="3"><span class="p">)</span>
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.backends.kafka.consumer</span><span class="w"> </span><span class="kn">import</span> <span class="n">KafkaConsumer</span>
+</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Topic</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="n">TOPIC</span> <span class="o">=</span> <span class="n">Topic</span><span class="p">(</span><span class="s2">&quot;source-topic&quot;</span><span class="p">)</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="n">consumer</span> <span class="o">=</span> <span class="n">KafkaConsumer</span><span class="p">(</span>
+</span><span data-line="10">    <span class="n">build_kafka_consumer_configuration</span><span class="p">(</span>
+</span><span data-line="11">        <span class="n">default_config</span><span class="o">=</span><span class="p">{},</span>
+</span><span data-line="12">        <span class="n">bootstrap_servers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;127.0.0.1:9092&quot;</span><span class="p">],</span>
+</span><span data-line="13">        <span class="n">auto_offset_reset</span><span class="o">=</span><span class="s2">&quot;latest&quot;</span><span class="p">,</span>
+</span><span data-line="14">        <span class="n">group_id</span><span class="o">=</span><span class="s2">&quot;test-group&quot;</span><span class="p">,</span>
+</span><span data-line="15">    <span class="p">)</span>
+</span><span data-line="16"><span class="p">)</span>
+</span><span data-line="17">
+</span><span data-line="18"><span class="n">consumer</span><span class="o">.</span><span class="n">subscribe</span><span class="p">([</span><span class="n">TOPIC</span><span class="p">])</span>
+</span><span data-line="19">
+</span><span data-line="20"><span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span><span data-line="21">    <span class="n">msg</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+</span><span data-line="22">    <span class="k">if</span> <span class="n">msg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="23">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;MSG: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">payload</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Start this script and use kcat to produce a message:</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;MESSAGE&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>kcat<span class="w"> </span>-P<span class="w"> </span>-b<span class="w"> </span><span class="m">127</span>.0.0.1:9092<span class="w"> </span>-t<span class="w"> </span>source-topic
+</span></pre></div>
+</div>
+<p>In a while the message should appear on the console:</p>
+<div class="highlight-Bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">MSG:<span class="w"> </span>KafkaPayload<span class="o">(</span><span class="nv">key</span><span class="o">=</span>None,<span class="w"> </span><span class="nv">value</span><span class="o">=</span>b<span class="s1">&#39;MESSAGE&#39;</span>,<span class="w"> </span><span class="nv">headers</span><span class="o">=[])</span>
+</span></pre></div>
+</div>
+</section>
+<section id="create-a-streaming-consumer">
+<h3>Create a streaming consumer<a class="headerlink" href="#create-a-streaming-consumer" title="Link to this heading">¶</a></h3>
+<p>Add a <cite>ProcessingStrategy</cite> and <cite>ProcessingStrategyFactory</cite>.
+Here we are using the <cite>RunTask</cite> strategy which runs a custom function over each message.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.backends.kafka</span><span class="w"> </span><span class="kn">import</span> <span class="n">KafkaPayload</span>
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.processing.strategies</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span data-line="5">    <span class="n">CommitOffsets</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">ProcessingStrategy</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">ProcessingStrategyFactory</span><span class="p">,</span>
+</span><span data-line="8">    <span class="n">RunTask</span><span class="p">,</span>
+</span><span data-line="9"><span class="p">)</span>
+</span><span data-line="10"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Commit</span><span class="p">,</span> <span class="n">Message</span><span class="p">,</span> <span class="n">Partition</span><span class="p">,</span> <span class="n">Topic</span>
+</span><span data-line="11">
+</span><span data-line="12">
+</span><span data-line="13"><span class="k">def</span><span class="w"> </span><span class="nf">handle_message</span><span class="p">(</span><span class="n">message</span><span class="p">:</span> <span class="n">Message</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Message</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">]:</span>
+</span><span data-line="14">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;MSG: </span><span class="si">{</span><span class="n">message</span><span class="o">.</span><span class="n">payload</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="15">    <span class="k">return</span> <span class="n">message</span><span class="o">.</span><span class="n">payload</span>
+</span><span data-line="16">
+</span><span data-line="17"><span class="k">class</span><span class="w"> </span><span class="nc">ConsumerStrategyFactory</span><span class="p">(</span><span class="n">ProcessingStrategyFactory</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">]):</span>
+</span><span data-line="18"><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span data-line="19"><span class="sd">    The factory manages the lifecycle of the `ProcessingStrategy`.</span>
+</span><span data-line="20"><span class="sd">    A strategy is created every time new partitions are assigned to the</span>
+</span><span data-line="21"><span class="sd">    consumer, while it is destroyed when partitions are revoked or the</span>
+</span><span data-line="22"><span class="sd">    consumer is closed</span>
+</span><span data-line="23"><span class="sd">    &quot;&quot;&quot;</span>
+</span><span data-line="24">    <span class="k">def</span><span class="w"> </span><span class="nf">create_with_partitions</span><span class="p">(</span>
+</span><span data-line="25">        <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="26">        <span class="n">commit</span><span class="p">:</span> <span class="n">Commit</span><span class="p">,</span>
+</span><span data-line="27">        <span class="n">partitions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Partition</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+</span><span data-line="28">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessingStrategy</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">]:</span>
+</span><span data-line="29">        <span class="k">return</span> <span class="n">RunTask</span><span class="p">(</span><span class="n">handle_message</span><span class="p">,</span> <span class="n">CommitOffsets</span><span class="p">(</span><span class="n">commit</span><span class="p">))</span>
+</span></pre></div>
+</div>
+<p>The code above is orchestrated by the Arroyo runtime called <cite>StreamProcessor</cite>.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.processing</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamProcessor</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.commit</span><span class="w"> </span><span class="kn">import</span> <span class="n">ONCE_PER_SECOND</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">processor</span> <span class="o">=</span> <span class="n">StreamProcessor</span><span class="p">(</span>
+</span><span data-line="5">    <span class="n">consumer</span><span class="o">=</span><span class="n">consumer</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">topic</span><span class="o">=</span><span class="n">TOPIC</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">processor_factory</span><span class="o">=</span><span class="n">ConsumerStrategyFactory</span><span class="p">(),</span>
+</span><span data-line="8">    <span class="n">commit_policy</span><span class="o">=</span><span class="n">ONCE_PER_SECOND</span><span class="p">,</span>
+</span><span data-line="9"><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="n">processor</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>The main consumer loop is managed by the <cite>StreamProcessor</cite> no need to periodically poll the
+consumer. The <cite>ConsumerStrategy</cite> works by inversion of control.</p>
+</section>
+<section id="add-some-useful-logic">
+<h3>Add some useful logic<a class="headerlink" href="#add-some-useful-logic" title="Link to this heading">¶</a></h3>
+<p>Now we will chain the <cite>Produce</cite> strategy to produce messages on a second topic after the message is logged</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.backends.kafka</span><span class="w"> </span><span class="kn">import</span> <span class="n">KafkaProducer</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.backends.kafka.configuration</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_kafka_configuration</span>
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">arroyo.processing.strategies</span><span class="w"> </span><span class="kn">import</span> <span class="n">Produce</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="k">class</span><span class="w"> </span><span class="nc">ConsumerStrategyFactory</span><span class="p">(</span><span class="n">ProcessingStrategyFactory</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">]):</span>
+</span><span data-line="6"><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span data-line="7"><span class="sd">    The factory manages the lifecycle of the `ProcessingStrategy`.</span>
+</span><span data-line="8"><span class="sd">    A strategy is created every time new partitions are assigned to the</span>
+</span><span data-line="9"><span class="sd">    consumer, while it is destroyed when partitions are revoked or the</span>
+</span><span data-line="10"><span class="sd">    consumer is closed</span>
+</span><span data-line="11"><span class="sd">    &quot;&quot;&quot;</span>
+</span><span data-line="12">    <span class="k">def</span><span class="w"> </span><span class="nf">create_with_partitions</span><span class="p">(</span>
+</span><span data-line="13">        <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="14">        <span class="n">commit</span><span class="p">:</span> <span class="n">Commit</span><span class="p">,</span>
+</span><span data-line="15">        <span class="n">partitions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Partition</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+</span><span data-line="16">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessingStrategy</span><span class="p">[</span><span class="n">KafkaPayload</span><span class="p">]:</span>
+</span><span data-line="17">        <span class="n">producer</span> <span class="o">=</span> <span class="n">KafkaProducer</span><span class="p">(</span>
+</span><span data-line="18">            <span class="n">build_kafka_configuration</span><span class="p">(</span>
+</span><span data-line="19">                <span class="n">default_config</span><span class="o">=</span><span class="p">{},</span>
+</span><span data-line="20">                <span class="n">bootstrap_servers</span><span class="o">=</span><span class="n">BOOTSTRAP_SERVERS</span><span class="p">,</span>
+</span><span data-line="21">            <span class="p">)</span>
+</span><span data-line="22">        <span class="p">)</span>
+</span><span data-line="23">
+</span><span data-line="24">        <span class="k">return</span> <span class="n">RunTask</span><span class="p">(</span>
+</span><span data-line="25">            <span class="n">handle_message</span><span class="p">,</span>
+</span><span data-line="26">            <span class="n">Produce</span><span class="p">(</span><span class="n">producer</span><span class="p">,</span> <span class="n">Topic</span><span class="p">(</span><span class="s2">&quot;dest-topic&quot;</span><span class="p">),</span> <span class="n">CommitOffsets</span><span class="p">(</span><span class="n">commit</span><span class="p">))</span>
+</span><span data-line="27">        <span class="p">)</span>
+</span></pre></div>
+</div>
+<p>The message is first passed to the <cite>RunTask</cite> strategy which simply logs the message and submits
+the output to the next step. The <cite>Produce</cite> strategy produces the message asynchronously. Once
+the message is produced, the <cite>CommitOffsets</cite> strategy commits the offset of the message.</p>
+</section>
+</section>
+<section id="further-examples">
+<h2>Further examples<a class="headerlink" href="#further-examples" title="Link to this heading">¶</a></h2>
+<p>Find some complete <a class="reference external" href="https://github.com/getsentry/arroyo/tree/main/examples">examples of usage</a>.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="what_for.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">What is Arroyo for?</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="architecture.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Arroyo Architecture</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2023, Sentry Team and Contributors</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/shibuya.js?v=c1cf1a6b"></script></body>
+</html>

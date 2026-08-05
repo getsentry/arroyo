@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>What is Arroyo for? - Arroyo documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Getting started with Arroyo" href="getstarted.html" /><link rel="prev" title="Contents:" href="index.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=ad592e98" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=14737038" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=d78f5285" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/><meta property="og:title" content="What is Arroyo for?"/>
+    <meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      <img class="light-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <strong>Arroyo</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">What is Arroyo for?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getstarted.html">Getting started with Arroyo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Arroyo Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="strategies/index.html">Processing Strategies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="strategies/filter.html">Filter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/reduce.html">Reduce (Fold)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/unfold.html">Unfold</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/batching.html">Batch and Unbatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task.html">Run Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_in_threads.html">Run Task in Threads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_with_multiprocessing.html">Run Task with Multiprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/produce.html">Produce</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/commit_offsets.html">Commit offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/noop.html">Noop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/healthcheck.html">Healthchecks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="offsets.html">Committing offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dlqs.html">Dead letter queues</a></li>
+<li class="toctree-l1"><a class="reference internal" href="backpressure.html">Backpressure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="metrics.html">Metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameters.html">Common consumer parameters</a></li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#goals">Goals</a></li>
+<li><a class="reference internal" href="#why-simple-doesnt-cut-it">Why Simple Doesn&#8217;t Cut It</a></li>
+<li><a class="reference internal" href="#providing-delivery-guarantees">Providing delivery guarantees</a></li>
+<li><a class="reference internal" href="#high-throughput">High Throughput</a></li>
+<li><a class="reference internal" href="#reliable-high-throughput-batched-producers">Reliable High Throughput Batched Producers</a></li>
+<li><a class="reference internal" href="#dealing-with-rebalancing">Dealing With Rebalancing</a><ul>
+<li><a class="reference internal" href="#what-is-rebalancing">What is Rebalancing</a></li>
+<li><a class="reference internal" href="#when-rebalancing-can-happen">When Rebalancing Can Happen</a></li>
+<li><a class="reference internal" href="#how-rebalancing-affects-a-consumer">How Rebalancing Affects a Consumer</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#librdkafkas-callback-hell">librdkafka&#8217;s Callback Hell</a></li>
+<li><a class="reference internal" href="#conclusion">Conclusion</a></li>
+<li><a class="reference internal" href="#appendix">Appendix</a></li>
+<li><a class="reference internal" href="#committing-to-a-kafka-topic">Committing to a Kafka Topic</a></li>
+<li><a class="reference internal" href="#what-is-a-kafka-consumer-group">What is a Kafka Consumer Group</a></li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">Arroyo</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">What is Arroyo for?</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="what-is-arroyo-for">
+<h1>What is Arroyo for?<a class="headerlink" href="#what-is-arroyo-for" title="Link to this heading">¶</a></h1>
+<p>Arroyo is a library for writing high-throughput, testable kafka
+consumers and producers. This document attempts to outline the
+intricacies of writing such consumers.</p>
+<section id="goals">
+<h2>Goals<a class="headerlink" href="#goals" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Make it easy to build consumers that provide delivery guarantees</p></li>
+<li><p>Make it easy to write high-throughput kafka consumers</p></li>
+<li><p>Make it easy to write reliable, high throughput kafka producers</p></li>
+<li><p>Abstract away rebalancing such that users of the library do not have
+to worry about it</p></li>
+<li><p>Make it possible to test kafka consumer logic without having to
+reproduce the entire kafka environment</p></li>
+<li><p>Provide a way for the application logic to signal backpressure</p></li>
+</ol>
+</section>
+<section id="why-simple-doesnt-cut-it">
+<h2>Why Simple Doesn’t Cut It<a class="headerlink" href="#why-simple-doesnt-cut-it" title="Link to this heading">¶</a></h2>
+<p>When visualizing event-driven architecture, Kafka is viewed as an
+abstract queue with groups of producers pushing to it, and consumers
+consuming from it (as in the diagram below).</p>
+<pre  class="mermaid">
+        graph TD
+    Producer --&gt; Kafka_Topic
+    Kafka_Topic --&gt; Consumer
+        Consumer --&gt; Destination
+    </pre><p>A more accurate model is that kafka is like a log file which is
+persistent and there are offsets of the file that different consumers
+have read or not read.</p>
+<p>The most simple kafka consumer looks something like this:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">confluent_kafka</span><span class="w"> </span><span class="kn">import</span> <span class="n">Consumer</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">conf</span> <span class="o">=</span> <span class="p">{</span>
+</span><span data-line="4">    <span class="s2">&quot;bootstrap.servers&quot;</span><span class="p">:</span> <span class="s2">&quot;localhost:9092&quot;</span><span class="p">,</span>
+</span><span data-line="5">    <span class="s2">&quot;group.id&quot;</span><span class="p">:</span> <span class="s2">&quot;my_group&quot;</span><span class="p">,</span>
+</span><span data-line="6">    <span class="s2">&quot;auto.offset.reset&quot;</span><span class="p">:</span> <span class="s2">&quot;latest&quot;</span><span class="p">,</span>
+</span><span data-line="7"><span class="p">}</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="n">consumer</span> <span class="o">=</span> <span class="n">Consumer</span><span class="p">(</span><span class="n">conf</span><span class="p">)</span>
+</span><span data-line="10"><span class="n">consumer</span><span class="o">.</span><span class="n">subscribe</span><span class="p">([</span><span class="s2">&quot;my_topic&quot;</span><span class="p">])</span>
+</span><span data-line="11">
+</span><span data-line="12"><span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span><span data-line="13">    <span class="n">message</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span>
+</span><span data-line="14">    <span class="n">send_to_destination</span><span class="p">(</span><span class="n">process_message</span><span class="p">(</span><span class="n">message</span><span class="p">))</span>
+</span></pre></div>
+</div>
+<p>This simple consumer would not satisfy the goals mentioned at the top of
+this page. The following subsections will explain why</p>
+</section>
+<section id="providing-delivery-guarantees">
+<h2>Providing delivery guarantees<a class="headerlink" href="#providing-delivery-guarantees" title="Link to this heading">¶</a></h2>
+<p>By default, a consumer in the <code class="docutils literal notranslate"><span class="pre">confluent_kafka</span></code> library will
+auto-commit on poll. To understand what it means to commit to a kafka
+topic, see the Appendix. This can lead to the following issue:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># get message from kafka, commit immediately</span>
+</span><span data-line="2"><span class="n">message</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span>
+</span><span data-line="3"><span class="c1"># ❗❗❗ throws exception due to a network issue</span>
+</span><span data-line="4"><span class="n">send_to_destination</span><span class="p">(</span><span class="n">process_message</span><span class="p">(</span><span class="n">message</span><span class="p">))</span>
+</span><span data-line="5"><span class="c1"># this message is now lost and we&#39;re on to the next one</span>
+</span></pre></div>
+</div>
+<p>This can be fixed by only committing after we know that the message has
+reached its destination in the following way:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># add this value to the config:</span>
+</span><span data-line="2"><span class="s2">&quot;enable.auto.commit&quot;</span><span class="p">:</span> <span class="s2">&quot;false&quot;</span>
+</span><span data-line="3"><span class="s2">&quot;enable.auto.offset.store&quot;</span><span class="p">:</span> <span class="s2">&quot;false&quot;</span>
+</span><span data-line="4"><span class="c1"># -------</span>
+</span><span data-line="5"><span class="n">message</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</span><span data-line="6"><span class="n">send_to_destination</span><span class="p">(</span><span class="n">process_message</span><span class="p">(</span><span class="n">message</span><span class="p">))</span>
+</span><span data-line="7"><span class="n">consumer</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">offset</span><span class="p">())</span>
+</span></pre></div>
+</div>
+<p>Note: Arroyo still uses rdkafka’s autocommit, but only to commit stored
+offsets. Offsets are still stored explicitly rather than on poll.</p>
+</section>
+<section id="high-throughput">
+<h2>High Throughput<a class="headerlink" href="#high-throughput" title="Link to this heading">¶</a></h2>
+<p>The previous section has allowed us to not commit messages that are not
+processed however committing every message severely hurts throughput.
+Every call to commit is a network operation, it also makes the broker
+persist and replicate the information. If we can reduce the number of
+commit calls, our throughput can be much higher. And so we commit in
+batches</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># this code is purely descriptive.</span>
+</span><span data-line="2"><span class="c1"># We have to commit to each partition separately</span>
+</span><span data-line="3"><span class="c1"># but that code is not helpful for this example</span>
+</span><span data-line="4"><span class="n">message</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</span><span data-line="5"><span class="n">batch</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">process_message</span><span class="p">(</span><span class="n">message</span><span class="p">))</span>
+</span><span data-line="6"><span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span> <span class="o">==</span> <span class="n">batch_size</span><span class="p">:</span>
+</span><span data-line="7">    <span class="n">consumer</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">offsets</span><span class="o">=</span><span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">offset</span><span class="p">()</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">])</span>
+</span></pre></div>
+</div>
+<p>This will get us faster throughput however we are currently hand-waving
+away how we send the message to its destination</p>
+</section>
+<section id="reliable-high-throughput-batched-producers">
+<h2>Reliable High Throughput Batched Producers<a class="headerlink" href="#reliable-high-throughput-batched-producers" title="Link to this heading">¶</a></h2>
+<p>Producing to Kafka reliably and at high throughput is not a simple
+operation. Here is how a simple Kafka Producer looks in code:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">confluent_kafka</span><span class="w"> </span><span class="kn">import</span> <span class="n">Producer</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">conf</span> <span class="o">=</span> <span class="p">{</span>
+</span><span data-line="4">  <span class="s2">&quot;bootstrap.servers&quot;</span><span class="p">:</span> <span class="s2">&quot;localhost:9092&quot;</span><span class="p">,</span>
+</span><span data-line="5"><span class="p">}</span>
+</span><span data-line="6"><span class="n">producer</span> <span class="o">=</span> <span class="n">Producer</span><span class="p">(</span><span class="n">conf</span><span class="p">)</span>
+</span><span data-line="7"><span class="k">def</span><span class="w"> </span><span class="nf">send_to_destination</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
+</span><span data-line="8">    <span class="c1"># ❗ This does not do what it says</span>
+</span><span data-line="9">    <span class="c1"># it writes to a buffer</span>
+</span><span data-line="10">    <span class="n">producer</span><span class="o">.</span><span class="n">produce</span><span class="p">(</span><span class="s2">&quot;destination_topic&quot;</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+</span><span data-line="11">    <span class="c1"># this will actually block until the messages are produced</span>
+</span><span data-line="12">    <span class="c1"># calling this after produce every time is very expensive,</span>
+</span><span data-line="13">    <span class="c1"># how often we flush has high impacts on the producer throughput</span>
+</span><span data-line="14">    <span class="n">producer</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>At a high level, the producer is actually buffering the messages
+produced to the topic</p>
+<img alt="_images/kafka_producer.png" src="_images/kafka_producer.png" />
+<p>A kafka producer writes to an internal buffer. This batches the IO
+(good) but you don’t know when it will ever make it to the
+destination</p>
+<p>In order to allow for reliability of transmission, the
+<code class="docutils literal notranslate"><span class="pre">confluent_kafka</span></code> library provides <a class="reference external" href="https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#confluent_kafka.Producer.produce">a callback to
+produce</a>
+like so</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">delivery_callback</span><span class="p">(</span><span class="n">error</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+</span><span data-line="2">    <span class="c1"># do something here to make sure your message is in the state</span>
+</span><span data-line="3">    <span class="c1"># you want it to be</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">producer</span><span class="o">.</span><span class="n">produce</span><span class="p">(</span><span class="s2">&quot;destination_topic&quot;</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">on_delivery</span><span class="o">=</span><span class="n">delivery_callback</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="dealing-with-rebalancing">
+<h2>Dealing With Rebalancing<a class="headerlink" href="#dealing-with-rebalancing" title="Link to this heading">¶</a></h2>
+<section id="what-is-rebalancing">
+<h3>What is Rebalancing<a class="headerlink" href="#what-is-rebalancing" title="Link to this heading">¶</a></h3>
+<p>A kafka topic is divided into n partitions, each partition can be
+consumed by exactly one consumer per <a class="reference external" href="https://www.educba.com/kafka-consumer-group/">consumer
+group</a>. A consumer can
+consume multiple partitions</p>
+<figure class="align-default">
+<img alt="_images/consumer_groups.png" src="_images/consumer_groups.png" />
+</figure>
+</section>
+<section id="when-rebalancing-can-happen">
+<h3>When Rebalancing Can Happen<a class="headerlink" href="#when-rebalancing-can-happen" title="Link to this heading">¶</a></h3>
+<p>Rebalancing can happen due to:</p>
+<ul class="simple">
+<li><p>An addition or removal of a consumer to a consumer group</p>
+<ul>
+<li><p>(Every deploy does this)</p></li>
+</ul>
+</li>
+<li><p>A rebalance being kicked off manually</p></li>
+<li><p>A consumer pod dies and now its partition needs to be re-assigned</p></li>
+<li><p>Whenever the broker decides it’s a good idea (it can happen at any
+time)</p></li>
+<li><p>TODO: More things?</p></li>
+</ul>
+</section>
+<section id="how-rebalancing-affects-a-consumer">
+<h3>How Rebalancing Affects a Consumer<a class="headerlink" href="#how-rebalancing-affects-a-consumer" title="Link to this heading">¶</a></h3>
+<p>Rebalancing is annoying to handle for a consumer that processes batches,
+imagine the following scenario:</p>
+<pre  class="mermaid">
+        sequenceDiagram
+    Broker-&gt;&gt;Consumer: message
+    activate Consumer
+    note right of Consumer: start building batch
+    Broker-&gt;&gt;Consumer: message
+    Broker-&gt;&gt;Consumer: Revoke Partition
+    deactivate Consumer
+    Consumer-&gt;&gt;Broker: commit batch
+    note left of Broker: Received commit from revoked Consumer!
+    </pre><p>Once a partition is revoked for a consumer, it cannot commit to it. This
+is bad news for the batch that the consumer has built up. Each consumer
+has different requirements but a decision has to be made as to whether
+to flush the batch or to discard its work and let the next consumer
+assigned to this partition pick it up. The rebalancing behavior can be
+customized by providing an <code class="docutils literal notranslate"><span class="pre">on_revoke</span></code> callback to the consumer when
+subscribing.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">confluent_kafka</span><span class="w"> </span><span class="kn">import</span> <span class="n">Consumer</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">conf</span> <span class="o">=</span> <span class="p">{</span>
+</span><span data-line="4">    <span class="s2">&quot;bootstrap.servers&quot;</span><span class="p">:</span> <span class="s2">&quot;localhost:9092&quot;</span><span class="p">,</span>
+</span><span data-line="5">    <span class="s2">&quot;group.id&quot;</span><span class="p">:</span> <span class="s2">&quot;my_group&quot;</span><span class="p">,</span>
+</span><span data-line="6">    <span class="s2">&quot;auto.offset.reset&quot;</span><span class="p">:</span> <span class="s2">&quot;latest&quot;</span><span class="p">,</span>
+</span><span data-line="7"><span class="p">}</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="k">def</span><span class="w"> </span><span class="nf">flush_current_batch</span><span class="p">(</span><span class="n">consumer</span><span class="p">,</span> <span class="n">partitions</span><span class="p">):</span>
+</span><span data-line="10">    <span class="c1"># flush the current batch</span>
+</span><span data-line="11">    <span class="k">pass</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="n">consumer</span> <span class="o">=</span> <span class="n">Consumer</span><span class="p">(</span><span class="n">conf</span><span class="p">)</span>
+</span><span data-line="14"><span class="n">consumer</span><span class="o">.</span><span class="n">subscribe</span><span class="p">([</span><span class="s2">&quot;my_topic&quot;</span><span class="p">],</span> <span class="n">on_revoke</span><span class="o">=</span><span class="n">flush_current_batch</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="librdkafkas-callback-hell">
+<h2>librdkafka’s Callback Hell<a class="headerlink" href="#librdkafkas-callback-hell" title="Link to this heading">¶</a></h2>
+<p>librdkafka uses callbacks as a core mechanic for control flow. A few
+such examples have been mentioned in this document already. What is not
+clear however, is that <strong>callbacks are only called when ``poll`` is
+called</strong></p>
+<p>This means that:</p>
+<ul class="simple">
+<li><p>this line could possibly do a lot of work:</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># any scheduled callbacks will run within this call</span>
+</span><span data-line="2"><span class="n">message</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<ul class="simple">
+<li><p>No callbacks will be invoked until the consumer or producer call
+<code class="docutils literal notranslate"><span class="pre">poll</span></code> again (for their respective callbacks)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">poll</span></code> has to be called periodically on a consumer otherwise the
+broker will kick the consumer out of the consumer group</p>
+<ul>
+<li><p>The handling of that revocation won’t happen until <code class="docutils literal notranslate"><span class="pre">poll</span></code> is
+called</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="conclusion">
+<h2>Conclusion<a class="headerlink" href="#conclusion" title="Link to this heading">¶</a></h2>
+<p>There are many intricacies and gotchas to writing high performant,
+reliable kafka consumers. This document does not outline all of them but
+all of what is outlined here should be kept in mind when designing any
+kafka consumer library.</p>
+</section>
+<section id="appendix">
+<h2>Appendix<a class="headerlink" href="#appendix" title="Link to this heading">¶</a></h2>
+</section>
+<section id="committing-to-a-kafka-topic">
+<h2>Committing to a Kafka Topic<a class="headerlink" href="#committing-to-a-kafka-topic" title="Link to this heading">¶</a></h2>
+<p>A consumer comitting to a topic signals to the broker that this message
+has been processed. When <code class="docutils literal notranslate"><span class="pre">poll</span></code> is called next by that consumer, it
+will return the next message.</p>
+<p><a class="reference external" href="https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#confluent_kafka.Consumer.commit">API
+Doc</a></p>
+</section>
+<section id="what-is-a-kafka-consumer-group">
+<h2>What is a Kafka Consumer Group<a class="headerlink" href="#what-is-a-kafka-consumer-group" title="Link to this heading">¶</a></h2>
+<p><a class="reference external" href="https://www.educba.com/kafka-consumer-group/">https://www.educba.com/kafka-consumer-group/</a></p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="index.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Home</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="getstarted.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Getting started with Arroyo</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2023, Sentry Team and Contributors</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/shibuya.js?v=c1cf1a6b"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+const defaultStyle = document.createElement('style');
+defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+`;
+document.head.appendChild(defaultStyle);
+
+const fullscreenStyle = document.createElement('style');
+fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+document.head.appendChild(fullscreenStyle);
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
+    }
+    return false;
+};
+
+const load = async () => {
+    await mermaid.run();
+
+    const all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(load, 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(load, 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(load, 200);
+        return;
+    }
+
+    const darkTheme = isDarkTheme();
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    const modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    let previousScrollOffset = [window.scrollX, window.scrollY];
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    const allButtons = [];
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        container.appendChild(fullscreenBtn);
+        allButtons.push(fullscreenBtn);
+    });
+
+    // Update theme classes when theme changes
+    const updateTheme = () => {
+        const dark = isDarkTheme();
+        allButtons.forEach(btn => {
+            if (dark) {
+                btn.classList.add('dark-theme');
+            } else {
+                btn.classList.remove('dark-theme');
+            }
+        });
+        if (dark) {
+            modal.classList.add('dark-theme');
+            modalContent.classList.add('dark-theme');
+            closeBtn.classList.add('dark-theme');
+        } else {
+            modal.classList.remove('dark-theme');
+            modalContent.classList.remove('dark-theme');
+            closeBtn.classList.remove('dark-theme');
+        }
+    };
+
+    // Watch for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+};
+
+window.addEventListener("load", load);
+</script></body>
+</html>
