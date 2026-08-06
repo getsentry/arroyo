@@ -66,7 +66,7 @@ async fn main() {
         KafkaProducerHandler::new(producer, TopicOrPartition::Topic(Topic::new("test_out")));
 
     let error_handler = LogHandler;
-    let mut tracker = OffsetTracker::new(Duration::from_secs(1));
+    let mut tracker = OffsetTracker::new(Duration::from_secs(1), &source);
     let reverse = ReverseStage;
 
     // --- Wire pipeline ---

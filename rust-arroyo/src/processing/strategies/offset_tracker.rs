@@ -6,21 +6,28 @@ use chrono::{DateTime, Utc};
 use crate::timer;
 use crate::types::Partition;
 
-/// Tracks offsets per partition and emits them on a time-throttled interval.
-///
-/// Shared by both the push-based CommitOffsets strategy and the pull-based
-/// pipeline terminal. The offset tracking + time-throttled commit logic is
-/// identical in both models.
-pub struct OffsetTracker {
+/// Trait for committing offsets. KafkaSource implements this.
+/// Tests can provide a mock.
+pub trait OffsetCommitter: Send + Sync {
+    fn commit_offsets(
+        &self,
+        positions: &HashMap<Partition, u64>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>>;
+}
+
+/// Tracks offsets per partition and commits them on a time-throttled interval.
+pub struct OffsetTracker<'a> {
+    committer: &'a dyn OffsetCommitter,
     offsets: HashMap<Partition, u64>,
     last_commit_time: coarsetime::Instant,
     last_record_time: coarsetime::Instant,
     commit_frequency: coarsetime::Duration,
 }
 
-impl OffsetTracker {
-    pub fn new(commit_frequency: Duration) -> Self {
+impl<'a> OffsetTracker<'a> {
+    pub fn new(commit_frequency: Duration, committer: &'a dyn OffsetCommitter) -> Self {
         Self {
+            committer,
             offsets: Default::default(),
             last_commit_time: coarsetime::Instant::recent(),
             last_record_time: coarsetime::Instant::recent(),
@@ -28,13 +35,12 @@ impl OffsetTracker {
         }
     }
 
-    /// Record the offset for a partition. Keeps the highest offset per partition.
+    /// Record the offset for a partition.
     pub fn track(&mut self, partition: Partition, offset: u64) {
         self.offsets.insert(partition, offset);
     }
 
     /// Record a message timestamp for latency tracking.
-    /// Throttled to at most once per second.
     pub fn record_latency(&mut self, timestamp: DateTime<Utc>) {
         let now = coarsetime::Instant::recent();
         if now - self.last_record_time > coarsetime::Duration::from_secs(1) {
@@ -46,32 +52,30 @@ impl OffsetTracker {
         }
     }
 
-    /// Returns offsets to commit if the commit frequency has elapsed.
-    /// Returns None if it's not time yet or there's nothing to commit.
-    pub fn maybe_commit(&mut self) -> Option<HashMap<Partition, u64>> {
+    /// Commit offsets if the commit frequency has elapsed.
+    pub fn maybe_commit(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.try_commit(false)
     }
 
-    /// Returns all tracked offsets regardless of timing. Use at shutdown
-    /// or stream completion to ensure final offsets are committed.
-    pub fn flush(&mut self) -> Option<HashMap<Partition, u64>> {
+    /// Commit all tracked offsets regardless of timing.
+    pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.try_commit(true)
     }
 
-    fn try_commit(&mut self, force: bool) -> Option<HashMap<Partition, u64>> {
+    fn try_commit(&mut self, force: bool) -> Result<(), Box<dyn std::error::Error + Send>> {
         if self.offsets.is_empty() {
-            return None;
+            return Ok(());
         }
 
         if !force
             && coarsetime::Instant::recent() - self.last_commit_time <= self.commit_frequency
         {
-            return None;
+            return Ok(());
         }
 
-        let positions = self.offsets.clone();
+        self.committer.commit_offsets(&self.offsets)?;
         self.offsets.clear();
         self.last_commit_time = coarsetime::Instant::recent();
-        Some(positions)
+        Ok(())
     }
 }

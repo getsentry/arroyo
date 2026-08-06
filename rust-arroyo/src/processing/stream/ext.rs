@@ -152,7 +152,7 @@ pub trait PipelineExt<T: Send>:
     #[allow(async_fn_in_trait)]
     async fn commit(
         self,
-        tracker: &mut OffsetTracker,
+        tracker: &mut OffsetTracker<'_>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut stream = Box::pin(self);
 
@@ -170,22 +170,15 @@ pub trait PipelineExt<T: Send>:
                     tracker.track(metadata.partition, metadata.offset + 1);
                 }
                 StageResult::Fail(err) => {
-                    if let Some(_positions) = tracker.flush() {
-                        // TODO: actually commit via consumer
-                    }
+                    let _ = tracker.flush();
                     return Err(err);
                 }
             }
 
-            if let Some(_positions) = tracker.maybe_commit() {
-                // TODO: actually commit via consumer
-            }
+            tracker.maybe_commit()?;
         }
 
-        if let Some(_positions) = tracker.flush() {
-            // TODO: actually commit via consumer
-        }
-
+        tracker.flush()?;
         Ok(())
     }
 }

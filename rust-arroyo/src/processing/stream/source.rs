@@ -1,19 +1,22 @@
+use std::collections::HashMap;
+
 use futures::stream::Stream;
 use futures::StreamExt;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::TopicPartitionList;
 
 use crate::backends::kafka::config::KafkaConfig;
-use crate::types::Topic;
+use crate::processing::strategies::offset_tracker::OffsetCommitter;
+use crate::types::{Partition, Topic};
 
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::StageResult;
 
 /// A Kafka consumer source that produces a Stream of StageResult<KafkaPayload>.
 ///
-/// Wraps rdkafka's StreamConsumer and handles the conversion from
-/// BorrowedMessage to Envelope. Users get a clean stream ready to
-/// chain .apply_stage() on.
+/// Also handles offset committing — both stream() and commit() borrow
+/// &self on the underlying StreamConsumer, which rdkafka allows.
 pub struct KafkaSource {
     consumer: StreamConsumer,
 }
@@ -35,9 +38,6 @@ impl KafkaSource {
     }
 
     /// Returns a Stream of StageResult<KafkaPayload>.
-    ///
-    /// Consumer errors (broker disconnect, etc.) are logged and dropped —
-    /// they're not DLQ candidates since no message was received.
     pub fn stream(
         &self,
     ) -> impl Stream<Item = StageResult<crate::backends::kafka::types::KafkaPayload>> + '_ {
@@ -50,5 +50,25 @@ impl KafkaSource {
                 }
             })
         })
+    }
+}
+
+impl OffsetCommitter for KafkaSource {
+    fn commit_offsets(
+        &self,
+        positions: &HashMap<Partition, u64>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let mut tpl = TopicPartitionList::new();
+        for (partition, offset) in positions {
+            tpl.add_partition_offset(
+                partition.topic.as_str(),
+                partition.index as i32,
+                rdkafka::Offset::Offset(*offset as i64),
+            )
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+        }
+        self.consumer
+            .commit(&tpl, CommitMode::Async)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
     }
 }
