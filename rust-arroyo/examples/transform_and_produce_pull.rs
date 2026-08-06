@@ -1,7 +1,7 @@
 /// Pull-based version of transform_and_produce.
 ///
 /// Pipeline:
-///   KafkaSource → apply_stage(reverse) → on_ok(produce) → on_error(dlq) → commit
+///   KafkaSource → apply(reverse) → on_next(produce) → on_reject(dlq) → commit
 extern crate sentry_arroyo;
 
 use std::time::Duration;
@@ -72,7 +72,7 @@ async fn main() {
     // --- Wire pipeline ---
     let result = source
         .stream()
-        .apply_stage(&reverse)
+        .apply(&reverse)
         .on_next(&produce_handler)
         .on_reject(&error_handler)
         .commit(&mut tracker)

@@ -8,27 +8,47 @@ use crate::{counter, timer};
 
 use super::handlers::rejection::{RejectionMetadata, RejectionHandler};
 use super::handlers::next::NextHandler;
+use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::{Stage, StageResult};
+
+/// Run a stage on an envelope and record metrics.
+async fn run_stage<S: Stage>(
+    stage: &S,
+    envelope: PipelineEnvelope<S::In>,
+) -> StageResult<S::Out> {
+    let start = Instant::now();
+    let result = stage.process(envelope).await;
+
+    timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
+    match &result {
+        StageResult::Emit(_) => { counter!("arroyo.stage.success", 1, "stage" => stage.name()); }
+        StageResult::Drop { .. } => { counter!("arroyo.stage.drop", 1, "stage" => stage.name()); }
+        StageResult::Skip => { counter!("arroyo.stage.skip", 1, "stage" => stage.name()); }
+        StageResult::Reject { .. } => { counter!("arroyo.stage.reject", 1, "stage" => stage.name()); }
+        StageResult::Fail(_) => { counter!("arroyo.stage.fail", 1, "stage" => stage.name()); }
+    }
+
+    result
+}
 
 /// Extension trait that adds pipeline combinators to any
 /// Stream<Item = StageResult<T>>.
 ///
 /// Usage:
 ///   source.stream()
-///       .apply_stage(&parse)
-///       .apply_stage(&transform)
-///       .on_ok(&produce_handler)
+///       .apply(&parse)
+///       .apply(&transform)
+///       .apply_concurrent(&ch_writer, 8)
+///       .on_next(&produce_handler)
 ///       .on_reject(&dlq_handler)
 ///       .commit(&mut tracker)
 ///       .await;
 pub trait PipelineExt<T: Send>:
     Stream<Item = StageResult<T>> + Sized
 {
-    /// Apply a processing stage to each Emit envelope in the stream.
-    /// Drop and Skip are filtered out of the stream (but Drop is passed
-    /// through for offset tracking). Reject and Fail pass through unchanged.
-    /// Records per-stage metrics (duration, success/failure counts).
-    fn apply_stage<'a, S>(
+    /// Apply a processing stage sequentially to each Emit envelope.
+    /// Equivalent to apply_concurrent(stage, 1).
+    fn apply<'a, S>(
         self,
         stage: &'a S,
     ) -> impl Stream<Item = StageResult<S::Out>> + 'a
@@ -37,46 +57,38 @@ pub trait PipelineExt<T: Send>:
         Self: 'a,
         T: 'a,
     {
-        self.filter_map(move |item| async move {
-            let envelope = match item {
-                StageResult::Emit(e) => e,
-                StageResult::Drop { metadata } => {
-                    return Some(StageResult::Drop { metadata });
-                }
-                StageResult::Skip => return None,
-                StageResult::Reject { metadata, raw, reason } => {
-                    return Some(StageResult::Reject { metadata, raw, reason });
-                }
-                StageResult::Fail(err) => return Some(StageResult::Fail(err)),
-            };
-
-            let start = Instant::now();
-            let result = stage.process(envelope).await;
-
-            timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
-            match &result {
-                StageResult::Emit(_) => {
-                    counter!("arroyo.stage.success", 1, "stage" => stage.name());
-                }
-                StageResult::Drop { .. } => {
-                    counter!("arroyo.stage.drop", 1, "stage" => stage.name());
-                }
-                StageResult::Skip => {
-                    counter!("arroyo.stage.skip", 1, "stage" => stage.name());
-                }
-                StageResult::Reject { .. } => {
-                    counter!("arroyo.stage.reject", 1, "stage" => stage.name());
-                }
-                StageResult::Fail(_) => {
-                    counter!("arroyo.stage.fail", 1, "stage" => stage.name());
-                }
-            }
-
-            Some(result)
-        })
+        self.apply_concurrent(stage, 1)
     }
 
-    /// Call the success handler for each Emit envelope.
+    /// Apply a processing stage concurrently to up to `concurrency` Emit
+    /// envelopes at once. Results are yielded in input order.
+    /// Non-Emit items (Drop, Skip, Reject, Fail) resolve immediately.
+    /// Records per-stage metrics.
+    fn apply_concurrent<'a, S>(
+        self,
+        stage: &'a S,
+        concurrency: usize,
+    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    where
+        S: Stage<In = T>,
+        Self: 'a,
+        T: 'a,
+    {
+        self.map(move |item| async move {
+            match item {
+                StageResult::Emit(e) => run_stage(stage, e).await,
+                StageResult::Drop { metadata } => StageResult::Drop { metadata },
+                StageResult::Skip => StageResult::Skip,
+                StageResult::Reject { metadata, raw, reason } => {
+                    StageResult::Reject { metadata, raw, reason }
+                }
+                StageResult::Fail(err) => StageResult::Fail(err),
+            }
+        })
+        .buffered(concurrency)
+    }
+
+    /// Call the next handler for each Emit envelope.
     /// If the handler fails, the item becomes Fail.
     /// All other variants pass through untouched.
     fn on_next<'a, H>(
@@ -124,8 +136,6 @@ pub trait PipelineExt<T: Send>:
 
                     match handler.handle(&rejected).await {
                         Ok(()) => {
-                            // Handled (e.g. DLQ'd). Keep as Reject so commit
-                            // can still track the offset.
                             StageResult::Reject { metadata, raw, reason }
                         }
                         Err(handler_err) => StageResult::Fail(handler_err),
@@ -153,14 +163,10 @@ pub trait PipelineExt<T: Send>:
                     tracker.record_latency(envelope.metadata.timestamp);
                 }
                 StageResult::Drop { metadata } => {
-                    // Filtered — track offset so we advance past it.
                     tracker.track(metadata.partition, metadata.offset + 1);
                 }
-                StageResult::Skip => {
-                    // Batching — offset will be tracked when the batch emits.
-                }
+                StageResult::Skip => {}
                 StageResult::Reject { metadata, .. } => {
-                    // Already handled by on_reject — track the offset.
                     tracker.track(metadata.partition, metadata.offset + 1);
                 }
                 StageResult::Fail(err) => {
