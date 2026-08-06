@@ -6,41 +6,48 @@ use futures::StreamExt;
 use crate::processing::strategies::offset_tracker::OffsetTracker;
 use crate::{counter, timer};
 
-use super::envelope::Envelope;
-use super::error_handler::{ErrorContext, ErrorHandler, ErrorKind};
-use super::stage::{Stage, StageError};
-use super::success_handler::SuccessHandler;
+use super::handlers::rejection::{RejectionMetadata, RejectionHandler};
+use super::handlers::next::NextHandler;
+use super::stage::{Stage, StageResult};
 
 /// Extension trait that adds pipeline combinators to any
-/// Stream<Item = Result<Envelope<T>, StageError>>.
+/// Stream<Item = StageResult<T>>.
 ///
 /// Usage:
 ///   source.stream()
 ///       .apply_stage(&parse)
 ///       .apply_stage(&transform)
 ///       .on_ok(&produce_handler)
-///       .on_error(&dlq_handler)
+///       .on_reject(&dlq_handler)
 ///       .commit(&mut tracker)
 ///       .await;
 pub trait PipelineExt<T: Send>:
-    Stream<Item = Result<Envelope<T>, StageError>> + Sized
+    Stream<Item = StageResult<T>> + Sized
 {
-    /// Apply a processing stage to each Ok envelope in the stream.
-    /// Err values pass through untouched (railway pattern).
+    /// Apply a processing stage to each Emit envelope in the stream.
+    /// Drop and Skip are filtered out of the stream (but Drop is passed
+    /// through for offset tracking). Reject and Fail pass through unchanged.
     /// Records per-stage metrics (duration, success/failure counts).
     fn apply_stage<'a, S>(
         self,
         stage: &'a S,
-    ) -> impl Stream<Item = Result<Envelope<S::Out>, StageError>> + 'a
+    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
     where
         S: Stage<In = T>,
         Self: 'a,
         T: 'a,
     {
-        self.then(move |result| async move {
-            let envelope = match result {
-                Ok(e) => e,
-                Err(e) => return Err(e),
+        self.filter_map(move |item| async move {
+            let envelope = match item {
+                StageResult::Emit(e) => e,
+                StageResult::Drop { metadata } => {
+                    return Some(StageResult::Drop { metadata });
+                }
+                StageResult::Skip => return None,
+                StageResult::Reject { metadata, raw, reason } => {
+                    return Some(StageResult::Reject { metadata, raw, reason });
+                }
+                StageResult::Fail(err) => return Some(StageResult::Fail(err)),
             };
 
             let start = Instant::now();
@@ -48,107 +55,115 @@ pub trait PipelineExt<T: Send>:
 
             timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
             match &result {
-                Ok(_) => { counter!("arroyo.stage.success", 1, "stage" => stage.name()); }
-                Err(StageError::Invalid { .. }) => {
-                    counter!("arroyo.stage.invalid", 1, "stage" => stage.name());
+                StageResult::Emit(_) => {
+                    counter!("arroyo.stage.success", 1, "stage" => stage.name());
                 }
-                Err(StageError::Fatal(_)) => {
-                    counter!("arroyo.stage.fatal", 1, "stage" => stage.name());
+                StageResult::Drop { .. } => {
+                    counter!("arroyo.stage.drop", 1, "stage" => stage.name());
+                }
+                StageResult::Skip => {
+                    counter!("arroyo.stage.skip", 1, "stage" => stage.name());
+                }
+                StageResult::Reject { .. } => {
+                    counter!("arroyo.stage.reject", 1, "stage" => stage.name());
+                }
+                StageResult::Fail(_) => {
+                    counter!("arroyo.stage.fail", 1, "stage" => stage.name());
                 }
             }
 
-            result
+            Some(result)
         })
     }
 
-    /// Call the success handler for each Ok envelope.
-    /// If the handler fails, convert the Ok into an Err with ErrorKind::ProduceFailure.
-    /// Err values pass through untouched.
-    fn on_ok<'a, H>(
+    /// Call the success handler for each Emit envelope.
+    /// If the handler fails, the item becomes Fail.
+    /// All other variants pass through untouched.
+    fn on_next<'a, H>(
         self,
         handler: &'a H,
-    ) -> impl Stream<Item = Result<Envelope<T>, StageError>> + 'a
+    ) -> impl Stream<Item = StageResult<T>> + 'a
     where
-        H: SuccessHandler<T>,
+        H: NextHandler<T>,
         Self: 'a,
         T: 'a,
     {
-        self.then(move |result| async move {
-            let envelope = match result {
-                Ok(e) => e,
-                Err(e) => return Err(e),
+        self.then(move |item| async move {
+            let envelope = match item {
+                StageResult::Emit(e) => e,
+                other => return other,
             };
 
             match handler.handle(&envelope).await {
-                Ok(()) => Ok(envelope),
-                Err(produce_err) => {
-                    // Produce failed — fatal, same as current behavior.
-                    Err(StageError::Fatal(produce_err))
-                }
+                Ok(()) => StageResult::Emit(envelope),
+                Err(produce_err) => StageResult::Fail(produce_err),
             }
         })
     }
 
-    /// Call the error handler for each Err in the stream.
-    /// Ok values pass through untouched.
-    /// If the error handler itself fails, the item becomes a Fatal error.
-    fn on_error<'a, H>(
+    /// Call the rejection handler for each Reject item.
+    /// All other variants pass through untouched.
+    /// If the handler itself fails, the item becomes Fail.
+    fn on_reject<'a, H>(
         self,
         handler: &'a H,
-    ) -> impl Stream<Item = Result<Envelope<T>, StageError>> + 'a
+    ) -> impl Stream<Item = StageResult<T>> + 'a
     where
-        H: ErrorHandler,
+        H: RejectionHandler,
         Self: 'a,
         T: 'a,
     {
-        self.then(move |result| async move {
-            match result {
-                Ok(envelope) => Ok(envelope),
-                Err(StageError::Invalid { origin, reason }) => {
-                    let error_context = ErrorContext {
-                        origin: origin.clone(),
-                        source: Box::new(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Invalid message: {:?}", reason),
-                        )),
-                        kind: ErrorKind::InvalidMessage,
+        self.then(move |item| async move {
+            match item {
+                StageResult::Reject { metadata, raw, reason } => {
+                    let rejected = RejectionMetadata {
+                        metadata: metadata.clone(),
+                        raw: raw.clone(),
+                        reason,
                     };
 
-                    match handler.handle(error_context).await {
+                    match handler.handle(&rejected).await {
                         Ok(()) => {
-                            // Error was handled (e.g. DLQ'd). Keep the Err in the
-                            // stream so commit() can still track the offset.
-                            Err(StageError::Invalid { origin, reason })
+                            // Handled (e.g. DLQ'd). Keep as Reject so commit
+                            // can still track the offset.
+                            StageResult::Reject { metadata, raw, reason }
                         }
-                        Err(handler_err) => Err(StageError::Fatal(handler_err)),
+                        Err(handler_err) => StageResult::Fail(handler_err),
                     }
                 }
-                Err(StageError::Fatal(err)) => Err(StageError::Fatal(err)),
+                other => other,
             }
         })
     }
 
     /// Terminal: drive the pipeline to completion.
-    /// Tracks offsets for every item (Ok and Err) and commits on the
-    /// tracker's configured interval. Fatal errors stop the pipeline.
+    /// Tracks offsets for Emit, Drop, and Reject items. Fail stops the pipeline.
+    /// Skip items pass through without offset tracking (batch will emit later).
+    #[allow(async_fn_in_trait)]
     async fn commit(
         self,
         tracker: &mut OffsetTracker,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut stream = Box::pin(self);
 
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(envelope) => {
-                    tracker.track(envelope.partition(), envelope.offset() + 1);
-                    tracker.record_latency(envelope.timestamp());
+        while let Some(item) = stream.next().await {
+            match item {
+                StageResult::Emit(envelope) => {
+                    tracker.track(envelope.metadata.partition, envelope.metadata.offset + 1);
+                    tracker.record_latency(envelope.metadata.timestamp);
                 }
-                Err(StageError::Invalid { origin, .. }) => {
-                    // Already handled by on_error — just track the offset.
-                    tracker.track(origin.partition, origin.offset + 1);
+                StageResult::Drop { metadata } => {
+                    // Filtered — track offset so we advance past it.
+                    tracker.track(metadata.partition, metadata.offset + 1);
                 }
-                Err(StageError::Fatal(err)) => {
-                    // Flush any pending offsets before stopping.
+                StageResult::Skip => {
+                    // Batching — offset will be tracked when the batch emits.
+                }
+                StageResult::Reject { metadata, .. } => {
+                    // Already handled by on_reject — track the offset.
+                    tracker.track(metadata.partition, metadata.offset + 1);
+                }
+                StageResult::Fail(err) => {
                     if let Some(_positions) = tracker.flush() {
                         // TODO: actually commit via consumer
                     }
@@ -161,7 +176,6 @@ pub trait PipelineExt<T: Send>:
             }
         }
 
-        // Stream ended — flush final offsets.
         if let Some(_positions) = tracker.flush() {
             // TODO: actually commit via consumer
         }
@@ -170,8 +184,5 @@ pub trait PipelineExt<T: Send>:
     }
 }
 
-// Blanket impl: any Stream of Result<Envelope<T>, StageError> gets these methods.
-impl<T: Send, S> PipelineExt<T> for S where
-    S: Stream<Item = Result<Envelope<T>, StageError>>
-{
-}
+// Blanket impl: any Stream of StageResult<T> gets these methods.
+impl<T: Send, S> PipelineExt<T> for S where S: Stream<Item = StageResult<T>> {}

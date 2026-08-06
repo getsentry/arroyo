@@ -2,24 +2,56 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::backends::kafka::types::KafkaPayload;
-use crate::types::BrokerMessage;
 
-use super::envelope::Envelope;
+use super::pipeline_envelope::{PipelineEnvelope, MessageMetadata};
 
-/// Error type for pipeline stages and handlers.
-pub enum StageError {
-    /// Bad message — the origin is preserved for the error handler.
-    Invalid {
-        origin: Arc<BrokerMessage<KafkaPayload>>,
-        reason: InvalidReason,
+/// The result of a Stage processing one envelope.
+pub enum StageResult<T> {
+    /// Produced output — pass downstream.
+    Emit(PipelineEnvelope<T>),
+
+    /// Evaluated and intentionally dropped (filtered).
+    /// Carries metadata so the offset is still tracked.
+    Drop {
+        metadata: MessageMetadata,
     },
 
-    /// Unrecoverable error — kills the pipeline.
-    Fatal(Box<dyn std::error::Error + Send>),
+    /// Not ready yet — accumulating (batching).
+    /// The offset will be tracked when the batch emits.
+    Skip,
+
+    /// Bad message — route to the rejection handler (DLQ).
+    /// Carries metadata + raw for offset tracking and DLQ routing.
+    Reject {
+        metadata: MessageMetadata,
+        raw: Arc<KafkaPayload>,
+        reason: RejectionReason,
+    },
+
+    /// Unrecoverable error — kill the pipeline.
+    Fail(Box<dyn std::error::Error + Send>),
+}
+
+impl<T> StageResult<T> {
+    /// Create a Reject result from an envelope, extracting metadata and raw.
+    pub fn reject(envelope: PipelineEnvelope<T>, reason: RejectionReason) -> Self {
+        StageResult::Reject {
+            metadata: envelope.metadata,
+            raw: envelope.raw,
+            reason,
+        }
+    }
+
+    /// Create a Drop result from an envelope, extracting metadata.
+    pub fn drop(envelope: PipelineEnvelope<T>) -> Self {
+        StageResult::Drop {
+            metadata: envelope.metadata,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum InvalidReason {
+pub enum RejectionReason {
     /// Message is malformed or unparseable.
     Invalid,
     /// Message is valid but intentionally dropped (e.g. too old, load shedding).
@@ -28,10 +60,13 @@ pub enum InvalidReason {
 
 /// A processing stage in a pull-based pipeline.
 ///
-/// Each stage takes an Envelope, processes it, and returns either a
-/// transformed Envelope or a StageError. The framework handles error
-/// routing (DLQ), metrics, and offset tracking.
+/// Unified trait for all stage types:
+///   - 1:1 transforms — return Emit(envelope)
+///   - Filters — return Drop(metadata) to filter with offset tracking
+///   - Batching — return Skip while accumulating, Emit when flushing
+///   - Errors — return Reject or Fail
 ///
+/// The framework handles error routing (DLQ), metrics, and offset tracking.
 /// The process method is async to support stages that do I/O.
 pub trait Stage: Send + Sync {
     type In: Send;
@@ -39,8 +74,8 @@ pub trait Stage: Send + Sync {
 
     fn process(
         &self,
-        envelope: Envelope<Self::In>,
-    ) -> impl Future<Output = Result<Envelope<Self::Out>, StageError>> + Send;
+        envelope: PipelineEnvelope<Self::In>,
+    ) -> impl Future<Output = StageResult<Self::Out>> + Send;
 
     fn name(&self) -> &'static str;
 }
