@@ -1,19 +1,14 @@
-mod dlq_handler;
-mod envelope;
-mod error_handler;
+mod pipeline_envelope;
 mod ext;
-mod kafka_producer_handler;
-mod log_handler;
+pub mod handlers;
 mod source;
 mod stage;
-mod success_handler;
 
-pub use dlq_handler::DlqErrorHandler;
-pub use envelope::Envelope;
-pub use error_handler::{ErrorContext, ErrorHandler, ErrorKind};
+pub use pipeline_envelope::{PipelineEnvelope, MessageMetadata};
 pub use ext::PipelineExt;
-pub use kafka_producer_handler::KafkaProducerHandler;
-pub use log_handler::LogErrorHandler;
+pub use handlers::{
+    DlqHandler, KafkaProducerHandler, LogHandler,
+    RejectionHandler, RejectionMetadata, NextHandler,
+};
 pub use source::KafkaSource;
-pub use stage::{InvalidReason, Stage, StageError};
-pub use success_handler::SuccessHandler;
+pub use stage::{RejectionReason, Stage, StageResult};

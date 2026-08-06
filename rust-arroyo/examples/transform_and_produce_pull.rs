@@ -12,8 +12,8 @@ use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::kafka::InitialOffset;
 use sentry_arroyo::processing::strategies::offset_tracker::OffsetTracker;
 use sentry_arroyo::processing::stream::{
-    Envelope, KafkaProducerHandler, KafkaSource, LogErrorHandler, PipelineExt,
-    Stage, StageError,
+    PipelineEnvelope, KafkaProducerHandler, KafkaSource, LogHandler, PipelineExt,
+    Stage, StageResult,
 };
 use sentry_arroyo::types::{Topic, TopicOrPartition};
 
@@ -26,9 +26,9 @@ impl Stage for ReverseStage {
 
     async fn process(
         &self,
-        envelope: Envelope<KafkaPayload>,
-    ) -> Result<Envelope<KafkaPayload>, StageError> {
-        Ok(envelope.map_payload(|p| {
+        envelope: PipelineEnvelope<KafkaPayload>,
+    ) -> StageResult<KafkaPayload> {
+        StageResult::Emit(envelope.map_payload(|p| {
             let bytes = p.payload().unwrap();
             let s = std::str::from_utf8(bytes).unwrap();
             let reversed: String = s.chars().rev().collect();
@@ -65,21 +65,16 @@ async fn main() {
     let produce_handler =
         KafkaProducerHandler::new(producer, TopicOrPartition::Topic(Topic::new("test_out")));
 
-    // Use LogErrorHandler for this example (no DLQ topic configured).
-    // In production, replace with:
-    //   DlqErrorHandler::new(dlq_producer, TopicOrPartition::Topic(dlq_topic))
-    let error_handler = LogErrorHandler;
-
+    let error_handler = LogHandler;
     let mut tracker = OffsetTracker::new(Duration::from_secs(1));
-
     let reverse = ReverseStage;
 
     // --- Wire pipeline ---
     let result = source
         .stream()
         .apply_stage(&reverse)
-        .on_ok(&produce_handler)
-        .on_error(&error_handler)
+        .on_next(&produce_handler)
+        .on_reject(&error_handler)
         .commit(&mut tracker)
         .await;
 

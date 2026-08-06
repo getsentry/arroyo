@@ -4,11 +4,10 @@ use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
 use crate::types::TopicOrPartition;
 
-use super::envelope::Envelope;
-use super::success_handler::SuccessHandler;
+use super::super::pipeline_envelope::PipelineEnvelope;
+use super::next::NextHandler;
 
 /// A canned SuccessHandler that produces the envelope's payload to a Kafka topic.
-/// This is the pull-model equivalent of the Produce strategy.
 pub struct KafkaProducerHandler {
     producer: Arc<dyn Producer<KafkaPayload>>,
     topic: TopicOrPartition,
@@ -23,10 +22,10 @@ impl KafkaProducerHandler {
     }
 }
 
-impl SuccessHandler<KafkaPayload> for KafkaProducerHandler {
+impl NextHandler<KafkaPayload> for KafkaProducerHandler {
     async fn handle(
         &self,
-        envelope: &Envelope<KafkaPayload>,
+        envelope: &PipelineEnvelope<KafkaPayload>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.producer
             .produce(&self.topic, envelope.payload.clone())
