@@ -71,8 +71,7 @@ impl<'a> OffsetTracker<'a> {
             return Ok(());
         }
 
-        if !force
-            && coarsetime::Instant::recent() - self.last_commit_time <= self.commit_frequency
+        if !force && coarsetime::Instant::recent() - self.last_commit_time <= self.commit_frequency
         {
             return Ok(());
         }

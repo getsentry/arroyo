@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::backends::kafka::types::KafkaPayload;
 
-use super::pipeline_envelope::{PipelineEnvelope, MessageMetadata};
+use super::pipeline_envelope::{MessageMetadata, PipelineEnvelope};
 
 /// Why the pipeline stream ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,9 +23,7 @@ pub enum StageResult<T> {
 
     /// Evaluated and intentionally dropped (filtered).
     /// Carries metadata so the offset is still tracked.
-    Drop {
-        metadata: MessageMetadata,
-    },
+    Drop { metadata: MessageMetadata },
 
     /// Equivalent to no result emission — offset is not propagated.
     /// Supports accumulating (batching).
@@ -43,7 +41,7 @@ pub enum StageResult<T> {
     Fail(Box<dyn std::error::Error + Send>),
 
     /// Pipeline termination signal from the source.
-    /// Passes through all stages untouched to commit().
+    /// Passes through all combinators untouched until reaching commit().
     Exit(PipelineExit),
 }
 

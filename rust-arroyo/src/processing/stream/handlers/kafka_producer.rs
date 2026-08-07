@@ -7,7 +7,7 @@ use crate::types::TopicOrPartition;
 use super::super::pipeline_envelope::PipelineEnvelope;
 use super::next::NextHandler;
 
-/// A canned SuccessHandler that produces the envelope's payload to a Kafka topic.
+/// A canned NextHandler that produces the envelope's payload to a Kafka topic.
 pub struct KafkaProducerHandler {
     producer: Arc<dyn Producer<KafkaPayload>>,
     topic: TopicOrPartition,

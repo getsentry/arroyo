@@ -6,26 +6,33 @@ use futures::StreamExt;
 use super::offset_tracker::OffsetTracker;
 use crate::{counter, timer};
 
-use super::handlers::rejection::{RejectionMetadata, RejectionHandler};
 use super::handlers::next::NextHandler;
+use super::handlers::rejection::{RejectionHandler, RejectionMetadata};
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::{PipelineExit, Stage, StageResult};
 
 /// Run a stage on an envelope and record metrics.
-async fn run_stage<S: Stage>(
-    stage: &S,
-    envelope: PipelineEnvelope<S::In>,
-) -> StageResult<S::Out> {
+async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> StageResult<S::Out> {
     let start = Instant::now();
     let result = stage.process(envelope).await;
 
     timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
     match &result {
-        StageResult::Emit(_) => { counter!("arroyo.stage.success", 1, "stage" => stage.name()); }
-        StageResult::Drop { .. } => { counter!("arroyo.stage.drop", 1, "stage" => stage.name()); }
-        StageResult::Skip => { counter!("arroyo.stage.skip", 1, "stage" => stage.name()); }
-        StageResult::Reject { .. } => { counter!("arroyo.stage.reject", 1, "stage" => stage.name()); }
-        StageResult::Fail(_) => { counter!("arroyo.stage.fail", 1, "stage" => stage.name()); }
+        StageResult::Emit(_) => {
+            counter!("arroyo.stage.success", 1, "stage" => stage.name());
+        }
+        StageResult::Drop { .. } => {
+            counter!("arroyo.stage.drop", 1, "stage" => stage.name());
+        }
+        StageResult::Skip => {
+            counter!("arroyo.stage.skip", 1, "stage" => stage.name());
+        }
+        StageResult::Reject { .. } => {
+            counter!("arroyo.stage.reject", 1, "stage" => stage.name());
+        }
+        StageResult::Fail(_) => {
+            counter!("arroyo.stage.fail", 1, "stage" => stage.name());
+        }
         StageResult::Exit(_) => {}
     }
 
@@ -35,29 +42,15 @@ async fn run_stage<S: Stage>(
 /// Extension trait that adds pipeline combinators to any
 /// Stream<Item = StageResult<T>>.
 ///
-/// Usage:
-///   loop {
-///       let exit = source.stream()
-///           .apply(&stage)
-///           .on_next(&handler)
-///           .on_reject(&dlq)
-///           .commit(&mut tracker)
-///           .await?;
+/// Combinators: `.apply()`, `.apply_concurrent()`, `.on_next()`,
+/// `.on_reject()`, `.commit()`.
 ///
-///       match exit {
-///           PipelineExit::Rebalance => continue,
-///           PipelineExit::Shutdown | PipelineExit::Complete => break,
-///       }
-///   }
-pub trait PipelineExt<T: Send>:
-    Stream<Item = StageResult<T>> + Sized
-{
+/// See `PipelineRunner` for the recommended way to run a pipeline
+/// with rebalance handling.
+pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// Apply a processing stage sequentially to each Emit envelope.
     /// Equivalent to apply_concurrent(stage, 1).
-    fn apply<'a, S>(
-        self,
-        stage: &'a S,
-    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    fn apply<'a, S>(self, stage: &'a S) -> impl Stream<Item = StageResult<S::Out>> + 'a
     where
         S: Stage<In = T>,
         Self: 'a,
@@ -84,9 +77,15 @@ pub trait PipelineExt<T: Send>:
                 StageResult::Emit(e) => run_stage(stage, e).await,
                 StageResult::Drop { metadata } => StageResult::Drop { metadata },
                 StageResult::Skip => StageResult::Skip,
-                StageResult::Reject { metadata, raw, reason } => {
-                    StageResult::Reject { metadata, raw, reason }
-                }
+                StageResult::Reject {
+                    metadata,
+                    raw,
+                    reason,
+                } => StageResult::Reject {
+                    metadata,
+                    raw,
+                    reason,
+                },
                 StageResult::Fail(err) => StageResult::Fail(err),
                 StageResult::Exit(reason) => StageResult::Exit(reason),
             }
@@ -97,10 +96,7 @@ pub trait PipelineExt<T: Send>:
     /// Call the next handler for each Emit envelope.
     /// If the handler fails, the item becomes Fail.
     /// All other variants pass through untouched.
-    fn on_next<'a, H>(
-        self,
-        handler: &'a H,
-    ) -> impl Stream<Item = StageResult<T>> + 'a
+    fn on_next<'a, H>(self, handler: &'a H) -> impl Stream<Item = StageResult<T>> + 'a
     where
         H: NextHandler<T>,
         Self: 'a,
@@ -122,10 +118,7 @@ pub trait PipelineExt<T: Send>:
     /// Call the rejection handler for each Reject item.
     /// All other variants pass through untouched.
     /// If the handler itself fails, the item becomes Fail.
-    fn on_reject<'a, H>(
-        self,
-        handler: &'a H,
-    ) -> impl Stream<Item = StageResult<T>> + 'a
+    fn on_reject<'a, H>(self, handler: &'a H) -> impl Stream<Item = StageResult<T>> + 'a
     where
         H: RejectionHandler,
         Self: 'a,
@@ -133,7 +126,11 @@ pub trait PipelineExt<T: Send>:
     {
         self.then(move |item| async move {
             match item {
-                StageResult::Reject { metadata, raw, reason } => {
+                StageResult::Reject {
+                    metadata,
+                    raw,
+                    reason,
+                } => {
                     let rejected = RejectionMetadata {
                         metadata: metadata.clone(),
                         raw: raw.clone(),
@@ -141,9 +138,11 @@ pub trait PipelineExt<T: Send>:
                     };
 
                     match handler.handle(&rejected).await {
-                        Ok(()) => {
-                            StageResult::Reject { metadata, raw, reason }
-                        }
+                        Ok(()) => StageResult::Reject {
+                            metadata,
+                            raw,
+                            reason,
+                        },
                         Err(handler_err) => StageResult::Fail(handler_err),
                     }
                 }

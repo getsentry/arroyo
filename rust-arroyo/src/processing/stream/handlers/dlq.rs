@@ -4,7 +4,7 @@ use crate::backends::kafka::types::{Headers, KafkaPayload};
 use crate::backends::Producer;
 use crate::types::TopicOrPartition;
 
-use super::rejection::{RejectionMetadata, RejectionHandler};
+use super::rejection::{RejectionHandler, RejectionMetadata};
 
 /// A canned RejectionHandler that produces the original message to a DLQ Kafka topic.
 pub struct DlqHandler {
