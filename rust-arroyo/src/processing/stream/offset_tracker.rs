@@ -22,6 +22,9 @@ pub struct OffsetTracker<'a> {
     last_commit_time: coarsetime::Instant,
     last_record_time: coarsetime::Instant,
     commit_frequency: coarsetime::Duration,
+    // Held to keep the background time updater alive. Without this,
+    // coarsetime::Instant::recent() would never advance.
+    _updater: coarsetime::Updater,
 }
 
 impl<'a> OffsetTracker<'a> {
@@ -32,6 +35,7 @@ impl<'a> OffsetTracker<'a> {
             last_commit_time: coarsetime::Instant::recent(),
             last_record_time: coarsetime::Instant::recent(),
             commit_frequency: commit_frequency.into(),
+            _updater: coarsetime::Updater::new(10).start().unwrap(),
         }
     }
 

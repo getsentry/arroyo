@@ -9,8 +9,9 @@ use rdkafka::TopicPartitionList;
 use tokio_util::sync::CancellationToken;
 
 use crate::backends::kafka::config::KafkaConfig;
+use crate::backends::kafka::kafka_poll_error_is_recoverable;
 use crate::backends::kafka::types::KafkaPayload;
-use crate::processing::strategies::offset_tracker::OffsetCommitter;
+use super::offset_tracker::OffsetCommitter;
 use crate::types::{Partition, Topic};
 
 use super::pipeline_envelope::PipelineEnvelope;
@@ -62,9 +63,13 @@ impl PullSource for KafkaSource {
                 .filter_map(|result| {
                     futures::future::ready(match result {
                         Ok(msg) => Some(StageResult::Emit(PipelineEnvelope::from_kafka(&msg))),
-                        Err(e) => {
-                            tracing::error!("Kafka consumer error: {}", e);
+                        Err(e) if kafka_poll_error_is_recoverable(&e) => {
+                            tracing::warn!("Recoverable Kafka error, skipping: {}", e);
                             None
+                        }
+                        Err(e) => {
+                            tracing::error!("Fatal Kafka error: {}", e);
+                            Some(StageResult::Fail(Box::new(e)))
                         }
                     })
                 }),
@@ -94,6 +99,9 @@ impl OffsetCommitter for KafkaSource {
             )
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
         }
+        // Async commit matches the existing push model's behavior. The broker
+        // may not ack before we clear tracked offsets, but this is acceptable —
+        // worst case on crash is re-processing already-committed messages.
         self.consumer
             .commit(&tpl, CommitMode::Async)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)

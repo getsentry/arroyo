@@ -33,7 +33,12 @@ impl RejectionHandler for DlqHandler {
             rejected.reason,
         );
 
-        let headers = Headers::new()
+        // Preserve original message headers and append partition/offset metadata.
+        let headers = rejected
+            .raw
+            .headers()
+            .cloned()
+            .unwrap_or_else(Headers::new)
             .insert(
                 "original_partition",
                 Some(rejected.metadata.partition.index.to_string().into_bytes()),

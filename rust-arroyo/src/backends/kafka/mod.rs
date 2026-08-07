@@ -82,7 +82,7 @@ impl KafkaConsumerState {
 }
 
 /// Treat recoverable `librdkafka` errors as an empty poll the same way Python treats `KafkaError._TRANSPORT`.
-fn kafka_poll_error_is_recoverable(err: &KafkaError) -> bool {
+pub fn kafka_poll_error_is_recoverable(err: &KafkaError) -> bool {
     matches!(
         err,
         KafkaError::MessageConsumption(RDKafkaErrorCode::BrokerTransportFailure)
