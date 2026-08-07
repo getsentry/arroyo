@@ -6,7 +6,9 @@ use async_stream::stream;
 use futures::stream::Stream;
 use futures::StreamExt;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
-use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer};
+use rdkafka::consumer::{
+    BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer,
+};
 use rdkafka::{ClientContext, TopicPartitionList};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -40,11 +42,7 @@ struct PullRebalanceContext {
 impl ClientContext for PullRebalanceContext {}
 
 impl ConsumerContext for PullRebalanceContext {
-    fn pre_rebalance(
-        &self,
-        _base_consumer: &BaseConsumer<Self>,
-        rebalance: &Rebalance<'_>,
-    ) {
+    fn pre_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
         if let Rebalance::Revoke(_) = rebalance {
             tracing::info!("Partition revocation detected, ending stream");
             self.rebalance.notify_one();

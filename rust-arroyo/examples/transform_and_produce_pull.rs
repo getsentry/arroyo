@@ -3,7 +3,7 @@
 /// Pipeline:
 ///   KafkaSource → apply(reverse) → on_next(produce) → on_reject(log) → commit
 ///
-/// The source's `run()` method handles the rebalance restart loop —
+/// `PipelineRunner::run()` handles the rebalance restart loop —
 /// the closure is called once per partition assignment with fresh
 /// stages, handlers, and tracker.
 extern crate sentry_arroyo;
@@ -15,8 +15,8 @@ use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::kafka::InitialOffset;
 use sentry_arroyo::processing::stream::{
-    KafkaProducerHandler, KafkaSource, LogHandler, OffsetTracker,
-    PipelineEnvelope, PipelineExt, PipelineRunner, Stage, StageResult,
+    KafkaProducerHandler, KafkaSource, LogHandler, OffsetTracker, PipelineEnvelope, PipelineExt,
+    PipelineRunner, Stage, StageResult,
 };
 use sentry_arroyo::types::{Topic, TopicOrPartition};
 
@@ -27,16 +27,17 @@ impl Stage for ReverseStage {
     type In = KafkaPayload;
     type Out = KafkaPayload;
 
-    async fn process(
-        &self,
-        envelope: PipelineEnvelope<KafkaPayload>,
-    ) -> StageResult<KafkaPayload> {
+    async fn process(&self, envelope: PipelineEnvelope<KafkaPayload>) -> StageResult<KafkaPayload> {
         let reversed = envelope.map_payload(|p| {
             let bytes = p.payload().unwrap();
             let s = std::str::from_utf8(bytes).unwrap();
             let reversed: String = s.chars().rev().collect();
             println!("transforming: {:?} -> {:?}", s, reversed);
-            KafkaPayload::new(p.key().cloned(), p.headers().cloned(), Some(reversed.into_bytes()))
+            KafkaPayload::new(
+                p.key().cloned(),
+                p.headers().cloned(),
+                Some(reversed.into_bytes()),
+            )
         });
 
         StageResult::Emit(reversed)
@@ -61,10 +62,7 @@ async fn main() {
     );
     let source = KafkaSource::new(consumer_config, &[Topic::new("test_in")]);
 
-    let producer_config = KafkaConfig::new_producer_config(
-        vec!["0.0.0.0:9092".to_string()],
-        None,
-    );
+    let producer_config = KafkaConfig::new_producer_config(vec!["0.0.0.0:9092".to_string()], None);
     // The pipeline reads left to right, top to bottom:
     //   stream                     — async stream of Kafka messages
     //     .apply(&stage)           — transform/filter/batch each message
@@ -90,7 +88,8 @@ async fn main() {
             .on_reject(&error_handler)
             .commit(&mut tracker)
             .await
-    }).await;
+    })
+    .await;
 
     if let Err(e) = result {
         tracing::error!("Pipeline stopped: {}", e);

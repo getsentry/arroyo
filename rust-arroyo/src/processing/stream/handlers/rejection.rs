@@ -15,7 +15,7 @@ pub struct RejectionMetadata {
 
 /// Handler for rejected messages. Called by the pipeline's on_reject() combinator.
 ///
-/// Receives a RejectedMessage with metadata (for logging/headers),
+/// Receives a RejectionMetadata with metadata (for logging/headers),
 /// raw payload (for DLQ produce), and the reason for rejection.
 pub trait RejectionHandler: Send + Sync {
     fn handle(

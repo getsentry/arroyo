@@ -1,4 +1,4 @@
-use super::rejection::{RejectionMetadata, RejectionHandler};
+use super::rejection::{RejectionHandler, RejectionMetadata};
 
 /// A canned RejectionHandler that logs the rejection and continues.
 pub struct LogHandler;
