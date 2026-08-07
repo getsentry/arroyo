@@ -48,10 +48,12 @@ impl PipelineRunner {
         Fut: Future<Output = Result<PipelineExit, Box<dyn std::error::Error + Send>>> + 's,
     {
         loop {
-            let exit = build(source.stream(), source.committer()).await?;
-            match exit {
+            let exit = build(source.stream(), source.committer()).await;
+            // Always signal drain complete — unblocks the rebalance callback
+            // if one is waiting. No-op if no rebalance is in progress.
+            source.signal_drain_complete();
+            match exit? {
                 PipelineExit::Rebalance => {
-                    source.signal_drain_complete();
                     tracing::info!("Rebalance detected, restarting pipeline");
                     continue;
                 }
