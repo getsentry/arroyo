@@ -6,8 +6,10 @@ use async_stream::stream;
 use futures::stream::Stream;
 use futures::StreamExt;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
-use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
-use rdkafka::TopicPartitionList;
+use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, StreamConsumer};
+use rdkafka::types::RDKafkaRespErr;
+use rdkafka::{ClientContext, TopicPartitionList};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::backends::kafka::config::KafkaConfig;
@@ -17,7 +19,6 @@ use crate::types::{Partition, Topic};
 
 use super::offset_tracker::OffsetCommitter;
 use super::pipeline_envelope::PipelineEnvelope;
-use super::rebalance::{PullRebalanceContext, RebalanceSync};
 use super::stage::{PipelineExit, StageResult};
 
 /// Trait for pipeline sources. Provides a stream of raw Kafka payloads,
@@ -26,7 +27,8 @@ use super::stage::{PipelineExit, StageResult};
 /// Object-safe — can be used as `Box<dyn PullSource>` or `Arc<dyn PullSource>`.
 pub trait PullSource: Send + Sync {
     /// Returns a stream of Kafka messages. Ends on rebalance, shutdown,
-    /// or when the source is exhausted.
+    /// or when the source is exhausted. Callable multiple times — each
+    /// call returns a fresh stream for the current partition assignment.
     fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>>;
 
     /// Returns the offset committer for this source.
@@ -34,18 +36,56 @@ pub trait PullSource: Send + Sync {
 
     /// Initiate graceful shutdown. The stream will yield Exit(Shutdown).
     fn shutdown(&self);
+}
 
-    /// Unblock the rebalance callback after pipeline drain. See `rebalance.rs`.
-    fn signal_drain_complete(&self);
+/// ConsumerContext that signals the pipeline on partition revocation.
+///
+/// NOTE: The rebalance callback runs inline during StreamConsumer::poll_next
+/// (same thread/task as the async stream). We cannot block here to drain
+/// the pipeline — that would deadlock. Instead, we just notify and return.
+/// rdkafka proceeds with unassign immediately. The pipeline drains after
+/// unassign, so offset commits are best-effort.
+///
+/// For drain-before-unassign, we would need to switch to BaseConsumer
+/// with manual polling (like the push model does).
+struct PullRebalanceContext {
+    revoke: Arc<Notify>,
+}
+
+impl ClientContext for PullRebalanceContext {}
+
+impl ConsumerContext for PullRebalanceContext {
+    fn rebalance(
+        &self,
+        base_consumer: &BaseConsumer<Self>,
+        err: RDKafkaRespErr,
+        tpl: &mut TopicPartitionList,
+    ) {
+        if err == RDKafkaRespErr::RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS {
+            tracing::info!("Partition revocation detected");
+            self.revoke.notify_one();
+            base_consumer
+                .unassign()
+                .expect("Failed to unassign partitions");
+        } else if err == RDKafkaRespErr::RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS {
+            tracing::info!("Partition assignment received");
+            // TODO: The push model explicitly fetches committed offsets from
+            // the broker and resolves unset offsets via InitialOffset +
+            // watermarks before assigning. We rely on rdkafka's default
+            // behavior (auto.offset.reset). Add explicit resolution if
+            // edge cases arise.
+            base_consumer
+                .assign(tpl)
+                .expect("Failed to assign partitions");
+        }
+    }
 }
 
 /// A Kafka consumer source that produces a Stream of StageResult<KafkaPayload>.
 ///
 /// Handles three lifecycle events:
 /// - Messages: yielded as StageResult::Emit
-/// - Rebalance: yields StageResult::Exit(Rebalance), then ends.
-///   The rebalance callback blocks until signal_drain_complete() is called,
-///   ensuring offsets are committed before partitions are unassigned.
+/// - Rebalance: yields StageResult::Exit(Rebalance), then ends
 /// - Shutdown: yields StageResult::Exit(Shutdown), then ends
 ///
 /// The stream can be called again after a rebalance — the underlying
@@ -53,13 +93,15 @@ pub trait PullSource: Send + Sync {
 pub struct KafkaSource {
     consumer: StreamConsumer<PullRebalanceContext>,
     shutdown: CancellationToken,
-    sync: Arc<RebalanceSync>,
+    revoke: Arc<Notify>,
 }
 
 impl KafkaSource {
     pub fn new(config: KafkaConfig, topics: &[Topic]) -> Self {
-        let sync = Arc::new(RebalanceSync::new());
-        let context = PullRebalanceContext { sync: sync.clone() };
+        let revoke = Arc::new(Notify::new());
+        let context = PullRebalanceContext {
+            revoke: revoke.clone(),
+        };
 
         let mut rdkafka_config: RdKafkaConfig = config.into();
         let consumer: StreamConsumer<PullRebalanceContext> = rdkafka_config
@@ -75,7 +117,7 @@ impl KafkaSource {
         Self {
             consumer,
             shutdown: CancellationToken::new(),
-            sync,
+            revoke,
         }
     }
 }
@@ -83,7 +125,7 @@ impl KafkaSource {
 impl PullSource for KafkaSource {
     fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
         let shutdown = self.shutdown.clone();
-        let revoke = &self.sync.revoke;
+        let revoke = &self.revoke;
 
         Box::pin(stream! {
             let mut kafka_stream = self.consumer.stream();
@@ -129,10 +171,6 @@ impl PullSource for KafkaSource {
 
     fn shutdown(&self) {
         self.shutdown.cancel();
-    }
-
-    fn signal_drain_complete(&self) {
-        self.sync.signal_complete();
     }
 }
 

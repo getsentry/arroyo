@@ -3,7 +3,6 @@ pub mod handlers;
 pub mod offset_tracker;
 mod pipeline_envelope;
 mod pipeline_runner;
-mod rebalance;
 pub mod source;
 mod stage;
 

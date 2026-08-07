@@ -48,11 +48,7 @@ impl PipelineRunner {
         Fut: Future<Output = Result<PipelineExit, Box<dyn std::error::Error + Send>>> + 's,
     {
         loop {
-            let exit = build(source.stream(), source.committer()).await;
-            // Always signal drain complete — unblocks the rebalance callback
-            // if one is waiting. No-op if no rebalance is in progress.
-            source.signal_drain_complete();
-            match exit? {
+            match build(source.stream(), source.committer()).await? {
                 PipelineExit::Rebalance => {
                     tracing::info!("Rebalance detected, restarting pipeline");
                     continue;
@@ -144,7 +140,6 @@ mod tests {
         }
 
         fn shutdown(&self) {}
-        fn signal_drain_complete(&self) {}
     }
 
     fn make_message(payload: &[u8], offset: u64) -> StageResult<KafkaPayload> {
@@ -234,7 +229,6 @@ mod tests {
                 &self.committer
             }
             fn shutdown(&self) {}
-            fn signal_drain_complete(&self) {}
         }
 
         let source = FiniteSource {
