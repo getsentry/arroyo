@@ -5,6 +5,17 @@ use crate::backends::kafka::types::KafkaPayload;
 
 use super::pipeline_envelope::{PipelineEnvelope, MessageMetadata};
 
+/// Why the pipeline stream ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelineExit {
+    /// Partition revocation — caller should recreate stages and restart.
+    Rebalance,
+    /// Graceful shutdown requested (SIGTERM/SIGINT).
+    Shutdown,
+    /// Source stream naturally ended (finite data, test sources).
+    Complete,
+}
+
 /// The result of a Stage processing one envelope.
 pub enum StageResult<T> {
     /// Produced output — pass downstream.
@@ -30,6 +41,10 @@ pub enum StageResult<T> {
 
     /// Unrecoverable error — kill the pipeline.
     Fail(Box<dyn std::error::Error + Send>),
+
+    /// Pipeline termination signal from the source.
+    /// Passes through all stages untouched to commit().
+    Exit(PipelineExit),
 }
 
 impl<T> StageResult<T> {

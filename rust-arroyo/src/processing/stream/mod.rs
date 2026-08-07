@@ -13,4 +13,4 @@ pub use handlers::{
 };
 pub use offset_tracker::{OffsetCommitter, OffsetTracker};
 pub use source::{KafkaSource, PullSource};
-pub use stage::{RejectionReason, Stage, StageResult};
+pub use stage::{PipelineExit, RejectionReason, Stage, StageResult};

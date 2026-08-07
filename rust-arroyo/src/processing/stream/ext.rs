@@ -9,7 +9,7 @@ use crate::{counter, timer};
 use super::handlers::rejection::{RejectionMetadata, RejectionHandler};
 use super::handlers::next::NextHandler;
 use super::pipeline_envelope::PipelineEnvelope;
-use super::stage::{Stage, StageResult};
+use super::stage::{PipelineExit, Stage, StageResult};
 
 /// Run a stage on an envelope and record metrics.
 async fn run_stage<S: Stage>(
@@ -26,6 +26,7 @@ async fn run_stage<S: Stage>(
         StageResult::Skip => { counter!("arroyo.stage.skip", 1, "stage" => stage.name()); }
         StageResult::Reject { .. } => { counter!("arroyo.stage.reject", 1, "stage" => stage.name()); }
         StageResult::Fail(_) => { counter!("arroyo.stage.fail", 1, "stage" => stage.name()); }
+        StageResult::Exit(_) => {}
     }
 
     result
@@ -35,14 +36,19 @@ async fn run_stage<S: Stage>(
 /// Stream<Item = StageResult<T>>.
 ///
 /// Usage:
-///   source.stream()
-///       .apply(&parse)
-///       .apply(&transform)
-///       .apply_concurrent(&ch_writer, 8)
-///       .on_next(&produce_handler)
-///       .on_reject(&dlq_handler)
-///       .commit(&mut tracker)
-///       .await;
+///   loop {
+///       let exit = source.stream()
+///           .apply(&stage)
+///           .on_next(&handler)
+///           .on_reject(&dlq)
+///           .commit(&mut tracker)
+///           .await?;
+///
+///       match exit {
+///           PipelineExit::Rebalance => continue,
+///           PipelineExit::Shutdown | PipelineExit::Complete => break,
+///       }
+///   }
 pub trait PipelineExt<T: Send>:
     Stream<Item = StageResult<T>> + Sized
 {
@@ -62,8 +68,7 @@ pub trait PipelineExt<T: Send>:
 
     /// Apply a processing stage concurrently to up to `concurrency` Emit
     /// envelopes at once. Results are yielded in input order.
-    /// Non-Emit items (Drop, Skip, Reject, Fail) resolve immediately.
-    /// Records per-stage metrics.
+    /// Non-Emit items pass through immediately.
     fn apply_concurrent<'a, S>(
         self,
         stage: &'a S,
@@ -83,6 +88,7 @@ pub trait PipelineExt<T: Send>:
                     StageResult::Reject { metadata, raw, reason }
                 }
                 StageResult::Fail(err) => StageResult::Fail(err),
+                StageResult::Exit(reason) => StageResult::Exit(reason),
             }
         })
         .buffered(concurrency)
@@ -147,13 +153,14 @@ pub trait PipelineExt<T: Send>:
     }
 
     /// Terminal: drive the pipeline to completion.
-    /// Tracks offsets for Emit, Drop, and Reject items. Fail stops the pipeline.
-    /// Skip items pass through without offset tracking (batch will emit later).
+    /// Tracks offsets for Emit, Drop, and Reject items.
+    /// Returns the exit reason (Rebalance, Shutdown, or Complete).
+    /// Fail stops the pipeline with an error.
     #[allow(async_fn_in_trait)]
     async fn commit(
         self,
         tracker: &mut OffsetTracker<'_>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<PipelineExit, Box<dyn std::error::Error + Send>> {
         let mut stream = Box::pin(self);
 
         while let Some(item) = stream.next().await {
@@ -173,13 +180,18 @@ pub trait PipelineExt<T: Send>:
                     let _ = tracker.flush();
                     return Err(err);
                 }
+                StageResult::Exit(reason) => {
+                    tracker.flush()?;
+                    return Ok(reason);
+                }
             }
 
             tracker.maybe_commit()?;
         }
 
+        // Stream ended naturally (no Exit item)
         tracker.flush()?;
-        Ok(())
+        Ok(PipelineExit::Complete)
     }
 }
 
