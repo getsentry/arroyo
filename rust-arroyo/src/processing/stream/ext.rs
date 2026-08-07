@@ -3,7 +3,7 @@ use std::time::Instant;
 use futures::stream::Stream;
 use futures::StreamExt;
 
-use crate::processing::strategies::offset_tracker::OffsetTracker;
+use super::offset_tracker::OffsetTracker;
 use crate::{counter, timer};
 
 use super::handlers::rejection::{RejectionMetadata, RejectionHandler};
