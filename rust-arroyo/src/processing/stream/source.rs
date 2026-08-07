@@ -16,12 +16,16 @@ use crate::backends::kafka::kafka_poll_error_is_recoverable;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::types::{Partition, Topic};
 
+use std::future::Future;
+
 use super::offset_tracker::OffsetCommitter;
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::{PipelineExit, StageResult};
 
 /// Trait for pipeline sources. Provides a stream of raw Kafka payloads,
 /// an offset committer, and graceful shutdown.
+///
+/// Object-safe — can be used as `Box<dyn PullSource>` or `Arc<dyn PullSource>`.
 pub trait PullSource: Send + Sync {
     fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>>;
     fn committer(&self) -> &dyn OffsetCommitter;
