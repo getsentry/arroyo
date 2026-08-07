@@ -22,20 +22,30 @@ pub struct OffsetTracker<'a> {
     last_commit_time: coarsetime::Instant,
     last_record_time: coarsetime::Instant,
     commit_frequency: coarsetime::Duration,
-    // Held to keep the background time updater alive. Without this,
-    // coarsetime::Instant::recent() would never advance.
-    _updater: coarsetime::Updater,
+}
+
+/// Ensure the coarsetime background updater is started exactly once.
+/// Multiple OffsetTracker instances share the same updater thread.
+fn ensure_time_updater() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        coarsetime::Updater::new(10)
+            .start()
+            .expect("Failed to start coarsetime updater");
+        // Intentionally leaked — runs for the process lifetime.
+    });
 }
 
 impl<'a> OffsetTracker<'a> {
     pub fn new(commit_frequency: Duration, committer: &'a dyn OffsetCommitter) -> Self {
+        ensure_time_updater();
         Self {
             committer,
             offsets: Default::default(),
             last_commit_time: coarsetime::Instant::recent(),
             last_record_time: coarsetime::Instant::recent(),
             commit_frequency: commit_frequency.into(),
-            _updater: coarsetime::Updater::new(10).start().unwrap(),
         }
     }
 
