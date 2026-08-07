@@ -1,24 +1,36 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 
 use futures::stream::Stream;
 use futures::StreamExt;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::TopicPartitionList;
+use tokio_util::sync::CancellationToken;
 
 use crate::backends::kafka::config::KafkaConfig;
+use crate::backends::kafka::types::KafkaPayload;
 use crate::processing::strategies::offset_tracker::OffsetCommitter;
 use crate::types::{Partition, Topic};
 
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::StageResult;
 
+/// Trait for pipeline sources. Provides a stream of raw Kafka payloads,
+/// an offset committer, and graceful shutdown.
+pub trait PullSource: Send + Sync {
+    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>>;
+    fn committer(&self) -> &dyn OffsetCommitter;
+    fn shutdown(&self);
+}
+
 /// A Kafka consumer source that produces a Stream of StageResult<KafkaPayload>.
 ///
-/// Also handles offset committing — both stream() and commit() borrow
-/// &self on the underlying StreamConsumer, which rdkafka allows.
+/// Supports graceful shutdown via a CancellationToken — calling shutdown()
+/// terminates the stream, allowing the pipeline to drain and commit offsets.
 pub struct KafkaSource {
     consumer: StreamConsumer,
+    cancel: CancellationToken,
 }
 
 impl KafkaSource {
@@ -34,22 +46,37 @@ impl KafkaSource {
             .subscribe(&topic_strs)
             .expect("Failed to subscribe");
 
-        Self { consumer }
+        Self {
+            consumer,
+            cancel: CancellationToken::new(),
+        }
+    }
+}
+
+impl PullSource for KafkaSource {
+    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
+        Box::pin(
+            self.consumer
+                .stream()
+                .take_until(self.cancel.cancelled())
+                .filter_map(|result| {
+                    futures::future::ready(match result {
+                        Ok(msg) => Some(StageResult::Emit(PipelineEnvelope::from_kafka(&msg))),
+                        Err(e) => {
+                            tracing::error!("Kafka consumer error: {}", e);
+                            None
+                        }
+                    })
+                }),
+        )
     }
 
-    /// Returns a Stream of StageResult<KafkaPayload>.
-    pub fn stream(
-        &self,
-    ) -> impl Stream<Item = StageResult<crate::backends::kafka::types::KafkaPayload>> + '_ {
-        self.consumer.stream().filter_map(|result| {
-            futures::future::ready(match result {
-                Ok(msg) => Some(StageResult::Emit(PipelineEnvelope::from_kafka(&msg))),
-                Err(e) => {
-                    tracing::error!("Kafka consumer error: {}", e);
-                    None
-                }
-            })
-        })
+    fn committer(&self) -> &dyn OffsetCommitter {
+        self
+    }
+
+    fn shutdown(&self) {
+        self.cancel.cancel();
     }
 }
 
