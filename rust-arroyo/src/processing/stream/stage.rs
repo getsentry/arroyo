@@ -16,11 +16,11 @@ pub enum StageResult<T> {
         metadata: MessageMetadata,
     },
 
-    /// Not ready yet — accumulating (batching).
-    /// The offset will be tracked when the batch emits.
+    /// Equivalent to no result emission — offset is not propagated.
+    /// Supports accumulating (batching).
     Skip,
 
-    /// Bad message — route to the rejection handler (DLQ).
+    /// Rejected message — agnostic about reason.
     /// Carries metadata + raw for offset tracking and DLQ routing.
     Reject {
         metadata: MessageMetadata,

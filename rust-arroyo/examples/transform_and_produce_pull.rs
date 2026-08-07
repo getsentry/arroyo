@@ -70,6 +70,15 @@ async fn main() {
     let reverse = ReverseStage;
 
     // --- Wire pipeline ---
+    // The pipeline reads left to right, top to bottom:
+    //   source.stream()        — async stream of Kafka messages
+    //     .apply(&stage)       — transform/filter/batch each message
+    //     .on_next(&handler)   — side-effect on successful items (produce, upload)
+    //     .on_reject(&handler) — handle rejected items (DLQ, log)
+    //     .commit(&tracker)    — track offsets, flush on interval
+    //
+    // Backpressure is natural — the stream doesn't pull the next
+    // message until the current one finishes processing.
     let result = source
         .stream()
         .apply(&reverse)
