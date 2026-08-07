@@ -72,6 +72,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
         Self: 'a,
         T: 'a,
     {
+        assert!(concurrency > 0, "concurrency must be at least 1");
         self.map(move |item| async move {
             match item {
                 StageResult::Emit(e) => run_stage(stage, e).await,
