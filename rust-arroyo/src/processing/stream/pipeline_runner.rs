@@ -51,6 +51,7 @@ impl PipelineRunner {
             let exit = build(source.stream(), source.committer()).await?;
             match exit {
                 PipelineExit::Rebalance => {
+                    source.signal_drain_complete();
                     tracing::info!("Rebalance detected, restarting pipeline");
                     continue;
                 }
@@ -141,6 +142,7 @@ mod tests {
         }
 
         fn shutdown(&self) {}
+        fn signal_drain_complete(&self) {}
     }
 
     fn make_message(payload: &[u8], offset: u64) -> StageResult<KafkaPayload> {
@@ -230,6 +232,7 @@ mod tests {
                 &self.committer
             }
             fn shutdown(&self) {}
+            fn signal_drain_complete(&self) {}
         }
 
         let source = FiniteSource {
