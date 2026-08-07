@@ -90,5 +90,5 @@ pub trait Stage: Send + Sync {
         envelope: PipelineEnvelope<Self::In>,
     ) -> impl Future<Output = StageResult<Self::Out>> + Send;
 
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
 }
