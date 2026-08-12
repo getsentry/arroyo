@@ -14,6 +14,7 @@ pub struct HealthCheck<Next> {
     path: PathBuf,
     interval: Duration,
     deadline: SystemTime,
+    iterations_since_last_submit: u64,
 }
 
 impl<Next> HealthCheck<Next> {
@@ -26,6 +27,7 @@ impl<Next> HealthCheck<Next> {
             path: path.into(),
             interval,
             deadline,
+            iterations_since_last_submit: 0,
         }
     }
 
@@ -50,12 +52,21 @@ where
     Next: ProcessingStrategy<TPayload> + 'static,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        self.maybe_touch_file();
+        let poll_result = self.next_step.poll();
+        if let Ok(Some(_commit_request)) = poll_result.as_ref() {
+            self.maybe_touch_file();
+        }
 
-        self.next_step.poll()
+        if self.iterations_since_last_submit > 0 {
+            self.maybe_touch_file();
+        }
+
+        self.iterations_since_last_submit += 1;
+        poll_result
     }
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
+        self.iterations_since_last_submit = 0;
         self.next_step.submit(message)
     }
 
