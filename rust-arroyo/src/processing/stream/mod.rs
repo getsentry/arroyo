@@ -1,4 +1,5 @@
 pub mod batch;
+pub mod collector;
 mod ext;
 pub mod handlers;
 pub mod offset_tracker;
@@ -10,6 +11,7 @@ mod stage;
 pub use batch::stage::BatchStage;
 pub use batch::buffer::{Buffer, VecBuffer};
 pub use batch::triggers::SizeTrigger;
+pub use collector::{NoopCollector, OffsetCollector, StreamCollector};
 pub use ext::PipelineExt;
 pub use handlers::{
     DlqHandler, KafkaProducerHandler, LogHandler, NextHandler, RejectionHandler, RejectionMetadata,

@@ -3,6 +3,7 @@ use std::time::Instant;
 use futures::stream::Stream;
 use futures::StreamExt;
 
+use super::collector::StreamCollector;
 use super::offset_tracker::OffsetTracker;
 use crate::{counter, timer};
 
@@ -191,6 +192,45 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
 
         // Stream ended naturally (no Exit item)
         tracker.flush()?;
+        Ok(PipelineExit::Complete)
+    }
+
+    /// Terminal: drive the pipeline to completion using a StreamCollector.
+    ///
+    /// Like `commit()`, but delegates event handling to the collector.
+    /// Use `OffsetCollector` for production (offset tracking + commit),
+    /// or `NoopCollector` / a custom collector for tests.
+    #[allow(async_fn_in_trait)]
+    async fn run<C: StreamCollector<T>>(
+        self,
+        collector: &mut C,
+    ) -> Result<PipelineExit, Box<dyn std::error::Error + Send>> {
+        let mut stream = Box::pin(self);
+
+        while let Some(item) = stream.next().await {
+            match item {
+                StageResult::Emit(envelope) => {
+                    collector.on_emit(&envelope);
+                }
+                StageResult::Drop { metadata } => {
+                    collector.on_drop(&metadata);
+                }
+                StageResult::Skip => {}
+                StageResult::Reject { metadata, .. } => {
+                    collector.on_reject(&metadata);
+                }
+                StageResult::Fail(err) => {
+                    let _ = collector.on_complete();
+                    return Err(err);
+                }
+                StageResult::Exit(reason) => {
+                    collector.on_complete()?;
+                    return Ok(reason);
+                }
+            }
+        }
+
+        collector.on_complete()?;
         Ok(PipelineExit::Complete)
     }
 }
