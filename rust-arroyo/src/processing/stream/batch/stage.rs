@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use super::buffer::Buffer;
 use super::triggers::SizeTrigger;
 use crate::processing::stream::pipeline_envelope::{MessageMetadata, PipelineEnvelope};
-use crate::processing::stream::stage::{Stage, StageResult};
+use crate::processing::stream::stage::{FlushableStage, Stage, StageResult};
 use crate::backends::kafka::types::KafkaPayload;
 use crate::types::Partition;
 
@@ -32,6 +32,29 @@ struct BatchState<T: Send + Sync, B: Buffer<T>> {
     last_metadata: Option<MessageMetadata>,
     last_raw: Option<Arc<KafkaPayload>>,
     _marker: PhantomData<T>,
+}
+
+impl<T: Send + Sync, B: Buffer<T>> BatchState<T, B> {
+    /// Flush the buffer and reset triggers. Returns `None` if empty.
+    fn flush(&mut self, max_rows: u64, max_bytes: u64) -> Option<StageResult<Vec<T>>> {
+        if self.buffer.len() == 0 {
+            return None;
+        }
+
+        let items = self.buffer.flush();
+        let mut metadata = self.last_metadata.take()?;
+        let raw = self.last_raw.take()?;
+
+        if let Some(&max_offset) = self.offsets.get(&metadata.partition) {
+            metadata.offset = max_offset;
+        }
+        self.offsets.clear();
+
+        self.row_trigger = SizeTrigger::new(max_rows);
+        self.byte_trigger = SizeTrigger::new(max_bytes);
+
+        Some(StageResult::Emit(PipelineEnvelope::new(items, metadata, raw)))
+    }
 }
 
 impl<T: Send + Sync, B: Buffer<T>> BatchStage<T, B> {
@@ -75,21 +98,8 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 
         // Check if either trigger is complete
         if state.row_trigger.is_complete() || state.byte_trigger.is_complete() {
-            let items = state.buffer.flush();
-            let mut metadata = state.last_metadata.take().unwrap();
-            let raw = state.last_raw.take().unwrap();
-
-            // Set offset to the highest for this partition
-            if let Some(&max_offset) = state.offsets.get(&metadata.partition) {
-                metadata.offset = max_offset;
-            }
-            state.offsets.clear();
-
-            // Fresh triggers for the next batch
-            state.row_trigger = SizeTrigger::new(self.max_rows);
-            state.byte_trigger = SizeTrigger::new(self.max_bytes);
-
-            StageResult::Emit(PipelineEnvelope::new(items, metadata, raw))
+            state.flush(self.max_rows, self.max_bytes)
+                .unwrap_or(StageResult::Skip)
         } else {
             StageResult::Skip
         }
@@ -97,6 +107,12 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 
     fn name(&self) -> &str {
         "batch"
+    }
+}
+
+impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchStage<T, B> {
+    fn flush(&self) -> Option<StageResult<Vec<T>>> {
+        self.state.lock().unwrap().flush(self.max_rows, self.max_bytes)
     }
 }
 
@@ -248,5 +264,115 @@ mod tests {
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0], vec![0, 1, 2]);
         assert_eq!(batches[1], vec![3, 4, 5]);
+    }
+
+    #[tokio::test]
+    async fn test_batch_cadence_flush() {
+        let batch = BatchStage::new(VecBuffer::new(), 100, u64::MAX);
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let collector = CollectStage {
+            collected: collected.clone(),
+        };
+
+        let stream = async_stream::stream! {
+            for i in 0..3u32 {
+                yield make_envelope(i, i as u64);
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+
+        let mut noop = crate::processing::stream::NoopCollector;
+
+        let result = stream
+            .apply_with_timer(&batch, None, Some(Duration::from_millis(50)))
+            .apply(&collector)
+            .run(&mut noop)
+            .await;
+
+        assert!(result.is_ok());
+        let batches = collected.lock().unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0], vec![0, 1, 2]);
+    }
+
+    #[tokio::test]
+    async fn test_batch_idle_flush() {
+        let batch = BatchStage::new(VecBuffer::new(), 100, u64::MAX);
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let collector = CollectStage {
+            collected: collected.clone(),
+        };
+
+        let stream = async_stream::stream! {
+            yield make_envelope(0, 0);
+            yield make_envelope(1, 1);
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            yield make_envelope(2, 2);
+            yield make_envelope(3, 3);
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+
+        let mut noop = crate::processing::stream::NoopCollector;
+
+        let result = stream
+            .apply_with_timer(&batch, Some(Duration::from_millis(50)), None)
+            .apply(&collector)
+            .run(&mut noop)
+            .await;
+
+        assert!(result.is_ok());
+        let batches = collected.lock().unwrap();
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0], vec![0, 1]);
+        assert_eq!(batches[1], vec![2, 3]);
+    }
+
+    #[tokio::test]
+    async fn test_batch_size_trigger_resets_timers() {
+        let batch = BatchStage::new(VecBuffer::new(), 2, u64::MAX);
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let collector = CollectStage {
+            collected: collected.clone(),
+        };
+
+        let messages: Vec<_> = (0..4).map(|i| make_envelope(i, i as u64)).collect();
+
+        let mut noop = crate::processing::stream::NoopCollector;
+
+        let result = futures::stream::iter(messages)
+            .apply_with_timer(&batch, None, Some(Duration::from_millis(500)))
+            .apply(&collector)
+            .run(&mut noop)
+            .await;
+
+        assert!(result.is_ok());
+        let batches = collected.lock().unwrap();
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0], vec![0, 1]);
+        assert_eq!(batches[1], vec![2, 3]);
+    }
+
+    #[tokio::test]
+    async fn test_batch_stream_end_flushes_remainder() {
+        let batch = BatchStage::new(VecBuffer::new(), 100, u64::MAX);
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let collector = CollectStage {
+            collected: collected.clone(),
+        };
+
+        let messages: Vec<_> = (0..3).map(|i| make_envelope(i, i as u64)).collect();
+
+        let mut noop = crate::processing::stream::NoopCollector;
+
+        let result = futures::stream::iter(messages)
+            .apply_with_timer(&batch, Some(Duration::from_secs(999)), None)
+            .apply(&collector)
+            .run(&mut noop)
+            .await;
+
+        assert!(result.is_ok());
+        let batches = collected.lock().unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0], vec![0, 1, 2]);
     }
 }

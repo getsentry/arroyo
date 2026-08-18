@@ -26,7 +26,7 @@ pub struct OffsetTracker<'a> {
 
 /// Ensure the coarsetime background updater is started exactly once.
 /// Multiple OffsetTracker instances share the same updater thread.
-fn ensure_time_updater() {
+pub(crate) fn ensure_time_updater() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {

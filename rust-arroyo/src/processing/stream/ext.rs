@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::stream::Stream;
 use futures::StreamExt;
@@ -10,7 +10,7 @@ use crate::{counter, timer};
 use super::handlers::next::NextHandler;
 use super::handlers::rejection::{RejectionHandler, RejectionMetadata};
 use super::pipeline_envelope::PipelineEnvelope;
-use super::stage::{PipelineExit, Stage, StageResult};
+use super::stage::{FlushableStage, PipelineExit, Stage, StageResult};
 
 /// Run a stage on an envelope and record metrics.
 async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> StageResult<S::Out> {
@@ -93,6 +93,91 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
             }
         })
         .buffered(concurrency)
+    }
+
+    /// Apply a flushable stage with time-based flush triggers.
+    ///
+    /// Two optional timers:
+    /// - `idle_timeout`: flush if no upstream item arrives within this duration.
+    /// - `max_cadence`: flush at this interval since the batch started accumulating.
+    ///
+    /// At least one of `idle_timeout` or `max_cadence` must be `Some`.
+    fn apply_with_timer<'a, S>(
+        self,
+        stage: &'a S,
+        idle_timeout: Option<Duration>,
+        max_cadence: Option<Duration>,
+    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    where
+        S: FlushableStage<In = T>,
+        Self: 'a,
+        T: 'a,
+    {
+        assert!(
+            idle_timeout.is_some() || max_cadence.is_some(),
+            "apply_with_timer requires at least one of idle_timeout or max_cadence"
+        );
+
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            let mut timer = super::batch::flush_timer::FlushTimer::new(idle_timeout, max_cadence);
+
+            loop {
+                tokio::select! {
+                    item = upstream.next() => {
+                        let item = match item {
+                            Some(item) => item,
+                            None => {
+                                if let Some(flushed) = stage.flush() {
+                                    yield flushed;
+                                }
+                                return;
+                            }
+                        };
+
+                        match item {
+                            StageResult::Emit(e) => {
+                                let result = run_stage(stage, e).await;
+                                match &result {
+                                    StageResult::Skip => timer.on_accumulate(),
+                                    StageResult::Emit(_) => timer.on_flush(),
+                                    _ => {}
+                                }
+                                yield result;
+                            }
+                            StageResult::Exit(reason) => {
+                                if let Some(flushed) = stage.flush() {
+                                    yield flushed;
+                                }
+                                yield StageResult::Exit(reason);
+                                return;
+                            }
+                            StageResult::Drop { metadata } => {
+                                yield StageResult::Drop { metadata };
+                            }
+                            StageResult::Skip => {
+                                yield StageResult::Skip;
+                            }
+                            StageResult::Reject { metadata, raw, reason } => {
+                                yield StageResult::Reject { metadata, raw, reason };
+                            }
+                            StageResult::Fail(err) => {
+                                yield StageResult::Fail(err);
+                                return;
+                            }
+                        }
+                    }
+                    _ = timer.interval.tick(), if timer.is_active() => {
+                        if timer.should_flush() {
+                            if let Some(flushed) = stage.flush() {
+                                yield flushed;
+                            }
+                            timer.on_flush();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Call the next handler for each Emit envelope.

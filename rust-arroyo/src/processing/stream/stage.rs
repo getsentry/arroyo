@@ -92,3 +92,14 @@ pub trait Stage: Send + Sync {
 
     fn name(&self) -> &str;
 }
+
+/// A stage that accumulates state and can be flushed externally.
+///
+/// Used by `apply_with_timer` to flush partial batches when a time
+/// trigger fires. `BatchStage` implements this — most stages don't
+/// need to.
+pub trait FlushableStage: Stage {
+    /// Flush accumulated state. Returns `Some(Emit(...))` if there
+    /// is data to flush, `None` if the buffer is empty.
+    fn flush(&self) -> Option<StageResult<Self::Out>>;
+}
