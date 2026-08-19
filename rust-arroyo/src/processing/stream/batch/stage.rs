@@ -16,7 +16,7 @@ use crate::types::Partition;
 /// completion — one for rows, one for bytes. The buffer's `push()`
 /// returns the byte size of each item, which feeds the byte trigger.
 ///
-/// Returns `Skip` while accumulating, `Emit(Vec<T>)` when flushing.
+/// Returns `Skip` while accumulating, `Emit(B::Output)` when flushing.
 /// Tracks the highest offset per partition across the batch.
 pub struct BatchStage<T: Send + Sync, B: Buffer<T>> {
     state: Mutex<BatchState<T, B>>,
@@ -36,7 +36,7 @@ struct BatchState<T: Send + Sync, B: Buffer<T>> {
 
 impl<T: Send + Sync, B: Buffer<T>> BatchState<T, B> {
     /// Flush the buffer and reset triggers. Returns `None` if empty.
-    fn flush(&mut self, max_rows: u64, max_bytes: u64) -> Option<StageResult<Vec<T>>> {
+    fn flush(&mut self, max_rows: u64, max_bytes: u64) -> Option<StageResult<B::Output>> {
         if self.buffer.len() == 0 {
             return None;
         }
@@ -77,9 +77,9 @@ impl<T: Send + Sync, B: Buffer<T>> BatchStage<T, B> {
 
 impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B> {
     type In = T;
-    type Out = Vec<T>;
+    type Out = B::Output;
 
-    async fn process(&self, envelope: PipelineEnvelope<T>) -> StageResult<Vec<T>> {
+    async fn process(&self, envelope: PipelineEnvelope<T>) -> StageResult<B::Output> {
         let mut state = self.state.lock().unwrap();
 
         // Track offsets — keep highest per partition
@@ -111,7 +111,7 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 }
 
 impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchStage<T, B> {
-    fn flush(&self) -> Option<StageResult<Vec<T>>> {
+    fn flush(&self) -> Option<StageResult<B::Output>> {
         self.state.lock().unwrap().flush(self.max_rows, self.max_bytes)
     }
 }
@@ -119,10 +119,38 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::processing::stream::batch::buffer::VecBuffer;
     use crate::processing::stream::{OffsetTracker, PipelineExt};
     use crate::types::Topic;
     use std::time::Duration;
+
+    /// Simple test buffer that stores items in a Vec.
+    /// Every item counts as 1 byte.
+    struct VecBuffer<T> {
+        items: Vec<T>,
+    }
+
+    impl<T> VecBuffer<T> {
+        fn new() -> Self {
+            Self { items: Vec::new() }
+        }
+    }
+
+    impl<T: Send + Sync> Buffer<T> for VecBuffer<T> {
+        type Output = Vec<T>;
+
+        fn push(&mut self, item: T) -> u64 {
+            self.items.push(item);
+            1
+        }
+
+        fn len(&self) -> u64 {
+            self.items.len() as u64
+        }
+
+        fn flush(&mut self) -> Vec<T> {
+            std::mem::take(&mut self.items)
+        }
+    }
 
     struct MockCommitter;
 
@@ -204,6 +232,8 @@ mod tests {
             items: Vec<u32>,
         }
         impl Buffer<u32> for TenByteBuffer {
+            type Output = Vec<u32>;
+
             fn push(&mut self, item: u32) -> u64 {
                 self.items.push(item);
                 10
