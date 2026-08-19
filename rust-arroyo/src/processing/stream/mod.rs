@@ -9,8 +9,8 @@ mod pipeline_runner;
 pub mod source;
 mod stage;
 
-pub use batch::stage::BatchStage;
 pub use batch::buffer::Buffer;
+pub use batch::stage::BatchStage;
 pub use batch::triggers::SizeTrigger;
 pub use collector::{NoopCollector, OffsetCollector, StreamCollector};
 pub use ext::PipelineExt;

@@ -63,7 +63,12 @@ impl FlushTimer<CoarseClock> {
             .max(Duration::from_millis(1))
             .min(Duration::from_millis(100));
 
-        Self::with_clock(CoarseClock, tokio::time::interval(tick), idle_timeout, max_cadence)
+        Self::with_clock(
+            CoarseClock,
+            tokio::time::interval(tick),
+            idle_timeout,
+            max_cadence,
+        )
     }
 }
 

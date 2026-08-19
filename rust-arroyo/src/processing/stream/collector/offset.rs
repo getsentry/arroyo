@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::processing::stream::offset_tracker::{OffsetCommitter, OffsetTracker};
-use crate::processing::stream::pipeline_envelope::PipelineEnvelope;
 use crate::processing::stream::pipeline_envelope::MessageMetadata;
+use crate::processing::stream::pipeline_envelope::PipelineEnvelope;
 
 use super::stream_collector::StreamCollector;
 

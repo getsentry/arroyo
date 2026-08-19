@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use super::buffer::Buffer;
 use super::triggers::SizeTrigger;
+use crate::backends::kafka::types::KafkaPayload;
 use crate::processing::stream::pipeline_envelope::{MessageMetadata, PipelineEnvelope};
 use crate::processing::stream::stage::{FlushableStage, Stage, StageResult};
-use crate::backends::kafka::types::KafkaPayload;
 use crate::types::Partition;
 
 /// Accumulates items into batches, flushing when either a row count
@@ -53,7 +53,9 @@ impl<T: Send + Sync, B: Buffer<T>> BatchState<T, B> {
         self.row_trigger = SizeTrigger::new(max_rows);
         self.byte_trigger = SizeTrigger::new(max_bytes);
 
-        Some(StageResult::Emit(PipelineEnvelope::new(items, metadata, raw)))
+        Some(StageResult::Emit(PipelineEnvelope::new(
+            items, metadata, raw,
+        )))
     }
 }
 
@@ -98,7 +100,8 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 
         // Check if either trigger is complete
         if state.row_trigger.is_complete() || state.byte_trigger.is_complete() {
-            state.flush(self.max_rows, self.max_bytes)
+            state
+                .flush(self.max_rows, self.max_bytes)
                 .unwrap_or(StageResult::Skip)
         } else {
             StageResult::Skip
@@ -112,7 +115,10 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 
 impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchStage<T, B> {
     fn flush(&self) -> Option<StageResult<B::Output>> {
-        self.state.lock().unwrap().flush(self.max_rows, self.max_bytes)
+        self.state
+            .lock()
+            .unwrap()
+            .flush(self.max_rows, self.max_bytes)
     }
 }
 
@@ -181,10 +187,7 @@ mod tests {
         type In = Vec<u32>;
         type Out = Vec<u32>;
 
-        async fn process(
-            &self,
-            envelope: PipelineEnvelope<Vec<u32>>,
-        ) -> StageResult<Vec<u32>> {
+        async fn process(&self, envelope: PipelineEnvelope<Vec<u32>>) -> StageResult<Vec<u32>> {
             self.collected
                 .lock()
                 .unwrap()
