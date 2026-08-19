@@ -6,7 +6,7 @@
 /// Intentionally has no reset — create a new instance for a fresh counter.
 ///
 /// ```
-/// use sentry_arroyo::processing::stream::triggers::SizeTrigger;
+/// use sentry_arroyo::processing::stream::SizeTrigger;
 ///
 /// let mut trigger = SizeTrigger::new(100);
 /// trigger.increment(30);
