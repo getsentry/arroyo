@@ -5,6 +5,7 @@ use futures::StreamExt;
 
 use super::collector::StreamCollector;
 use super::offset_tracker::OffsetTracker;
+use crate::processing::stream::batch::flush_timer::FlushTimer;
 use crate::{counter, timer};
 
 use super::handlers::next::NextHandler;
@@ -120,7 +121,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
 
         async_stream::stream! {
             let mut upstream = Box::pin(self);
-            let mut timer = super::batch::flush_timer::FlushTimer::new(idle_timeout, max_cadence);
+            let mut timer = FlushTimer::new(idle_timeout, max_cadence);
 
             loop {
                 tokio::select! {
