@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::backends::kafka::types::KafkaPayload;
 
 use super::pipeline_envelope::{MessageMetadata, PipelineEnvelope};
+use super::BoxError;
 
 /// Why the pipeline stream ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +39,7 @@ pub enum StageResult<T> {
     },
 
     /// Unrecoverable error — kill the pipeline.
-    Fail(Box<dyn std::error::Error + Send>),
+    Fail(BoxError),
 
     /// Pipeline termination signal from the source.
     /// Passes through all combinators untouched until reaching commit().

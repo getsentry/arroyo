@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::processing::stream::offset_tracker::{OffsetCommitter, OffsetTracker};
 use crate::processing::stream::pipeline_envelope::MessageMetadata;
 use crate::processing::stream::pipeline_envelope::PipelineEnvelope;
+use crate::processing::stream::BoxError;
 
 use super::stream_collector::StreamCollector;
 
@@ -38,7 +39,7 @@ impl<T> StreamCollector<T> for OffsetCollector<'_> {
         let _ = self.tracker.maybe_commit();
     }
 
-    fn on_complete(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn on_complete(&mut self) -> Result<(), BoxError> {
         self.tracker.flush()
     }
 }

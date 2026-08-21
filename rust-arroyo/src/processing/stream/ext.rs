@@ -12,6 +12,7 @@ use super::handlers::next::NextHandler;
 use super::handlers::rejection::{RejectionHandler, RejectionMetadata};
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::{FlushableStage, PipelineExit, Stage, StageResult};
+use super::BoxError;
 
 /// Run a stage on an envelope and record metrics.
 async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> StageResult<S::Out> {
@@ -247,7 +248,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     async fn commit(
         self,
         tracker: &mut OffsetTracker<'_>,
-    ) -> Result<PipelineExit, Box<dyn std::error::Error + Send>> {
+    ) -> Result<PipelineExit, BoxError> {
         let mut stream = Box::pin(self);
 
         while let Some(item) = stream.next().await {
@@ -290,7 +291,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     async fn run<C: StreamCollector<T>>(
         self,
         collector: &mut C,
-    ) -> Result<PipelineExit, Box<dyn std::error::Error + Send>> {
+    ) -> Result<PipelineExit, BoxError> {
         let mut stream = Box::pin(self);
 
         while let Some(item) = stream.next().await {

@@ -1,13 +1,13 @@
 use std::future::Future;
-use std::pin::Pin;
 
-use futures::stream::Stream;
+use futures::stream::BoxStream;
 
 use crate::backends::kafka::types::KafkaPayload;
 
 use super::offset_tracker::OffsetCommitter;
 use super::source::PullSource;
 use super::stage::{PipelineExit, StageResult};
+use super::BoxError;
 
 /// Runs a pipeline in a loop, restarting on rebalance.
 ///
@@ -38,14 +38,14 @@ impl PipelineRunner {
     pub async fn run<'s, S, F, Fut>(
         source: &'s S,
         mut build: F,
-    ) -> Result<(), Box<dyn std::error::Error + Send>>
+    ) -> Result<(), BoxError>
     where
         S: PullSource,
         F: FnMut(
-            Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + 's>>,
+            BoxStream<'s, StageResult<KafkaPayload>>,
             &'s dyn OffsetCommitter,
         ) -> Fut,
-        Fut: Future<Output = Result<PipelineExit, Box<dyn std::error::Error + Send>>> + 's,
+        Fut: Future<Output = Result<PipelineExit, BoxError>> + 's,
     {
         loop {
             match build(source.stream(), source.committer()).await? {
@@ -93,7 +93,7 @@ mod tests {
         fn commit_offsets(
             &self,
             positions: &HashMap<Partition, u64>,
-        ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        ) -> Result<(), BoxError> {
             self.committed.lock().unwrap().push(positions.clone());
             Ok(())
         }
@@ -120,7 +120,7 @@ mod tests {
     }
 
     impl PullSource for RebalanceTestSource {
-        fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
+        fn stream(&self) -> BoxStream<'_, StageResult<KafkaPayload>> {
             let (messages, exit) = self
                 .batches
                 .lock()
@@ -221,7 +221,7 @@ mod tests {
         }
 
         impl PullSource for FiniteSource {
-            fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
+            fn stream(&self) -> BoxStream<'_, StageResult<KafkaPayload>> {
                 let messages = vec![make_message(b"a", 0), make_message(b"b", 1)];
                 Box::pin(futures::stream::iter(messages))
             }

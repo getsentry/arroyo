@@ -5,6 +5,7 @@ use crate::backends::kafka::types::KafkaPayload;
 
 use super::super::pipeline_envelope::MessageMetadata;
 use super::super::stage::RejectionReason;
+use crate::processing::stream::BoxError;
 
 /// A rejected message, passed to the RejectionHandler.
 pub struct RejectionMetadata {
@@ -21,5 +22,5 @@ pub trait RejectionHandler: Send + Sync {
     fn handle(
         &self,
         rejected: &RejectionMetadata,
-    ) -> impl Future<Output = Result<(), Box<dyn std::error::Error + Send>>> + Send;
+    ) -> impl Future<Output = Result<(), BoxError>> + Send;
 }

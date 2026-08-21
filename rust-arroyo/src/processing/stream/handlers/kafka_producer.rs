@@ -6,6 +6,7 @@ use crate::types::TopicOrPartition;
 
 use super::super::pipeline_envelope::PipelineEnvelope;
 use super::next::NextHandler;
+use crate::processing::stream::BoxError;
 
 /// A canned NextHandler that produces the envelope's payload to a Kafka topic.
 pub struct KafkaProducerHandler {
@@ -26,9 +27,9 @@ impl NextHandler<KafkaPayload> for KafkaProducerHandler {
     async fn handle(
         &self,
         envelope: &PipelineEnvelope<KafkaPayload>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<(), BoxError> {
         self.producer
             .produce(&self.topic, envelope.payload.clone())
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
+            .map_err(|e| Box::new(e) as BoxError)
     }
 }

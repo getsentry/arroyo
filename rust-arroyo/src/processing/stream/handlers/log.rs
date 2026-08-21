@@ -1,3 +1,5 @@
+use crate::processing::stream::BoxError;
+
 use super::rejection::{RejectionHandler, RejectionMetadata};
 
 /// A canned RejectionHandler that logs the rejection and continues.
@@ -7,7 +9,7 @@ impl RejectionHandler for LogHandler {
     async fn handle(
         &self,
         rejected: &RejectionMetadata,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<(), BoxError> {
         tracing::error!(
             "Rejected message at {:?}:{} reason={:?}",
             rejected.metadata.partition,

@@ -6,13 +6,15 @@ use chrono::{DateTime, Utc};
 use crate::timer;
 use crate::types::Partition;
 
+use super::BoxError;
+
 /// Trait for committing offsets. KafkaSource implements this.
 /// Tests can provide a mock.
 pub trait OffsetCommitter: Send + Sync {
     fn commit_offsets(
         &self,
         positions: &HashMap<Partition, u64>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>>;
+    ) -> Result<(), BoxError>;
 }
 
 /// Tracks offsets per partition and commits them on a time-throttled interval.
@@ -67,16 +69,16 @@ impl<'a> OffsetTracker<'a> {
     }
 
     /// Commit offsets if the commit frequency has elapsed.
-    pub fn maybe_commit(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+    pub fn maybe_commit(&mut self) -> Result<(), BoxError> {
         self.try_commit(false)
     }
 
     /// Commit all tracked offsets regardless of timing.
-    pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+    pub fn flush(&mut self) -> Result<(), BoxError> {
         self.try_commit(true)
     }
 
-    fn try_commit(&mut self, force: bool) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn try_commit(&mut self, force: bool) -> Result<(), BoxError> {
         if self.offsets.is_empty() {
             return Ok(());
         }

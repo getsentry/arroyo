@@ -125,7 +125,7 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::processing::stream::{OffsetTracker, PipelineExt};
+    use crate::processing::stream::{BoxError, OffsetCommitter, OffsetTracker, PipelineExt};
     use crate::types::Topic;
     use std::time::Duration;
 
@@ -160,11 +160,11 @@ mod tests {
 
     struct MockCommitter;
 
-    impl crate::processing::stream::OffsetCommitter for MockCommitter {
+    impl OffsetCommitter for MockCommitter {
         fn commit_offsets(
             &self,
             _positions: &HashMap<Partition, u64>,
-        ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        ) -> Result<(), BoxError> {
             Ok(())
         }
     }

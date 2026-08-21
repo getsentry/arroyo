@@ -4,6 +4,8 @@ use crate::backends::kafka::types::{Headers, KafkaPayload};
 use crate::backends::Producer;
 use crate::types::TopicOrPartition;
 
+use crate::processing::stream::BoxError;
+
 use super::rejection::{RejectionHandler, RejectionMetadata};
 
 /// A canned RejectionHandler that produces the original message to a DLQ Kafka topic.
@@ -25,7 +27,7 @@ impl RejectionHandler for DlqHandler {
     async fn handle(
         &self,
         rejected: &RejectionMetadata,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<(), BoxError> {
         tracing::error!(
             "DLQ: {:?}:{} reason={:?}",
             rejected.metadata.partition,
@@ -56,6 +58,6 @@ impl RejectionHandler for DlqHandler {
 
         self.producer
             .produce(&self.topic, payload)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
+            .map_err(|e| Box::new(e) as BoxError)
     }
 }

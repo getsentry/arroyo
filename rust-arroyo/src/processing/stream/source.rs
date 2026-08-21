@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use async_stream::stream;
-use futures::stream::Stream;
+use futures::stream::BoxStream;
 use futures::StreamExt;
 use rdkafka::config::ClientConfig as RdKafkaConfig;
 use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, StreamConsumer};
@@ -20,6 +19,7 @@ use crate::types::{Partition, Topic};
 use super::offset_tracker::OffsetCommitter;
 use super::pipeline_envelope::PipelineEnvelope;
 use super::stage::{PipelineExit, StageResult};
+use super::BoxError;
 
 /// Trait for pipeline sources. Provides a stream of raw Kafka payloads,
 /// an offset committer, and graceful shutdown.
@@ -29,7 +29,7 @@ pub trait PullSource: Send + Sync {
     /// Returns a stream of Kafka messages. Ends on rebalance, shutdown,
     /// or when the source is exhausted. Callable multiple times — each
     /// call returns a fresh stream for the current partition assignment.
-    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>>;
+    fn stream(&self) -> BoxStream<'_, StageResult<KafkaPayload>>;
 
     /// Returns the offset committer for this source.
     fn committer(&self) -> &dyn OffsetCommitter;
@@ -52,7 +52,24 @@ struct PullRebalanceContext {
     revoke: Arc<Notify>,
 }
 
-impl ClientContext for PullRebalanceContext {}
+impl ClientContext for PullRebalanceContext {
+    fn stats(&self, stats: rdkafka::Statistics) {
+        crate::gauge!(
+            "arroyo.consumer.librdkafka.total_queue_size",
+            stats.replyq as u64,
+        );
+        for (topic_name, topic) in stats.topics.iter() {
+            for (partition_num, partition) in topic.partitions.iter() {
+                crate::gauge!(
+                    "arroyo.consumer.librdkafka.fetch_queue_count",
+                    partition.fetchq_cnt as u64,
+                    "topic" => topic_name,
+                    "partition" => partition_num.to_string()
+                );
+            }
+        }
+    }
+}
 
 impl ConsumerContext for PullRebalanceContext {
     fn rebalance(
@@ -123,7 +140,7 @@ impl KafkaSource {
 }
 
 impl PullSource for KafkaSource {
-    fn stream(&self) -> Pin<Box<dyn Stream<Item = StageResult<KafkaPayload>> + '_>> {
+    fn stream(&self) -> BoxStream<'_, StageResult<KafkaPayload>> {
         let shutdown = self.shutdown.clone();
         let revoke = &self.revoke;
 
@@ -178,7 +195,7 @@ impl OffsetCommitter for KafkaSource {
     fn commit_offsets(
         &self,
         positions: &HashMap<Partition, u64>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<(), BoxError> {
         let mut tpl = TopicPartitionList::new();
         for (partition, offset) in positions {
             tpl.add_partition_offset(
@@ -186,13 +203,13 @@ impl OffsetCommitter for KafkaSource {
                 partition.index as i32,
                 rdkafka::Offset::Offset(*offset as i64),
             )
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+            .map_err(|e| Box::new(e) as BoxError)?;
         }
         // Async commit matches the existing push model's behavior. The broker
         // may not ack before we clear tracked offsets, but this is acceptable —
         // worst case on crash is re-processing already-committed messages.
         self.consumer
             .commit(&tpl, CommitMode::Async)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
+            .map_err(|e| Box::new(e) as BoxError)
     }
 }
