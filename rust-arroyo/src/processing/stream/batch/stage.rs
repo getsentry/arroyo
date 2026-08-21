@@ -161,10 +161,7 @@ mod tests {
     struct MockCommitter;
 
     impl OffsetCommitter for MockCommitter {
-        fn commit_offsets(
-            &self,
-            _positions: &HashMap<Partition, u64>,
-        ) -> Result<(), BoxError> {
+        fn commit_offsets(&self, _positions: &HashMap<Partition, u64>) -> Result<(), BoxError> {
             Ok(())
         }
     }

@@ -24,10 +24,7 @@ impl DlqHandler {
 }
 
 impl RejectionHandler for DlqHandler {
-    async fn handle(
-        &self,
-        rejected: &RejectionMetadata,
-    ) -> Result<(), BoxError> {
+    async fn handle(&self, rejected: &RejectionMetadata) -> Result<(), BoxError> {
         tracing::error!(
             "DLQ: {:?}:{} reason={:?}",
             rejected.metadata.partition,

@@ -6,10 +6,7 @@ use super::rejection::{RejectionHandler, RejectionMetadata};
 pub struct LogHandler;
 
 impl RejectionHandler for LogHandler {
-    async fn handle(
-        &self,
-        rejected: &RejectionMetadata,
-    ) -> Result<(), BoxError> {
+    async fn handle(&self, rejected: &RejectionMetadata) -> Result<(), BoxError> {
         tracing::error!(
             "Rejected message at {:?}:{} reason={:?}",
             rejected.metadata.partition,

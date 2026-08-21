@@ -192,10 +192,7 @@ impl PullSource for KafkaSource {
 }
 
 impl OffsetCommitter for KafkaSource {
-    fn commit_offsets(
-        &self,
-        positions: &HashMap<Partition, u64>,
-    ) -> Result<(), BoxError> {
+    fn commit_offsets(&self, positions: &HashMap<Partition, u64>) -> Result<(), BoxError> {
         let mut tpl = TopicPartitionList::new();
         for (partition, offset) in positions {
             tpl.add_partition_offset(

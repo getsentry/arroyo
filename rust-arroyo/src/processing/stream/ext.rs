@@ -245,10 +245,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// Returns the exit reason (Rebalance, Shutdown, or Complete).
     /// Fail stops the pipeline with an error.
     #[allow(async_fn_in_trait)]
-    async fn commit(
-        self,
-        tracker: &mut OffsetTracker<'_>,
-    ) -> Result<PipelineExit, BoxError> {
+    async fn commit(self, tracker: &mut OffsetTracker<'_>) -> Result<PipelineExit, BoxError> {
         let mut stream = Box::pin(self);
 
         while let Some(item) = stream.next().await {
@@ -288,10 +285,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// Use `OffsetCollector` for production (offset tracking + commit),
     /// or `NoopCollector` / a custom collector for tests.
     #[allow(async_fn_in_trait)]
-    async fn run<C: StreamCollector<T>>(
-        self,
-        collector: &mut C,
-    ) -> Result<PipelineExit, BoxError> {
+    async fn run<C: StreamCollector<T>>(self, collector: &mut C) -> Result<PipelineExit, BoxError> {
         let mut stream = Box::pin(self);
 
         while let Some(item) = stream.next().await {

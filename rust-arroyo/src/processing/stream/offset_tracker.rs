@@ -11,10 +11,7 @@ use super::BoxError;
 /// Trait for committing offsets. KafkaSource implements this.
 /// Tests can provide a mock.
 pub trait OffsetCommitter: Send + Sync {
-    fn commit_offsets(
-        &self,
-        positions: &HashMap<Partition, u64>,
-    ) -> Result<(), BoxError>;
+    fn commit_offsets(&self, positions: &HashMap<Partition, u64>) -> Result<(), BoxError>;
 }
 
 /// Tracks offsets per partition and commits them on a time-throttled interval.

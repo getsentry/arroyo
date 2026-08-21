@@ -24,10 +24,7 @@ impl KafkaProducerHandler {
 }
 
 impl NextHandler<KafkaPayload> for KafkaProducerHandler {
-    async fn handle(
-        &self,
-        envelope: &PipelineEnvelope<KafkaPayload>,
-    ) -> Result<(), BoxError> {
+    async fn handle(&self, envelope: &PipelineEnvelope<KafkaPayload>) -> Result<(), BoxError> {
         self.producer
             .produce(&self.topic, envelope.payload.clone())
             .map_err(|e| Box::new(e) as BoxError)

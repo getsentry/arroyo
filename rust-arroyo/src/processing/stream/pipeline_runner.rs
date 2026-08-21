@@ -35,16 +35,10 @@ use super::BoxError;
 pub struct PipelineRunner;
 
 impl PipelineRunner {
-    pub async fn run<'s, S, F, Fut>(
-        source: &'s S,
-        mut build: F,
-    ) -> Result<(), BoxError>
+    pub async fn run<'s, S, F, Fut>(source: &'s S, mut build: F) -> Result<(), BoxError>
     where
         S: PullSource,
-        F: FnMut(
-            BoxStream<'s, StageResult<KafkaPayload>>,
-            &'s dyn OffsetCommitter,
-        ) -> Fut,
+        F: FnMut(BoxStream<'s, StageResult<KafkaPayload>>, &'s dyn OffsetCommitter) -> Fut,
         Fut: Future<Output = Result<PipelineExit, BoxError>> + 's,
     {
         loop {
@@ -90,10 +84,7 @@ mod tests {
     }
 
     impl OffsetCommitter for MockCommitter {
-        fn commit_offsets(
-            &self,
-            positions: &HashMap<Partition, u64>,
-        ) -> Result<(), BoxError> {
+        fn commit_offsets(&self, positions: &HashMap<Partition, u64>) -> Result<(), BoxError> {
             self.committed.lock().unwrap().push(positions.clone());
             Ok(())
         }
