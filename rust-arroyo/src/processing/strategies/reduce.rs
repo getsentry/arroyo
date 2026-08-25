@@ -193,16 +193,23 @@ impl<T, TResult> Reduce<T, TResult> {
         let batch_time = self.batch_state.batch_start_time.elapsed();
         let size_trigger_complete = self.batch_state.message_count >= self.max_batch_size;
         let time_trigger_complete = batch_time >= self.max_batch_time;
-        let batch_complete = size_trigger_complete || time_trigger_complete;
 
-        if !batch_complete && !force {
+        if !size_trigger_complete && !time_trigger_complete && !force {
             return Ok(());
         }
+
+        let trigger_reason = if size_trigger_complete {
+            "size"
+        } else if  time_trigger_complete {
+            "time"
+        } else {
+            "force"
+        };
 
         timer!(
             "arroyo.strategies.reduce.batch_time.ms",
             batch_time,
-            "trigger_reason" => if size_trigger_complete { "size" } else { "time" }
+            "trigger_reason" => trigger_reason
         );
 
         let batch_state = mem::replace(
