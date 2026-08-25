@@ -198,7 +198,7 @@ impl<T, TResult> Reduce<T, TResult> {
             return Ok(());
         }
 
-        let trigger_reason = if size_trigger_complete {
+        let flush_reason = if size_trigger_complete {
             "size"
         } else if  time_trigger_complete {
             "time"
@@ -209,7 +209,7 @@ impl<T, TResult> Reduce<T, TResult> {
         timer!(
             "arroyo.strategies.reduce.batch_time.ms",
             batch_time,
-            "trigger_reason" => trigger_reason
+            "flush_reason" => flush_reason
         );
 
         let batch_state = mem::replace(
