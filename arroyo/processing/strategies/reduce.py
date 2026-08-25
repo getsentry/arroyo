@@ -48,6 +48,12 @@ class ReduceBuffer(Generic[TPayload, TResult]):
             or time.time() >= self._buffer_until
         )
 
+    @property
+    def readiness_reason(self) -> str:
+        if self._buffer_size >= self.max_batch_size:
+            return "size"
+        return "time"
+
     def append(self, message: BaseValue[TPayload]) -> None:
         self._buffer = self.accumulator(self._buffer, message)
         if self.compute_batch_size:
