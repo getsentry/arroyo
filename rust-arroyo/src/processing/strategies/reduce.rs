@@ -200,7 +200,7 @@ impl<T, TResult> Reduce<T, TResult> {
 
         let flush_reason = if size_trigger_complete {
             "size"
-        } else if  time_trigger_complete {
+        } else if time_trigger_complete {
             "time"
         } else {
             "force"
