@@ -22,14 +22,20 @@ jobs:
       - run: cargo fmt --check
 
   test:
-    name: "Tests"
+    name: "Tests (rdkafka ${{ matrix.rdkafka }})"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        rdkafka: ["0.37.0", "0.38.0", "0.39.0"]
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         name: Checkout code
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      - name: Resolve rdkafka ${{ matrix.rdkafka }}
+        run: cargo update -p rdkafka --precise "${{ matrix.rdkafka }}"
       - name: Run Kafka
         run: sh scripts/run-kafka.sh
       - name: Run tests
