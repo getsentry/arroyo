@@ -1,5 +1,9 @@
 # Changelog and versioning
 
+## 2.43.0
+
+- No documented changes.
+
 ## 2.42.2
 
 ### Bug Fixes 🐛
