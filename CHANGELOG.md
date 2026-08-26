@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.43.1
+
+### New Features ✨
+
+- (reduce) Track batch trigger reason on batch_time metric. by @tryangul in [#561](https://github.com/getsentry/arroyo/pull/561)
+
 ## 2.43.0
 
 - No documented changes.
