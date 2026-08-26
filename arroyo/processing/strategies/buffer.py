@@ -42,6 +42,14 @@ class BufferProtocol(Protocol[TPayload, TResult]):
         """
         ...
 
+    @property
+    def readiness_reason(self) -> str:
+        """Returns why is_ready returned True.
+
+        Only meaningful when is_ready is True. Used for observability.
+        """
+        ...
+
     def append(self, message: BaseValue[TPayload]) -> None:
         """Accept a TPayload mutating the internal state of the batch builder."""
         ...
@@ -115,9 +123,12 @@ class Buffer(
             )
         )
         self.__next_step.submit(buffer_msg)
+
+        flush_reason = self.__buffer.readiness_reason if self.__buffer.is_ready else "force"
         self.__metrics.timing(
             "arroyo.strategies.reduce.batch_time",
             time.time() - self.__init_time,
+            tags={"flush_reason": flush_reason},
         )
 
         # Reset to the empty state.

@@ -22,6 +22,10 @@ class BufferTest:
     def is_ready(self) -> bool:
         return len(self._buffer) >= 3
 
+    @property
+    def readiness_reason(self) -> str:
+        return "size"
+
     def append(self, message: BaseValue[int]) -> None:
         self._buffer.append(message.payload)
 
