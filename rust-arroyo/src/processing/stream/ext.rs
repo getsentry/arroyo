@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures::stream::Stream;
 use futures::StreamExt;
@@ -16,7 +16,7 @@ use super::BoxError;
 
 /// Run a stage on an envelope and record metrics.
 async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> StageResult<S::Out> {
-    let start = Instant::now();
+    let start = coarsetime::Instant::now();
     let result = stage.process(envelope).await;
 
     timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
