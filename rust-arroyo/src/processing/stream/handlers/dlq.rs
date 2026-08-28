@@ -15,11 +15,8 @@ pub struct DlqHandler {
 }
 
 impl DlqHandler {
-    pub fn new(producer: impl Producer<KafkaPayload> + 'static, topic: TopicOrPartition) -> Self {
-        Self {
-            producer: Arc::new(producer),
-            topic,
-        }
+    pub fn new(producer: Arc<dyn Producer<KafkaPayload>>, topic: TopicOrPartition) -> Self {
+        Self { producer, topic }
     }
 }
 
