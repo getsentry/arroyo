@@ -83,9 +83,9 @@ async fn main() {
         let mut tracker = OffsetTracker::new(Duration::from_secs(1), committer);
 
         stream
-            .apply(&reverse)
-            .on_next(&produce_handler)
-            .on_reject(&error_handler)
+            .apply(reverse)
+            .on_next(produce_handler)
+            .on_reject(error_handler)
             .commit(&mut tracker)
             .await
     })

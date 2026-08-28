@@ -207,8 +207,8 @@ mod tests {
         let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
 
         let result = futures::stream::iter(messages)
-            .apply(&batch)
-            .apply(&collector)
+            .apply(batch)
+            .apply(collector)
             .commit(&mut tracker)
             .await;
 
@@ -253,8 +253,8 @@ mod tests {
         let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
 
         let result = futures::stream::iter(messages)
-            .apply(&batch)
-            .apply(&collector)
+            .apply(batch)
+            .apply(collector)
             .commit(&mut tracker)
             .await;
 
@@ -278,8 +278,8 @@ mod tests {
         let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
 
         let result = futures::stream::iter(messages)
-            .apply(&batch)
-            .apply(&collector)
+            .apply(batch)
+            .apply(collector)
             .commit(&mut tracker)
             .await;
 
@@ -309,8 +309,8 @@ mod tests {
         let mut noop = crate::processing::stream::NoopCollector;
 
         let result = stream
-            .apply_with_timer(&batch, None, Some(Duration::from_millis(50)))
-            .apply(&collector)
+            .apply_with_timer(batch, None, Some(Duration::from_millis(50)))
+            .apply(collector)
             .run(&mut noop)
             .await;
 
@@ -340,8 +340,8 @@ mod tests {
         let mut noop = crate::processing::stream::NoopCollector;
 
         let result = stream
-            .apply_with_timer(&batch, Some(Duration::from_millis(50)), None)
-            .apply(&collector)
+            .apply_with_timer(batch, Some(Duration::from_millis(50)), None)
+            .apply(collector)
             .run(&mut noop)
             .await;
 
@@ -365,8 +365,8 @@ mod tests {
         let mut noop = crate::processing::stream::NoopCollector;
 
         let result = futures::stream::iter(messages)
-            .apply_with_timer(&batch, None, Some(Duration::from_millis(500)))
-            .apply(&collector)
+            .apply_with_timer(batch, None, Some(Duration::from_millis(500)))
+            .apply(collector)
             .run(&mut noop)
             .await;
 
@@ -390,8 +390,8 @@ mod tests {
         let mut noop = crate::processing::stream::NoopCollector;
 
         let result = futures::stream::iter(messages)
-            .apply_with_timer(&batch, Some(Duration::from_secs(999)), None)
-            .apply(&collector)
+            .apply_with_timer(batch, Some(Duration::from_secs(999)), None)
+            .apply(collector)
             .run(&mut noop)
             .await;
 

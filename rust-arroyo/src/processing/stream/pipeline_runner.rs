@@ -29,7 +29,7 @@ use super::BoxError;
 /// PipelineRunner::run(&source, |stream, committer| async move {
 ///     let stage = MyStage;
 ///     let mut tracker = OffsetTracker::new(Duration::from_secs(1), committer);
-///     stream.apply(&stage).commit(&mut tracker).await
+///     stream.apply(stage).commit(&mut tracker).await
 /// }).await?;
 /// ```
 pub struct PipelineRunner;

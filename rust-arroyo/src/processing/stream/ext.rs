@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::stream::Stream;
@@ -52,46 +53,59 @@ async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> St
 /// with rebalance handling.
 pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// Apply a processing stage sequentially to each Emit envelope.
-    /// Equivalent to apply_concurrent(stage, 1).
-    fn apply<'a, S>(self, stage: &'a S) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    fn apply<S>(self, stage: S) -> impl Stream<Item = StageResult<S::Out>>
     where
         S: Stage<In = T>,
-        Self: 'a,
-        T: 'a,
     {
-        self.apply_concurrent(stage, 1)
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                match item {
+                    StageResult::Emit(e) => yield run_stage(&stage, e).await,
+                    StageResult::Drop { metadata } => yield StageResult::Drop { metadata },
+                    StageResult::Skip => yield StageResult::Skip,
+                    StageResult::Reject { metadata, raw, reason } => {
+                        yield StageResult::Reject { metadata, raw, reason };
+                    }
+                    StageResult::Fail(err) => yield StageResult::Fail(err),
+                    StageResult::Exit(reason) => yield StageResult::Exit(reason),
+                }
+            }
+        }
     }
 
     /// Apply a processing stage concurrently to up to `concurrency` Emit
     /// envelopes at once. Results are yielded in input order.
     /// Non-Emit items pass through immediately.
-    fn apply_concurrent<'a, S>(
+    fn apply_concurrent<S>(
         self,
-        stage: &'a S,
+        stage: S,
         concurrency: usize,
-    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    ) -> impl Stream<Item = StageResult<S::Out>>
     where
         S: Stage<In = T>,
-        Self: 'a,
-        T: 'a,
     {
         assert!(concurrency > 0, "concurrency must be at least 1");
-        self.map(move |item| async move {
-            match item {
-                StageResult::Emit(e) => run_stage(stage, e).await,
-                StageResult::Drop { metadata } => StageResult::Drop { metadata },
-                StageResult::Skip => StageResult::Skip,
-                StageResult::Reject {
-                    metadata,
-                    raw,
-                    reason,
-                } => StageResult::Reject {
-                    metadata,
-                    raw,
-                    reason,
-                },
-                StageResult::Fail(err) => StageResult::Fail(err),
-                StageResult::Exit(reason) => StageResult::Exit(reason),
+        let stage = Arc::new(stage);
+        self.map(move |item| {
+            let stage = Arc::clone(&stage);
+            async move {
+                match item {
+                    StageResult::Emit(e) => run_stage(&*stage, e).await,
+                    StageResult::Drop { metadata } => StageResult::Drop { metadata },
+                    StageResult::Skip => StageResult::Skip,
+                    StageResult::Reject {
+                        metadata,
+                        raw,
+                        reason,
+                    } => StageResult::Reject {
+                        metadata,
+                        raw,
+                        reason,
+                    },
+                    StageResult::Fail(err) => StageResult::Fail(err),
+                    StageResult::Exit(reason) => StageResult::Exit(reason),
+                }
             }
         })
         .buffered(concurrency)
@@ -104,16 +118,14 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// - `max_cadence`: flush at this interval since the batch started accumulating.
     ///
     /// At least one of `idle_timeout` or `max_cadence` must be `Some`.
-    fn apply_with_timer<'a, S>(
+    fn apply_with_timer<S>(
         self,
-        stage: &'a S,
+        stage: S,
         idle_timeout: Option<Duration>,
         max_cadence: Option<Duration>,
-    ) -> impl Stream<Item = StageResult<S::Out>> + 'a
+    ) -> impl Stream<Item = StageResult<S::Out>>
     where
         S: FlushableStage<In = T>,
-        Self: 'a,
-        T: 'a,
     {
         assert!(
             idle_timeout.is_some() || max_cadence.is_some(),
@@ -139,7 +151,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
 
                         match item {
                             StageResult::Emit(e) => {
-                                let result = run_stage(stage, e).await;
+                                let result = run_stage(&stage, e).await;
                                 match &result {
                                     StageResult::Skip => timer.on_accumulate(),
                                     StageResult::Emit(_) => timer.on_flush(),
@@ -185,59 +197,54 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
     /// Call the next handler for each Emit envelope.
     /// If the handler fails, the item becomes Fail.
     /// All other variants pass through untouched.
-    fn on_next<'a, H>(self, handler: &'a H) -> impl Stream<Item = StageResult<T>> + 'a
+    fn on_next<H>(self, handler: H) -> impl Stream<Item = StageResult<T>>
     where
         H: NextHandler<T>,
-        Self: 'a,
-        T: 'a,
     {
-        self.then(move |item| async move {
-            let envelope = match item {
-                StageResult::Emit(e) => e,
-                other => return other,
-            };
-
-            match handler.handle(&envelope).await {
-                Ok(()) => StageResult::Emit(envelope),
-                Err(produce_err) => StageResult::Fail(produce_err),
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                let envelope = match item {
+                    StageResult::Emit(e) => e,
+                    other => {
+                        yield other;
+                        continue;
+                    }
+                };
+                match handler.handle(&envelope).await {
+                    Ok(()) => yield StageResult::Emit(envelope),
+                    Err(produce_err) => yield StageResult::Fail(produce_err),
+                }
             }
-        })
+        }
     }
 
     /// Call the rejection handler for each Reject item.
     /// All other variants pass through untouched.
     /// If the handler itself fails, the item becomes Fail.
-    fn on_reject<'a, H>(self, handler: &'a H) -> impl Stream<Item = StageResult<T>> + 'a
+    fn on_reject<H>(self, handler: H) -> impl Stream<Item = StageResult<T>>
     where
         H: RejectionHandler,
-        Self: 'a,
-        T: 'a,
     {
-        self.then(move |item| async move {
-            match item {
-                StageResult::Reject {
-                    metadata,
-                    raw,
-                    reason,
-                } => {
-                    let rejected = RejectionMetadata {
-                        metadata: metadata.clone(),
-                        raw: raw.clone(),
-                        reason,
-                    };
-
-                    match handler.handle(&rejected).await {
-                        Ok(()) => StageResult::Reject {
-                            metadata,
-                            raw,
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                match item {
+                    StageResult::Reject { metadata, raw, reason } => {
+                        let rejected = RejectionMetadata {
+                            metadata: metadata.clone(),
+                            raw: raw.clone(),
                             reason,
-                        },
-                        Err(handler_err) => StageResult::Fail(handler_err),
+                        };
+                        match handler.handle(&rejected).await {
+                            Ok(()) => yield StageResult::Reject { metadata, raw, reason },
+                            Err(handler_err) => yield StageResult::Fail(handler_err),
+                        }
                     }
+                    other => yield other,
                 }
-                other => other,
             }
-        })
+        }
     }
 
     /// Terminal: drive the pipeline to completion.
