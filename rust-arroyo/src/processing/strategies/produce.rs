@@ -157,7 +157,9 @@ mod tests {
 
         let partition = Partition::new(Topic::new("test"), 0);
 
-        let producer: KafkaProducer = KafkaProducer::new(config);
+        let producer = KafkaProducer::new(config);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
         let concurrency = ConcurrencyConfig::new(10);
         let mut strategy = Produce::new(
             Noop {},
