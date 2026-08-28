@@ -61,6 +61,25 @@ impl<T> StageResult<T> {
             metadata: envelope.metadata,
         }
     }
+
+    /// Apply an async function to the Emit payload, passing all other
+    /// variants through with a re-typed parameter.
+    pub async fn map_emit<U, F, Fut>(self, f: F) -> StageResult<U>
+    where
+        F: FnOnce(PipelineEnvelope<T>) -> Fut,
+        Fut: std::future::Future<Output = StageResult<U>>,
+    {
+        match self {
+            StageResult::Emit(e) => f(e).await,
+            StageResult::Drop { metadata } => StageResult::Drop { metadata },
+            StageResult::Skip => StageResult::Skip,
+            StageResult::Reject { metadata, raw, reason } => {
+                StageResult::Reject { metadata, raw, reason }
+            }
+            StageResult::Fail(err) => StageResult::Fail(err),
+            StageResult::Exit(reason) => StageResult::Exit(reason),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

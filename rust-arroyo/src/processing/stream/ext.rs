@@ -60,16 +60,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
         async_stream::stream! {
             let mut upstream = Box::pin(self);
             while let Some(item) = upstream.next().await {
-                match item {
-                    StageResult::Emit(e) => yield run_stage(&stage, e).await,
-                    StageResult::Drop { metadata } => yield StageResult::Drop { metadata },
-                    StageResult::Skip => yield StageResult::Skip,
-                    StageResult::Reject { metadata, raw, reason } => {
-                        yield StageResult::Reject { metadata, raw, reason };
-                    }
-                    StageResult::Fail(err) => yield StageResult::Fail(err),
-                    StageResult::Exit(reason) => yield StageResult::Exit(reason),
-                }
+                yield item.map_emit(|e| run_stage(&stage, e)).await;
             }
         }
     }
@@ -89,24 +80,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
         let stage = Arc::new(stage);
         self.map(move |item| {
             let stage = Arc::clone(&stage);
-            async move {
-                match item {
-                    StageResult::Emit(e) => run_stage(&*stage, e).await,
-                    StageResult::Drop { metadata } => StageResult::Drop { metadata },
-                    StageResult::Skip => StageResult::Skip,
-                    StageResult::Reject {
-                        metadata,
-                        raw,
-                        reason,
-                    } => StageResult::Reject {
-                        metadata,
-                        raw,
-                        reason,
-                    },
-                    StageResult::Fail(err) => StageResult::Fail(err),
-                    StageResult::Exit(reason) => StageResult::Exit(reason),
-                }
-            }
+            async move { item.map_emit(|e| run_stage(&*stage, e)).await }
         })
         .buffered(concurrency)
     }
@@ -166,18 +140,16 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                                 yield StageResult::Exit(reason);
                                 return;
                             }
-                            StageResult::Drop { metadata } => {
-                                yield StageResult::Drop { metadata };
-                            }
-                            StageResult::Skip => {
-                                yield StageResult::Skip;
-                            }
-                            StageResult::Reject { metadata, raw, reason } => {
-                                yield StageResult::Reject { metadata, raw, reason };
-                            }
                             StageResult::Fail(err) => {
                                 yield StageResult::Fail(err);
                                 return;
+                            }
+                            StageResult::Drop { metadata } => {
+                                yield StageResult::Drop { metadata };
+                            }
+                            StageResult::Skip => yield StageResult::Skip,
+                            StageResult::Reject { metadata, raw, reason } => {
+                                yield StageResult::Reject { metadata, raw, reason };
                             }
                         }
                     }
