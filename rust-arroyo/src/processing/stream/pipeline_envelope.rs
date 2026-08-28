@@ -1,4 +1,3 @@
-use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use rdkafka::message::{BorrowedMessage, Message as RdkafkaMessage};
@@ -24,11 +23,11 @@ pub struct MessageMetadata {
 pub struct PipelineEnvelope<T> {
     pub payload: T,
     pub metadata: MessageMetadata,
-    pub raw: Arc<KafkaPayload>,
+    pub raw: KafkaPayload,
 }
 
 impl<T> PipelineEnvelope<T> {
-    pub fn new(payload: T, metadata: MessageMetadata, raw: Arc<KafkaPayload>) -> Self {
+    pub fn new(payload: T, metadata: MessageMetadata, raw: KafkaPayload) -> Self {
         Self {
             payload,
             metadata,
@@ -84,7 +83,7 @@ impl PipelineEnvelope<KafkaPayload> {
         Self {
             payload: kafka_payload.clone(),
             metadata,
-            raw: Arc::new(kafka_payload),
+            raw: kafka_payload.clone(),
         }
     }
 }

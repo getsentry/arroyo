@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::sync::Arc;
 
 use crate::backends::kafka::types::KafkaPayload;
 
@@ -10,7 +9,7 @@ use crate::processing::stream::BoxError;
 /// A rejected message, passed to the RejectionHandler.
 pub struct RejectionMetadata {
     pub metadata: MessageMetadata,
-    pub raw: Arc<KafkaPayload>,
+    pub raw: KafkaPayload,
     pub reason: RejectionReason,
 }
 

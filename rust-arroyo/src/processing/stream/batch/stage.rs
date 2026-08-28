@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use super::buffer::Buffer;
 use super::triggers::SizeTrigger;
@@ -30,7 +30,7 @@ struct BatchState<T: Send + Sync, B: Buffer<T>> {
     byte_trigger: SizeTrigger,
     offsets: HashMap<Partition, u64>,
     last_metadata: Option<MessageMetadata>,
-    last_raw: Option<Arc<KafkaPayload>>,
+    last_raw: Option<KafkaPayload>,
     _marker: PhantomData<T>,
 }
 
@@ -128,6 +128,7 @@ mod tests {
     use crate::processing::stream::{BoxError, OffsetCommitter, OffsetTracker, PipelineExt};
     use crate::types::Topic;
     use std::time::Duration;
+    use std::sync::Arc;
 
     /// Simple test buffer that stores items in a Vec.
     /// Every item counts as 1 byte.
@@ -173,7 +174,7 @@ mod tests {
             offset,
             timestamp: chrono::Utc::now(),
         };
-        StageResult::Emit(PipelineEnvelope::new(value, md, Arc::new(kp)))
+        StageResult::Emit(PipelineEnvelope::new(value, md, kp))
     }
 
     struct CollectStage {

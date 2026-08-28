@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::sync::Arc;
 
 use crate::backends::kafka::types::KafkaPayload;
 
@@ -34,7 +33,7 @@ pub enum StageResult<T> {
     /// Carries metadata + raw for offset tracking and DLQ routing.
     Reject {
         metadata: MessageMetadata,
-        raw: Arc<KafkaPayload>,
+        raw: KafkaPayload,
         reason: RejectionReason,
     },
 
