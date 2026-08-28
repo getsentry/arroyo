@@ -1,4 +1,3 @@
-
 use chrono::{DateTime, Utc};
 use rdkafka::message::{BorrowedMessage, Message as RdkafkaMessage};
 

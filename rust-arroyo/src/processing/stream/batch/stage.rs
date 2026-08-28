@@ -1,6 +1,6 @@
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Mutex;
 
 use super::buffer::Buffer;
 use super::triggers::SizeTrigger;
@@ -82,7 +82,7 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
     type Out = B::Output;
 
     async fn process(&self, envelope: PipelineEnvelope<T>) -> StageResult<B::Output> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         // Track offsets — keep highest per partition
         state
@@ -115,10 +115,7 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
 
 impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchStage<T, B> {
     fn flush(&self) -> Option<StageResult<B::Output>> {
-        self.state
-            .lock()
-            .unwrap()
-            .flush(self.max_rows, self.max_bytes)
+        self.state.lock().flush(self.max_rows, self.max_bytes)
     }
 }
 
@@ -127,8 +124,8 @@ mod tests {
     use super::*;
     use crate::processing::stream::{BoxError, OffsetCommitter, OffsetTracker, PipelineExt};
     use crate::types::Topic;
-    use std::time::Duration;
     use std::sync::Arc;
+    use std::time::Duration;
 
     /// Simple test buffer that stores items in a Vec.
     /// Every item counts as 1 byte.
@@ -186,10 +183,7 @@ mod tests {
         type Out = Vec<u32>;
 
         async fn process(&self, envelope: PipelineEnvelope<Vec<u32>>) -> StageResult<Vec<u32>> {
-            self.collected
-                .lock()
-                .unwrap()
-                .push(envelope.payload.clone());
+            self.collected.lock().push(envelope.payload.clone());
             StageResult::Emit(envelope)
         }
 
@@ -219,7 +213,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         // 7 items, batch size 3 → 2 batches of 3, 1 item remaining (not flushed)
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0], vec![0, 1, 2]);
@@ -265,7 +259,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         // 5 items at 10 bytes each, threshold 25 → flush at 3 items (30 bytes), then 2 remain
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0], vec![0, 1, 2]);
@@ -290,7 +284,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         // 6 items, batch size 3 → exactly 2 batches
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0], vec![0, 1, 2]);
@@ -321,7 +315,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0], vec![0, 1, 2]);
     }
@@ -352,7 +346,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0], vec![0, 1]);
         assert_eq!(batches[1], vec![2, 3]);
@@ -377,7 +371,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0], vec![0, 1]);
         assert_eq!(batches[1], vec![2, 3]);
@@ -402,7 +396,7 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
-        let batches = collected.lock().unwrap();
+        let batches = collected.lock();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0], vec![0, 1, 2]);
     }
