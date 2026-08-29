@@ -3,19 +3,20 @@
 /// Pipeline:
 ///   KafkaSource → apply(reverse) → on_next(produce) → on_reject(log) → commit
 ///
-/// `PipelineRunner::run()` handles the rebalance restart loop —
-/// the closure is called once per partition assignment with fresh
-/// stages, handlers, and tracker.
+/// `PipelineRunner::run_pipeline()` handles the rebalance restart loop —
+/// the build closure is called once per partition assignment with fresh
+/// stages and handlers.
 extern crate sentry_arroyo;
 
 use std::time::Duration;
 
+use futures::Stream;
 use sentry_arroyo::backends::kafka::config::KafkaConfig;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::kafka::InitialOffset;
 use sentry_arroyo::processing::stream::{
-    KafkaProducerHandler, KafkaSource, LogHandler, OffsetTracker, PipelineEnvelope, PipelineExt,
+    KafkaProducerHandler, KafkaSource, LogHandler, Pipeline, PipelineEnvelope, PipelineExt,
     PipelineRunner, Stage, StageResult,
 };
 use sentry_arroyo::types::{Topic, TopicOrPartition};
@@ -48,6 +49,26 @@ impl Stage for ReverseStage {
     }
 }
 
+struct TransformAndProducePipeline {
+    reverse: ReverseStage,
+    produce_handler: KafkaProducerHandler,
+    error_handler: LogHandler,
+}
+
+impl Pipeline for TransformAndProducePipeline {
+    type Output = KafkaPayload;
+
+    fn stream(
+        self,
+        source: impl Stream<Item = StageResult<KafkaPayload>> + Send,
+    ) -> impl Stream<Item = StageResult<KafkaPayload>> + Send {
+        source
+            .apply(self.reverse)
+            .on_next(self.produce_handler)
+            .on_reject(self.error_handler)
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -63,31 +84,17 @@ async fn main() {
     let source = KafkaSource::new(consumer_config, &[Topic::new("test_in")]);
 
     let producer_config = KafkaConfig::new_producer_config(vec!["0.0.0.0:9092".to_string()], None);
-    // The pipeline reads left to right, top to bottom:
-    //   stream                     — async stream of Kafka messages
-    //     .apply(&stage)           — transform/filter/batch each message
-    //     .on_next(&handler)       — side-effect on successful items (produce, upload)
-    //     .on_reject(&handler)     — handle rejected items (DLQ, log)
-    //     .commit(&mut tracker)    — track offsets, flush on interval
-    //
-    // PipelineRunner::run() handles the lifecycle:
-    //   - calls the closure once per partition assignment
-    //   - on rebalance: closure is called again with a fresh stream
-    //   - on shutdown or stream end: exits
-    let result = PipelineRunner::run(&source, |stream, committer| async {
-        let reverse = ReverseStage;
-        let producer = KafkaProducer::new(producer_config.clone());
-        let produce_handler =
-            KafkaProducerHandler::new(producer, TopicOrPartition::Topic(Topic::new("test_out")));
-        let error_handler = LogHandler;
-        let mut tracker = OffsetTracker::new(Duration::from_secs(1), committer);
 
-        stream
-            .apply(reverse)
-            .on_next(produce_handler)
-            .on_reject(error_handler)
-            .commit(&mut tracker)
-            .await
+    let result = PipelineRunner::run(&source, Duration::from_secs(1), || {
+        let producer = KafkaProducer::new(producer_config.clone());
+        TransformAndProducePipeline {
+            reverse: ReverseStage,
+            produce_handler: KafkaProducerHandler::new(
+                producer,
+                TopicOrPartition::Topic(Topic::new("test_out")),
+            ),
+            error_handler: LogHandler,
+        }
     })
     .await;
 

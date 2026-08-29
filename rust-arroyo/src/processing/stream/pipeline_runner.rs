@@ -1,13 +1,10 @@
-use std::future::Future;
+use std::time::Duration;
 
-use futures::stream::BoxStream;
-
-use crate::backends::kafka::types::KafkaPayload;
-
-use super::offset_tracker::OffsetCommitter;
+use super::offset_tracker::OffsetTracker;
+use super::pipeline::Pipeline;
 use super::source::PullSource;
-use super::stage::{PipelineExit, StageResult};
-use super::BoxError;
+use super::stage::PipelineExit;
+use super::{BoxError, PipelineExt};
 
 /// Runs a pipeline in a loop, restarting on rebalance.
 ///
@@ -17,35 +14,44 @@ use super::BoxError;
 ///   3. Stream yields `StageResult::Exit(Rebalance)`
 ///   4. `Exit` passes through all combinators to `commit()`
 ///   5. `commit()` flushes offsets and returns `Ok(PipelineExit::Rebalance)`
-///   6. `PipelineRunner` calls the `build` closure again with a fresh stream
+///   6. `PipelineRunner` calls the build closure again with a fresh pipeline
 ///   7. New stream picks up the new partition assignment from rdkafka
-///
-/// The `build` closure is called once per partition assignment.
-/// It receives a fresh stream and committer, builds the pipeline,
-/// and returns the exit reason. Create all stages, handlers, and
-/// trackers inside the closure so they start fresh each assignment.
-///
-/// ```ignore
-/// PipelineRunner::run(&source, |stream, committer| async move {
-///     let stage = MyStage;
-///     let mut tracker = OffsetTracker::new(Duration::from_secs(1), committer);
-///     stream.apply(stage).commit(&mut tracker).await
-/// }).await?;
-/// ```
 pub struct PipelineRunner;
 
 impl PipelineRunner {
-    pub async fn run<'s, S, F, Fut>(source: &'s S, mut build: F) -> Result<(), BoxError>
+    /// Run a `Pipeline` with automatic rebalance handling.
+    ///
+    /// The `build` closure is called once per partition assignment.
+    /// It should create a fresh pipeline with new per-run state
+    /// (batch buffers, timers). Shared resources (producers, writers)
+    /// should be captured by the closure via `Arc`.
+    ///
+    /// ```ignore
+    /// PipelineRunner::run_pipeline(&source, Duration::from_secs(1), || {
+    ///     MyPipeline::new(shared.clone(), processing_concurrency)
+    /// }).await?;
+    /// ```
+    pub async fn run<S, F, P>(
+        source: &S,
+        commit_interval: Duration,
+        build: F,
+    ) -> Result<(), BoxError>
     where
         S: PullSource,
-        F: FnMut(BoxStream<'s, StageResult<KafkaPayload>>, &'s dyn OffsetCommitter) -> Fut,
-        Fut: Future<Output = Result<PipelineExit, BoxError>> + 's,
+        F: Fn() -> P,
+        P: Pipeline,
     {
         loop {
-            match build(source.stream(), source.committer()).await? {
+            let pipeline = build();
+            let mut tracker = OffsetTracker::new(commit_interval, source.committer());
+
+            let result = pipeline
+                .stream(source.stream())
+                .commit(&mut tracker).await?;
+
+            match result {
                 PipelineExit::Rebalance => {
-                    tracing::info!("Rebalance detected, restarting pipeline");
-                    continue;
+                    tracing::info!("Rebalance detected, restarting pipeline...");
                 }
                 PipelineExit::Shutdown | PipelineExit::Complete => return Ok(()),
             }
@@ -60,11 +66,11 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
+    use futures::Stream;
+
     use super::*;
     use crate::backends::kafka::types::KafkaPayload;
-    use crate::processing::stream::{
-        MessageMetadata, OffsetTracker, PipelineEnvelope, PipelineExt,
-    };
+    use crate::processing::stream::{BoxStream, MessageMetadata, OffsetCommitter, PipelineEnvelope, PipelineExt, StageResult};
     use crate::types::{Partition, Topic};
 
     struct MockCommitter {
@@ -143,15 +149,27 @@ mod tests {
         StageResult::Emit(PipelineEnvelope::new(kp.clone(), md, kp))
     }
 
+    /// Identity pipeline — passes messages through unchanged.
+    struct IdentityPipeline;
+
+    impl Pipeline for IdentityPipeline {
+        type Output = KafkaPayload;
+
+        fn stream(
+            self,
+            source: impl Stream<Item = StageResult<KafkaPayload>> + Send,
+        ) -> impl Stream<Item = StageResult<KafkaPayload>> + Send {
+            source
+        }
+    }
+
     #[tokio::test]
     async fn test_pipeline_runner_rebalance() {
         let source = RebalanceTestSource::new(vec![
-            // First assignment: 2 messages, then rebalance
             (
                 vec![make_message(b"a", 0), make_message(b"b", 1)],
                 PipelineExit::Rebalance,
             ),
-            // Second assignment: 2 messages, then shutdown
             (
                 vec![make_message(b"c", 0), make_message(b"d", 1)],
                 PipelineExit::Shutdown,
@@ -160,12 +178,9 @@ mod tests {
 
         let call_count = AtomicUsize::new(0);
 
-        let result = PipelineRunner::run(&source, |stream, committer| {
+        let result = PipelineRunner::run(&source, Duration::from_millis(1), || {
             call_count.fetch_add(1, Ordering::SeqCst);
-            async move {
-                let mut tracker = OffsetTracker::new(Duration::from_millis(1), committer);
-                stream.commit(&mut tracker).await
-            }
+            IdentityPipeline
         })
         .await;
 
@@ -173,7 +188,7 @@ mod tests {
         assert_eq!(
             call_count.load(Ordering::SeqCst),
             2,
-            "Closure should be called twice"
+            "Build should be called twice"
         );
         assert!(source.commit_count() > 0, "Offsets should be committed");
     }
@@ -187,12 +202,9 @@ mod tests {
 
         let call_count = AtomicUsize::new(0);
 
-        let result = PipelineRunner::run(&source, |stream, committer| {
+        let result = PipelineRunner::run(&source, Duration::from_millis(1), || {
             call_count.fetch_add(1, Ordering::SeqCst);
-            async move {
-                let mut tracker = OffsetTracker::new(Duration::from_millis(1), committer);
-                stream.commit(&mut tracker).await
-            }
+            IdentityPipeline
         })
         .await;
 
@@ -200,13 +212,12 @@ mod tests {
         assert_eq!(
             call_count.load(Ordering::SeqCst),
             1,
-            "Closure should be called once"
+            "Build should be called once"
         );
     }
 
     #[tokio::test]
     async fn test_pipeline_runner_complete() {
-        // Source that naturally ends (no Exit item)
         struct FiniteSource {
             committer: MockCommitter,
         }
@@ -226,11 +237,9 @@ mod tests {
             committer: MockCommitter::new(),
         };
 
-        let result = PipelineRunner::run(&source, |stream, committer| async move {
-            let mut tracker = OffsetTracker::new(Duration::from_millis(1), committer);
-            stream.commit(&mut tracker).await
-        })
-        .await;
+        let result =
+            PipelineRunner::run(&source, Duration::from_millis(1), || IdentityPipeline)
+                .await;
 
         assert!(result.is_ok());
     }
