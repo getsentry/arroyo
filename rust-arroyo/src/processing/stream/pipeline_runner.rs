@@ -47,7 +47,8 @@ impl PipelineRunner {
 
             let result = pipeline
                 .stream(source.stream())
-                .commit(&mut tracker).await?;
+                .commit(&mut tracker)
+                .await?;
 
             match result {
                 PipelineExit::Rebalance => {
@@ -70,7 +71,9 @@ mod tests {
 
     use super::*;
     use crate::backends::kafka::types::KafkaPayload;
-    use crate::processing::stream::{BoxStream, MessageMetadata, OffsetCommitter, PipelineEnvelope, PipelineExt, StageResult};
+    use crate::processing::stream::{
+        BoxStream, MessageMetadata, OffsetCommitter, PipelineEnvelope, StageResult,
+    };
     use crate::types::{Partition, Topic};
 
     struct MockCommitter {
@@ -238,8 +241,7 @@ mod tests {
         };
 
         let result =
-            PipelineRunner::run(&source, Duration::from_millis(1), || IdentityPipeline)
-                .await;
+            PipelineRunner::run(&source, Duration::from_millis(1), || IdentityPipeline).await;
 
         assert!(result.is_ok());
     }

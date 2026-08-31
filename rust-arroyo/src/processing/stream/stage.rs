@@ -73,9 +73,15 @@ impl<T> StageResult<T> {
             StageResult::Emit(e) => f(e).await,
             StageResult::Drop { metadata } => StageResult::Drop { metadata },
             StageResult::Skip => StageResult::Skip,
-            StageResult::Reject { metadata, raw, reason } => {
-                StageResult::Reject { metadata, raw, reason }
-            }
+            StageResult::Reject {
+                metadata,
+                raw,
+                reason,
+            } => StageResult::Reject {
+                metadata,
+                raw,
+                reason,
+            },
             StageResult::Fail(err) => StageResult::Fail(err),
             StageResult::Exit(reason) => StageResult::Exit(reason),
         }

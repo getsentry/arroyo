@@ -86,7 +86,7 @@ async fn main() {
     let producer_config = KafkaConfig::new_producer_config(vec!["0.0.0.0:9092".to_string()], None);
 
     let result = PipelineRunner::run(&source, Duration::from_secs(1), || {
-        let producer = KafkaProducer::new(producer_config.clone());
+        let producer = KafkaProducer::new(producer_config.clone()).unwrap();
         TransformAndProducePipeline {
             reverse: ReverseStage,
             produce_handler: KafkaProducerHandler::new(
