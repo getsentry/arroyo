@@ -107,6 +107,8 @@ impl TestTopic {
             KafkaConfig::new_producer_config(vec![get_default_broker()], None);
 
         let producer = KafkaProducer::new(producer_configuration);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
 
         producer
             .produce(&crate::types::TopicOrPartition::Topic(self.topic), payload)

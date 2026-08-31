@@ -679,6 +679,8 @@ mod tests {
         );
 
         let producer = KafkaProducer::new(producer_configuration);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
 
         producer

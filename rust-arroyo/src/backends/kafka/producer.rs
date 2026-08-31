@@ -139,7 +139,7 @@ pub struct KafkaProducer {
 }
 
 impl KafkaProducer {
-    pub fn new(config: KafkaConfig) -> Self {
+    pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
         // Extract client.id from config for metrics, default to "unknown"
         let producer_name = config
             .get_config_value("client.id")
@@ -147,12 +147,11 @@ impl KafkaProducer {
             .unwrap_or_else(|| "unknown".to_string());
         let context = ProducerContext::new(producer_name.clone());
         let config_obj: ClientConfig = config.into();
-        let threaded_producer: ThreadedProducer<_> =
-            config_obj.create_with_context(context).unwrap();
+        let threaded_producer: ThreadedProducer<_> = config_obj.create_with_context(context)?;
 
-        Self {
+        Ok(Self {
             producer: threaded_producer,
-        }
+        })
     }
 }
 
@@ -178,7 +177,7 @@ pub struct AsyncKafkaProducer {
 }
 
 impl AsyncKafkaProducer {
-    pub fn new(config: KafkaConfig) -> Self {
+    pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
         // Extract client.id from config for metrics, default to "unknown"
         let producer_name = config
             .get_config_value("client.id")
@@ -186,12 +185,12 @@ impl AsyncKafkaProducer {
             .unwrap_or_else(|| "unknown".to_string());
         let context = ProducerContext::new(producer_name.clone());
         let config_obj: ClientConfig = config.into();
-        let future_producer: FutureProducer<_> = config_obj.create_with_context(context).unwrap();
+        let future_producer: FutureProducer<_> = config_obj.create_with_context(context)?;
 
-        Self {
+        Ok(Self {
             producer: future_producer,
             producer_name,
-        }
+        })
     }
 }
 
@@ -268,6 +267,7 @@ mod tests {
     use crate::backends::{AsyncProducer, Producer};
     use crate::types::{Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
+    use rdkafka::error::KafkaError;
     use rdkafka::statistics::{Broker, Statistics, Window};
     use std::collections::HashMap;
 
@@ -389,11 +389,13 @@ mod tests {
             KafkaConfig::new_producer_config(vec!["127.0.0.1:9092".to_string()], None);
 
         let producer = KafkaProducer::new(configuration);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
         producer
             .produce(&destination, payload)
-            .expect("Message produced")
+            .expect("Message produced");
     }
 
     #[tokio::test]
@@ -404,6 +406,8 @@ mod tests {
             KafkaConfig::new_producer_config(vec!["127.0.0.1:9092".to_string()], None);
 
         let producer = AsyncKafkaProducer::new(configuration);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
         let result = producer.produce(&destination, payload).await;
@@ -423,6 +427,8 @@ mod tests {
         );
 
         let producer = AsyncKafkaProducer::new(configuration);
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
         let result = producer.produce(&destination, payload).await;
@@ -430,5 +436,37 @@ mod tests {
             result.is_err(),
             "Message should not be produced successfully"
         );
+    }
+
+    #[test]
+    fn test_invalid_producer_configuration_returns_error() {
+        let configuration = KafkaConfig::new_producer_config(
+            vec!["127.0.0.1:9092".to_string()],
+            Some(HashMap::from([(
+                "message.timeout.ms".to_string(),
+                "invalid".to_string(),
+            )])),
+        );
+
+        assert!(matches!(
+            KafkaProducer::new(configuration),
+            Err(KafkaError::ClientConfig(..))
+        ));
+    }
+
+    #[test]
+    fn test_invalid_async_producer_configuration_returns_error() {
+        let configuration = KafkaConfig::new_producer_config(
+            vec!["127.0.0.1:9092".to_string()],
+            Some(HashMap::from([(
+                "message.timeout.ms".to_string(),
+                "invalid".to_string(),
+            )])),
+        );
+
+        assert!(matches!(
+            AsyncKafkaProducer::new(configuration),
+            Err(KafkaError::ClientConfig(..))
+        ));
     }
 }
