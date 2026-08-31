@@ -117,6 +117,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                             Some(item) => item,
                             None => {
                                 if let Some(flushed) = stage.flush() {
+                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"force");
                                     yield flushed;
                                 }
                                 return;
@@ -128,13 +129,17 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                                 let result = run_stage(&stage, e).await;
                                 match &result {
                                     StageResult::Skip => timer.on_accumulate(),
-                                    StageResult::Emit(_) => timer.on_flush(),
+                                    StageResult::Emit(_) => {
+                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"size");
+                                    timer.on_flush();
+                                }
                                     _ => {}
                                 }
                                 yield result;
                             }
                             StageResult::Exit(reason) => {
                                 if let Some(flushed) = stage.flush() {
+                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"force");
                                     yield flushed;
                                 }
                                 yield StageResult::Exit(reason);
@@ -156,6 +161,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                     _ = timer.interval.tick(), if timer.is_active() => {
                         if timer.should_flush() {
                             if let Some(flushed) = stage.flush() {
+                                timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"time");
                                 yield flushed;
                             }
                             timer.on_flush();

@@ -111,6 +111,17 @@ impl<C: Clock> FlushTimer<C> {
         self.unset();
     }
 
+    /// Duration since the batch started accumulating.
+    /// Returns zero if no batch is active.
+    pub fn batch_time(&self) -> Duration {
+        let now = self.clock.now();
+        if self.batch_start > now {
+            Duration::ZERO
+        } else {
+            now.duration_since(self.batch_start).into()
+        }
+    }
+
     /// Check if a flush trigger has fired based on watermarks.
     /// Called on each interval tick.
     pub fn should_flush(&self) -> bool {
