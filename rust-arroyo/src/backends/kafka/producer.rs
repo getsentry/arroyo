@@ -264,12 +264,22 @@ mod tests {
     use super::{AsyncKafkaProducer, KafkaProducer, ProducerContext};
     use crate::backends::kafka::config::KafkaConfig;
     use crate::backends::kafka::types::KafkaPayload;
-    use crate::backends::{AsyncProducer, Producer};
+    use crate::backends::{AsyncProducer, Producer, ProducerError};
     use crate::types::{Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
-    use rdkafka::error::KafkaError;
+    use rdkafka::error::{KafkaError, RDKafkaErrorCode};
     use rdkafka::statistics::{Broker, Statistics, Window};
     use std::collections::HashMap;
+
+    fn queue_full_configuration() -> KafkaConfig {
+        KafkaConfig::new_producer_config(
+            Vec::new(),
+            Some(HashMap::from([
+                ("queue.buffering.max.messages".to_string(), "1".to_string()),
+                ("message.timeout.ms".to_string(), "5000".to_string()),
+            ])),
+        )
+    }
 
     fn create_test_statistics_with_all_metrics() -> Statistics {
         let mut brokers = HashMap::new();
@@ -436,6 +446,31 @@ mod tests {
             result.is_err(),
             "Message should not be produced successfully"
         );
+    }
+
+    #[test]
+    fn test_sync_enqueue_error_retains_queue_full_error() {
+        let producer = KafkaProducer::new(queue_full_configuration());
+        assert!(producer.is_ok());
+        let producer = producer.unwrap();
+        let destination = TopicOrPartition::Topic(Topic::new("test"));
+
+        let first_result = producer.produce(
+            &destination,
+            KafkaPayload::new(None, None, Some(b"first".to_vec())),
+        );
+        assert!(first_result.is_ok());
+
+        let second_result = producer.produce(
+            &destination,
+            KafkaPayload::new(None, None, Some(b"second".to_vec())),
+        );
+        assert!(matches!(
+            second_result,
+            Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                RDKafkaErrorCode::QueueFull
+            )))
+        ));
     }
 
     #[test]
