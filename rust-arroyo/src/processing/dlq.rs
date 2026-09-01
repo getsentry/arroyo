@@ -84,7 +84,7 @@ impl DlqProducer<KafkaPayload> for KafkaDlqProducer {
 
         headers = headers.insert(
             "original_partition",
-            Some(message.offset.to_string().into_bytes()),
+            Some(message.partition.index.to_string().into_bytes()),
         );
         headers = headers.insert(
             "original_offset",
@@ -98,9 +98,10 @@ impl DlqProducer<KafkaPayload> for KafkaDlqProducer {
         );
 
         Box::pin(async move {
-            producer
-                .produce(&topic, payload)
-                .expect("Message was produced");
+            if let Err(err) = producer.produce(&topic, payload) {
+                counter!("arroyo.consumer.dlq.produce_error", 1);
+                tracing::error!("Failed to produce to DLQ: {:?}", err);
+            }
 
             message
         })
