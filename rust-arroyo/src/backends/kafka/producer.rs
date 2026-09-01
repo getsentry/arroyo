@@ -5,8 +5,6 @@ use crate::backends::ProducerError;
 use crate::backends::{
     AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer, ProducerFuture,
 };
-use crate::counter;
-use crate::gauge;
 use crate::types::TopicOrPartition;
 use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
@@ -40,80 +38,80 @@ impl ClientContext for ProducerContext {
             // Record broker latency metrics
             if let Some(int_latency) = &broker_stats.int_latency {
                 let p99_latency_ms = int_latency.p99 as f64 / 1000.0;
-                gauge!(
+                metrics::gauge!(
                     "arroyo.producer.librdkafka.p99_int_latency",
-                    p99_latency_ms as u64,
                     "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
+                    "producer_name" => producer_name.to_owned()
+                )
+                .set(p99_latency_ms as u64 as f64);
             }
 
             if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
                 let p99_latency_ms = outbuf_latency.p99 as f64 / 1000.0;
-                gauge!(
+                metrics::gauge!(
                     "arroyo.producer.librdkafka.p99_outbuf_latency",
-                    p99_latency_ms as u64,
                     "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
+                    "producer_name" => producer_name.to_owned()
+                )
+                .set(p99_latency_ms as u64 as f64);
             }
 
             if let Some(rtt) = &broker_stats.rtt {
                 let p99_rtt_ms = rtt.p99 as f64 / 1000.0;
-                gauge!(
+                metrics::gauge!(
                     "arroyo.producer.librdkafka.p99_rtt",
-                    p99_rtt_ms as u64,
                     "broker_id" => broker_id_str.clone(),
-                    "producer_name" => producer_name
-                );
+                    "producer_name" => producer_name.to_owned()
+                )
+                .set(p99_rtt_ms as u64 as f64);
             }
 
             // Record broker transmission error metrics
-            gauge!(
+            metrics::gauge!(
                 "arroyo.producer.librdkafka.broker_txerrs",
-                broker_stats.txerrs as i64,
                 "broker_id" => broker_id_str.clone(),
-                "producer_name" => producer_name
-            );
+                "producer_name" => producer_name.to_owned()
+            )
+            .set(broker_stats.txerrs as f64);
 
-            gauge!(
+            metrics::gauge!(
                 "arroyo.producer.librdkafka.broker_txretries",
-                broker_stats.txretries as i64,
                 "broker_id" => broker_id_str,
-                "producer_name" => producer_name
-            );
+                "producer_name" => producer_name.to_owned()
+            )
+            .set(broker_stats.txretries as f64);
         }
 
         // Record global producer metrics
-        gauge!(
+        metrics::gauge!(
             "arroyo.producer.librdkafka.message_count",
-            stats.msg_cnt as i64,
-            "producer_name" => producer_name
-        );
+            "producer_name" => producer_name.to_owned()
+        )
+        .set(stats.msg_cnt as f64);
 
-        gauge!(
+        metrics::gauge!(
             "arroyo.producer.librdkafka.message_count_max",
-            stats.msg_max as i64,
-            "producer_name" => producer_name
-        );
+            "producer_name" => producer_name.to_owned()
+        )
+        .set(stats.msg_max as f64);
 
-        gauge!(
+        metrics::gauge!(
             "arroyo.producer.librdkafka.message_size",
-            stats.msg_size as i64,
-            "producer_name" => producer_name
-        );
+            "producer_name" => producer_name.to_owned()
+        )
+        .set(stats.msg_size as f64);
 
-        gauge!(
+        metrics::gauge!(
             "arroyo.producer.librdkafka.message_size_max",
-            stats.msg_size_max as i64,
-            "producer_name" => producer_name
-        );
+            "producer_name" => producer_name.to_owned()
+        )
+        .set(stats.msg_size_max as f64);
 
-        gauge!(
+        metrics::gauge!(
             "arroyo.producer.librdkafka.reply_queue_size",
-            stats.replyq as i64,
-            "producer_name" => producer_name
-        );
+            "producer_name" => producer_name.to_owned()
+        )
+        .set(stats.replyq as f64);
     }
 }
 
@@ -130,7 +128,12 @@ impl RdkafkaProducerContext for ProducerContext {
             Err((err, _)) => get_error_name(err),
         };
         let producer_name = self.get_producer_name();
-        counter!("arroyo.producer.produce_status", 1, "status" => result, "producer_name" => producer_name);
+        metrics::counter!(
+            "arroyo.producer.produce_status",
+            "status" => result,
+            "producer_name" => producer_name.to_owned()
+        )
+        .increment(1);
     }
 }
 
@@ -204,13 +207,25 @@ fn record_producer_error(
         let producer_error = ProducerError::ProducerFailure {
             error: error_name.clone(),
         };
-        counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => error_name, "producer_name" => producer_name);
+        metrics::counter!(
+            "arroyo.producer.produce_status",
+            "status" => "error",
+            "code" => error_name,
+            "producer_name" => producer_name.to_owned()
+        )
+        .increment(1);
         return producer_error;
     }
     let producer_error = ProducerError::ProducerFailure {
         error: default_error.to_string(),
     };
-    counter!("arroyo.producer.produce_status", 1, "status" => "error", "code" => default_error, "producer_name" => producer_name);
+    metrics::counter!(
+        "arroyo.producer.produce_status",
+        "status" => "error",
+        "code" => default_error.to_owned(),
+        "producer_name" => producer_name.to_owned()
+    )
+    .increment(1);
     producer_error
 }
 

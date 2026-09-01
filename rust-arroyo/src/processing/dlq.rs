@@ -11,8 +11,6 @@ use tokio::task::JoinHandle;
 use crate::backends::kafka::producer::KafkaProducer;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
-use crate::counter;
-use crate::gauge;
 use crate::processing::strategies::InvalidMessageReason;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 
@@ -99,7 +97,7 @@ impl DlqProducer<KafkaPayload> for KafkaDlqProducer {
 
         Box::pin(async move {
             if let Err(err) = producer.produce(&topic, payload) {
-                counter!("arroyo.consumer.dlq.produce_error", 1);
+                metrics::counter!("arroyo.consumer.dlq.produce_error").increment(1);
                 tracing::error!("Failed to produce to DLQ: {:?}", err);
             }
 
@@ -428,20 +426,17 @@ impl<TPayload> BufferedMessages<TPayload> {
         }
 
         // Number of partitions in the buffer map
-        gauge!(
-            "arroyo.consumer.dlq_buffer.assigned_partitions",
-            self.buffered_messages.len() as u64,
-        );
+        metrics::gauge!("arroyo.consumer.dlq_buffer.assigned_partitions")
+            .set(self.buffered_messages.len() as f64);
 
         let buffered = self.buffered_messages.entry(message.partition).or_default();
         if let Some(max) = self.max_per_partition {
             if buffered.len() >= max {
-                counter!(
+                metrics::counter!(
                     "arroyo.consumer.dlq_buffer.exceeded",
-                    1,
-
-                    "partition_id" => message.partition.index
-                );
+                    "partition_id" => message.partition.index.to_string()
+                )
+                .increment(1);
                 buffered.pop_front();
             }
         }
@@ -451,27 +446,25 @@ impl<TPayload> BufferedMessages<TPayload> {
     }
 
     fn report_partition_metrics<T>(partition_index: u16, buffered: &VecDeque<T>) {
-        gauge!(
+        metrics::gauge!(
             "arroyo.consumer.dlq_buffer.capacity",
-            buffered.capacity() as u64,
-            "partition_id" => partition_index
-        );
+            "partition_id" => partition_index.to_string()
+        )
+        .set(buffered.capacity() as f64);
 
-        gauge!(
+        metrics::gauge!(
             "arroyo.consumer.dlq_buffer.len",
-            buffered.len() as u64,
-            "partition_id" => partition_index
-        );
+            "partition_id" => partition_index.to_string()
+        )
+        .set(buffered.len() as f64);
     }
 
     /// Return the message at the given offset or None if it is not found in the buffer.
     /// Messages up to the offset for the given partition are removed.
     pub fn pop(&mut self, partition: &Partition, offset: u64) -> Option<BrokerMessage<TPayload>> {
         // Number of partitions in the buffer map
-        gauge!(
-            "arroyo.consumer.dlq_buffer.assigned_partitions",
-            self.buffered_messages.len() as u64,
-        );
+        metrics::gauge!("arroyo.consumer.dlq_buffer.assigned_partitions")
+            .set(self.buffered_messages.len() as f64);
 
         let messages = self.buffered_messages.get_mut(partition)?;
         while let Some(message) = messages.front() {

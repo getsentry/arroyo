@@ -4,7 +4,6 @@ use super::CommitOffsets;
 use super::Consumer as ArroyoConsumer;
 use super::ConsumerError;
 use crate::backends::kafka::types::KafkaPayload;
-use crate::gauge;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
@@ -218,18 +217,15 @@ impl<C: AssignmentCallbacks + Send + Sync> ClientContext for CustomContext<C> {
     }
 
     fn stats(&self, stats: Statistics) {
-        gauge!(
-            "arroyo.consumer.librdkafka.total_queue_size",
-            stats.replyq as u64,
-        );
+        metrics::gauge!("arroyo.consumer.librdkafka.total_queue_size").set(stats.replyq as f64);
         for (topic_name, topic) in stats.topics.iter() {
             for (partition_num, partition) in topic.partitions.iter() {
-                gauge!(
+                metrics::gauge!(
                     "arroyo.consumer.librdkafka.fetch_queue_count",
-                    partition.fetchq_cnt as u64,
-                    "topic" => topic_name,
+                    "topic" => topic_name.clone(),
                     "partition" => partition_num.to_string()
-                );
+                )
+                .set(partition.fetchq_cnt as f64);
             }
         }
     }

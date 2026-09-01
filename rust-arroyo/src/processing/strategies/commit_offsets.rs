@@ -4,7 +4,6 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::processing::strategies::{CommitRequest, ProcessingStrategy, SubmitError};
-use crate::timer;
 use crate::types::{Message, Partition};
 
 use super::StrategyError;
@@ -57,9 +56,11 @@ impl<T> ProcessingStrategy<T> for CommitOffsets {
         if now - self.last_record_time > coarsetime::Duration::from_secs(1) {
             if let Some(timestamp) = message.timestamp() {
                 // FIXME: this used to be in seconds
-                timer!(
-                    "arroyo.consumer.latency",
-                    (Utc::now() - timestamp).to_std().unwrap_or_default()
+                metrics::histogram!("arroyo.consumer.latency").record(
+                    (Utc::now() - timestamp)
+                        .to_std()
+                        .unwrap_or_default()
+                        .as_millis() as f64,
                 );
                 self.last_record_time = now;
             }
