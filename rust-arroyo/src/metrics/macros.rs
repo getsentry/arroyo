@@ -1,7 +1,7 @@
 /// Create a [`Metric`].
 ///
 /// Instead of creating metrics directly, it is recommended to immediately record
-/// metrics using the [`counter!`], [`gauge!`] or [`distribution!`] macros.
+/// metrics using the [`counter!`], [`gauge!`] or [`timer!`] macros.
 ///
 /// This is the recommended way to create a [`Metric`], as the
 /// implementation details of it might change.
@@ -26,31 +26,116 @@ macro_rules! metric {
     }};
 }
 
-/// Records a counter [`Metric`](crate::metrics::Metric) with the global [`Recorder`](crate::metrics::Recorder).
+/// Increments a counter using the application's metrics recorder.
 #[macro_export]
 macro_rules! counter {
-    ($expr:expr) => {
-        $crate::__record_metric!(Counter: $expr, 1);
-    };
-    ($($tt:tt)+) => {
-        $crate::__record_metric!(Counter: $($tt)+);
-    };
+    ($key:literal) => {{
+        $crate::__metrics::counter!($key).increment(1);
+    }};
+    ($key:expr) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        $crate::__metrics::counter!(name).increment(1);
+    }};
+    ($key:literal, $value:expr $(,)?) => {{
+        let value = $crate::metrics::counter_value($value);
+        $crate::__metrics::counter!($key).increment(value);
+    }};
+    ($key:expr, $value:expr $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::counter_value($value);
+        $crate::__metrics::counter!(name).increment(value);
+    }};
+    ($key:literal, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let value = $crate::metrics::counter_value($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::counter!($key, labels).increment(value);
+    }};
+    ($key:expr, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::counter_value($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::counter!(name, labels).increment(value);
+    }};
 }
 
-/// Records a gauge [`Metric`](crate::metrics::Metric) with the global [`Recorder`](crate::metrics::Recorder).
+/// Sets a gauge using the application's metrics recorder.
 #[macro_export]
 macro_rules! gauge {
-    ($($tt:tt)+) => {
-        $crate::__record_metric!(Gauge: $($tt)+);
-    };
+    ($key:literal, $value:expr $(,)?) => {{
+        let value = $crate::metrics::gauge_value($value);
+        $crate::__metrics::gauge!($key).set(value);
+    }};
+    ($key:expr, $value:expr $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::gauge_value($value);
+        $crate::__metrics::gauge!(name).set(value);
+    }};
+    ($key:literal, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let value = $crate::metrics::gauge_value($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::gauge!($key, labels).set(value);
+    }};
+    ($key:expr, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::gauge_value($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::gauge!(name, labels).set(value);
+    }};
 }
 
-/// Records a timer [`Metric`](crate::metrics::Metric) with the global [`Recorder`](crate::metrics::Recorder).
+/// Records a millisecond timer using the application's metrics recorder.
 #[macro_export]
 macro_rules! timer {
-    ($($tt:tt)+) => {
-        $crate::__record_metric!(Timer: $($tt)+);
-    };
+    ($key:literal, $value:expr $(,)?) => {{
+        let value = $crate::metrics::timer_milliseconds($value);
+        $crate::__metrics::histogram!($key).record(value);
+    }};
+    ($key:expr, $value:expr $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::timer_milliseconds($value);
+        $crate::__metrics::histogram!(name).record(value);
+    }};
+    ($key:literal, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let value = $crate::metrics::timer_milliseconds($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::histogram!($key, labels).record(value);
+    }};
+    ($key:expr, $value:expr, $($tag_key:expr => $tag_val:expr),+ $(,)?) => {{
+        let name = $crate::metrics::metric_name(&$key);
+        let value = $crate::metrics::timer_milliseconds($value);
+        let labels = ::std::vec![
+            $($crate::__metrics::Label::new(
+                $tag_key,
+                $crate::metrics::metric_label(&$tag_val),
+            )),+
+        ];
+        $crate::__metrics::histogram!(name, labels).record(value);
+    }};
 }
 
 #[macro_export]
