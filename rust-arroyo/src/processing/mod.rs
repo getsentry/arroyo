@@ -17,7 +17,6 @@ use crate::processing::strategies::{
 };
 use crate::types::{InnerMessage, Message, Partition, Topic};
 use crate::utils::timing::Deadline;
-use crate::{counter, timer};
 
 pub mod dlq;
 mod metrics_buffer;
@@ -122,10 +121,8 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
     // processor to do that.
     fn on_assign(&self, partitions: HashMap<Partition, u64>) {
         tracing::info!("New partitions assigned: {:?}", partitions);
-        counter!(
-            "arroyo.consumer.partitions_assigned.count",
-            partitions.len() as i64
-        );
+        metrics::counter!("arroyo.consumer.partitions_assigned.count")
+            .increment(partitions.len() as u64);
 
         let start = coarsetime::Instant::recent();
 
@@ -134,18 +131,14 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
         state.strategy = Some(state.processing_factory.create());
         state.dlq_policy.reset_dlq_limits(&partitions);
 
-        timer!(
-            "arroyo.consumer.create_strategy.time",
-            start.elapsed_since_recent()
-        );
+        metrics::histogram!("arroyo.consumer.create_strategy.time")
+            .record(start.elapsed_since_recent().as_millis() as f64);
     }
 
     fn on_revoke<C: CommitOffsets>(&self, commit_offsets: C, partitions: Vec<Partition>) {
         tracing::info!("Partitions to revoke: {:?}", partitions);
-        counter!(
-            "arroyo.consumer.partitions_revoked.count",
-            partitions.len() as i64,
-        );
+        metrics::counter!("arroyo.consumer.partitions_revoked.count")
+            .increment(partitions.len() as u64);
 
         let start = coarsetime::Instant::recent();
 
@@ -185,7 +178,8 @@ impl<TPayload: Send + Sync + 'static> AssignmentCallbacks for Callbacks<TPayload
             }
         }
 
-        timer!("arroyo.consumer.join.time", start.elapsed_since_recent());
+        metrics::histogram!("arroyo.consumer.join.time")
+            .record(start.elapsed_since_recent().as_millis() as f64);
 
         tracing::info!("Partition revocation complete.");
 
@@ -248,7 +242,7 @@ impl<TPayload: Clone + Send + Sync + 'static> StreamProcessor<TPayload> {
     }
 
     fn _run_once(&mut self) -> Result<(), RunError> {
-        counter!("arroyo.consumer.run.count");
+        metrics::counter!("arroyo.consumer.run.count").increment(1);
 
         let consumer_is_paused = self.consumer_state.is_paused();
         if consumer_is_paused {

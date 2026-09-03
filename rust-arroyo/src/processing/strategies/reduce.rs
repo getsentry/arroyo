@@ -2,7 +2,6 @@ use crate::processing::strategies::{
     merge_commit_request, CommitRequest, MessageRejected, ProcessingStrategy, StrategyError,
     SubmitError,
 };
-use crate::timer;
 use crate::types::{Message, Partition};
 use crate::utils::timing::Deadline;
 use std::collections::BTreeMap;
@@ -206,11 +205,11 @@ impl<T, TResult> Reduce<T, TResult> {
             "force"
         };
 
-        timer!(
+        metrics::histogram!(
             "arroyo.strategies.reduce.batch_time.ms",
-            batch_time,
             "flush_reason" => flush_reason
-        );
+        )
+        .record(batch_time.as_millis() as f64);
 
         let batch_state = mem::replace(
             &mut self.batch_state,

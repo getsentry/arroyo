@@ -12,7 +12,6 @@ use crate::processing::strategies::{
 };
 use crate::types::Message;
 use crate::utils::timing::Deadline;
-use crate::{counter, gauge, timer};
 
 use super::StrategyError;
 
@@ -140,21 +139,27 @@ where
         self.commit_request_carried_over =
             merge_commit_request(self.commit_request_carried_over.take(), commit_request);
 
-        gauge!("arroyo.strategies.run_task_in_threads.threads",
-            self.handles.len() as u64,
+        metrics::gauge!(
+            "arroyo.strategies.run_task_in_threads.threads",
             "strategy_name" => self.metric_strategy_name
-        );
-        gauge!("arroyo.strategies.run_task_in_threads.concurrency",
-            self.concurrency as u64,
+        )
+        .set(self.handles.len() as f64);
+        metrics::gauge!(
+            "arroyo.strategies.run_task_in_threads.concurrency",
             "strategy_name" => self.metric_strategy_name
-        );
+        )
+        .set(self.concurrency as f64);
 
         if let Some(message) = self.message_carried_over.take() {
             match self.next_step.submit(message) {
                 Err(SubmitError::MessageRejected(MessageRejected {
                     message: transformed_message,
                 })) => {
-                    counter!("arroyo.strategies.run_task_in_threads.got_backpressure", 1, "strategy_name" => self.metric_strategy_name);
+                    metrics::counter!(
+                        "arroyo.strategies.run_task_in_threads.got_backpressure",
+                        "strategy_name" => self.metric_strategy_name
+                    )
+                    .increment(1);
                     self.message_carried_over = Some(transformed_message);
                 }
                 Err(SubmitError::InvalidMessage(invalid_message)) => {
@@ -203,7 +208,11 @@ where
 
     fn submit(&mut self, message: Message<TPayload>) -> Result<(), SubmitError<TPayload>> {
         if self.message_carried_over.is_some() {
-            counter!("arroyo.strategies.run_task_in_threads.giving_backpressure", 1, "strategy_name" => self.metric_strategy_name);
+            metrics::counter!(
+                "arroyo.strategies.run_task_in_threads.giving_backpressure",
+                "strategy_name" => self.metric_strategy_name
+            )
+            .increment(1);
             return Err(SubmitError::MessageRejected(MessageRejected { message }));
         }
 
@@ -251,11 +260,11 @@ where
         }
         self.handles.clear();
 
-        timer!(
+        metrics::histogram!(
             "arroyo.strategies.run_task_in_threads.join_time",
-            start.elapsed(),
             "strategy_name" => self.metric_strategy_name
-        );
+        )
+        .record(start.elapsed().as_millis() as f64);
 
         let next_commit = self.next_step.join(deadline.map(|d| d.remaining()))?;
 

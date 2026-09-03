@@ -1,4 +1,3 @@
-use crate::timer;
 use crate::utils::timing::Deadline;
 use core::fmt::Debug;
 use std::collections::BTreeMap;
@@ -38,7 +37,7 @@ impl MetricsBuffer {
     pub fn flush(&mut self) {
         let timers = mem::take(&mut self.timers);
         for (metric, duration) in timers {
-            timer!(&metric, duration);
+            metrics::histogram!(metric).record(duration.as_millis() as f64);
         }
 
         self.flush_deadline.restart();

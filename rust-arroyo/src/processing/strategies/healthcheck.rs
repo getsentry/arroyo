@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use crate::counter;
 use crate::processing::strategies::{
     CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
@@ -40,7 +39,7 @@ impl<Next> HealthCheck<Next> {
             tracing::error!(error);
         }
 
-        counter!("arroyo.processing.strategies.healthcheck.touch");
+        metrics::counter!("arroyo.processing.strategies.healthcheck.touch").increment(1);
         self.deadline = now + self.interval;
     }
 }
