@@ -140,6 +140,51 @@ MetricName = Literal[
     # Gauge: Number of ops (callbacks, events, etc) waiting in librdkafka reply queue
     # Tagged by producer_name
     "arroyo.producer.librdkafka.reply_queue_size",
+    # Gauge: Total number of messages transmitted to brokers
+    # Tagged by producer_name
+    "arroyo.producer.librdkafka.txmsgs",
+    # Gauge: Broker state, represented by one gauge per known state
+    # Tagged by broker_id, producer_name, state
+    "arroyo.producer.librdkafka.broker_state",
+    # Gauge: Number of requests awaiting transmission to the broker
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_outbuf_requests",
+    # Gauge: Number of messages awaiting transmission to the broker
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_outbuf_messages",
+    # Gauge: Number of requests awaiting a response from the broker
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_waitresp_requests",
+    # Gauge: Total number of broker connection attempts
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_connects",
+    # Gauge: Total number of broker disconnections
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_disconnects",
+    # Time: Milliseconds since the last socket send
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_tx_idle",
+    # Time: Milliseconds since the last socket receive
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_rx_idle",
+    # Gauge: Total number of broker requests that timed out
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_request_timeouts",
+    # Time: Average internal producer queue latency in milliseconds
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.avg_int_latency",
+    # Time: Average output buffer latency in milliseconds
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.avg_outbuf_latency",
+    # Time: Average broker round-trip latency in milliseconds
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.avg_rtt",
+    # Gauge: Total number of requests sent to the broker
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_tx",
+    # Gauge: Total number of bytes sent to the broker
+    # Tagged by broker_id, producer_name
+    "arroyo.producer.librdkafka.broker_txbytes",
     # Gauge: Total number of transmission errors from librdkafka statistics
     # Tagged by broker_id, producer_name
     "arroyo.producer.librdkafka.broker_txerrs",
