@@ -1,5 +1,8 @@
 use rdkafka::config::ClientConfig as RdKafkaConfig;
 use std::collections::HashMap;
+use std::time::Duration;
+
+use crate::types::Topic;
 
 use super::InitialOffset;
 
@@ -16,6 +19,8 @@ pub struct KafkaConfig {
     config_map: HashMap<String, String>,
     // Only applies to consumers
     offset_reset_config: Option<OffsetResetConfig>,
+    // Only applies to producers
+    pub(super) topic_validation: Option<(Topic, Duration)>,
 }
 
 impl KafkaConfig {
@@ -28,6 +33,7 @@ impl KafkaConfig {
         let config = Self {
             config_map,
             offset_reset_config: None,
+            topic_validation: None,
         };
 
         apply_override_params(config, override_params)
@@ -88,6 +94,14 @@ impl KafkaConfig {
 
     pub fn offset_reset_config(&self) -> Option<&OffsetResetConfig> {
         self.offset_reset_config.as_ref()
+    }
+
+    /// Validate a physical topic when creating a Kafka producer.
+    /// Producer constructors block while fetching metadata up to `timeout`,
+    /// and return an error if the fetch fails or Kafka reports a topic error.
+    pub fn with_topic_validation(mut self, topic: Topic, timeout: Duration) -> Self {
+        self.topic_validation = Some((topic, timeout));
+        self
     }
 
     pub fn get_config_value(&self, key: &str) -> Option<&String> {
