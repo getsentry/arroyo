@@ -97,9 +97,7 @@ where
     /// return without a callback; producing does not wait for delivery.
     pub fn new_with_context(config: KafkaConfig, context: C) -> Result<Self, KafkaError> {
         let topic_validation = config.topic_validation;
-        let mut config_obj: ClientConfig = config.into();
-        // Ensure successful messages also receive delivery callbacks.
-        config_obj.set("delivery.report.only.error", "false");
+        let config_obj: ClientConfig = config.into();
         let threaded_producer: ThreadedProducer<_> = config_obj.create_with_context(context)?;
 
         if let Some((topic, timeout)) = topic_validation {
@@ -498,13 +496,7 @@ mod tests {
     #[test]
     fn test_delivery_callback_success() {
         let cluster = MockCluster::new(1).unwrap();
-        let config = KafkaConfig::new_producer_config(
-            vec![cluster.bootstrap_servers()],
-            Some(HashMap::from([(
-                "delivery.report.only.error".to_string(),
-                "true".to_string(),
-            )])),
-        );
+        let config = KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None);
         let (producer, reports) = callback_producer(config);
         let destination = TopicOrPartition::Topic(Topic::new("test"));
 
