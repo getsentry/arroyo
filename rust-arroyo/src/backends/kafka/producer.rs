@@ -101,12 +101,21 @@ where
         let threaded_producer: ThreadedProducer<_> = config_obj.create_with_context(context)?;
 
         if let Some((topic, timeout)) = topic_validation {
-            validate_topic(threaded_producer.client(), topic, timeout)?;
+            validate_topic_metadata(threaded_producer.client(), topic, timeout)?;
         }
 
         Ok(Self {
             producer: threaded_producer,
         })
+    }
+
+    /// Validates a physical topic using this producer's existing client.
+    ///
+    /// This can be called for each topic when sharing a producer across topics.
+    /// Blocks while fetching metadata up to `timeout`, and returns an error if
+    /// the fetch fails or Kafka reports a topic error.
+    pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        validate_topic_metadata(self.producer.client(), topic, timeout)
     }
 
     pub fn context(&self) -> &C {
@@ -157,7 +166,7 @@ impl AsyncKafkaProducer {
         let future_producer: FutureProducer<_> = config_obj.create_with_context(context)?;
 
         if let Some((topic, timeout)) = topic_validation {
-            validate_topic(future_producer.client(), topic, timeout)?;
+            validate_topic_metadata(future_producer.client(), topic, timeout)?;
         }
 
         Ok(Self {
@@ -171,7 +180,7 @@ impl AsyncKafkaProducer {
     }
 }
 
-fn validate_topic<C: ClientContext>(
+fn validate_topic_metadata<C: ClientContext>(
     client: &Client<C>,
     topic: Topic,
     timeout: Duration,
@@ -338,6 +347,33 @@ mod tests {
             Err(KafkaError::MetadataFetch(
                 RDKafkaErrorCode::BrokerTransportFailure,
             )),
+        );
+    }
+
+    #[test]
+    fn test_topic_validation_reused_producer() {
+        let cluster = MockCluster::new(1).unwrap();
+        cluster.create_topic("first-topic", 1, 1).unwrap();
+        let timeout = Duration::from_secs(5);
+        let config = KafkaConfig::new_producer_config(
+            vec![cluster.bootstrap_servers()],
+            Some(HashMap::from([(
+                "allow.auto.create.topics".to_string(),
+                "false".to_string(),
+            )])),
+        )
+        .with_topic_validation(Topic::new("first-topic"), timeout);
+        let (producer, _reports) = callback_producer(config);
+
+        assert_eq!(
+            producer.validate_topic(Topic::new("first-topic"), timeout),
+            Ok(())
+        );
+        assert_eq!(
+            producer.validate_topic(Topic::new("unknown-topic"), timeout),
+            Err(KafkaError::MetadataFetch(
+                RDKafkaErrorCode::UnknownTopicOrPartition,
+            ))
         );
     }
 
