@@ -74,8 +74,6 @@ where
 }
 
 impl KafkaProducer {
-    /// Creates a producer, validating topic metadata if configured with
-    /// [`KafkaConfig::with_topic_validation`].
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
         // Extract client.id from config for metrics, default to "unknown"
         let producer_name = config
@@ -96,17 +94,15 @@ where
     /// Delivery callbacks run once per accepted message. Immediate enqueue errors
     /// return without a callback; producing does not wait for delivery.
     pub fn new_with_context(config: KafkaConfig, context: C) -> Result<Self, KafkaError> {
-        let topic_validation = config.topic_validation;
         let config_obj: ClientConfig = config.into();
-        let threaded_producer: ThreadedProducer<_> = config_obj.create_with_context(context)?;
-
-        if let Some((topic, timeout)) = topic_validation {
-            validate_topic(threaded_producer.client(), topic, timeout)?;
-        }
-
         Ok(Self {
-            producer: threaded_producer,
+            producer: config_obj.create_with_context(context)?,
         })
+    }
+
+    /// Synchronously validates a physical topic
+    pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        validate_topic_metadata(self.producer.client(), topic, timeout)
     }
 
     pub fn context(&self) -> &C {
@@ -143,8 +139,7 @@ pub struct AsyncKafkaProducer {
 }
 
 impl AsyncKafkaProducer {
-    /// Creates a producer, synchronously validating topic metadata if configured
-    /// with [`KafkaConfig::with_topic_validation`].
+    /// Creates a producer
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
         // Extract client.id from config for metrics, default to "unknown"
         let producer_name = config
@@ -152,18 +147,16 @@ impl AsyncKafkaProducer {
             .cloned()
             .unwrap_or_else(|| "unknown".to_string());
         let context = ProducerContext::new(producer_name.clone());
-        let topic_validation = config.topic_validation;
         let config_obj: ClientConfig = config.into();
-        let future_producer: FutureProducer<_> = config_obj.create_with_context(context)?;
-
-        if let Some((topic, timeout)) = topic_validation {
-            validate_topic(future_producer.client(), topic, timeout)?;
-        }
-
         Ok(Self {
-            producer: future_producer,
+            producer: config_obj.create_with_context(context)?,
             producer_name,
         })
+    }
+
+    /// Synchronously validates a physical topic
+    pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        validate_topic_metadata(self.producer.client(), topic, timeout)
     }
 
     pub fn in_flight_count(&self) -> i32 {
@@ -171,7 +164,7 @@ impl AsyncKafkaProducer {
     }
 }
 
-fn validate_topic<C: ClientContext>(
+fn validate_topic_metadata<C: ClientContext>(
     client: &Client<C>,
     topic: Topic,
     timeout: Duration,
@@ -286,24 +279,45 @@ mod tests {
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::time::Duration;
 
-    fn assert_producer_creation(config: KafkaConfig, expected: Result<(), KafkaError>) {
-        assert_eq!(KafkaProducer::new(config.clone()).map(|_| ()), expected);
-        let (sender, _) = mpsc::channel();
+    fn assert_topic_validation(
+        config: KafkaConfig,
+        topic: Topic,
+        timeout: Duration,
+        expected: Result<(), KafkaError>,
+    ) {
         assert_eq!(
-            KafkaProducer::new_with_context(config.clone(), CapturingContext(sender)).map(|_| ()),
+            KafkaProducer::new(config.clone())
+                .unwrap()
+                .validate_topic(topic, timeout),
             expected
         );
-        assert_eq!(AsyncKafkaProducer::new(config).map(|_| ()), expected);
+        let (sender, _) = mpsc::channel();
+        assert_eq!(
+            KafkaProducer::new_with_context(config.clone(), CapturingContext(sender))
+                .unwrap()
+                .validate_topic(topic, timeout),
+            expected
+        );
+        assert_eq!(
+            AsyncKafkaProducer::new(config)
+                .unwrap()
+                .validate_topic(topic, timeout),
+            expected
+        );
     }
 
     #[test]
     fn test_topic_validation_existing_physical_topic() {
         let cluster = MockCluster::new(1).unwrap();
         cluster.create_topic("physical-topic", 1, 1).unwrap();
-        let config = KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None)
-            .with_topic_validation(Topic::new("physical-topic"), Duration::from_secs(5));
+        let config = KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None);
 
-        assert_producer_creation(config, Ok(()));
+        assert_topic_validation(
+            config,
+            Topic::new("physical-topic"),
+            Duration::from_secs(5),
+            Ok(()),
+        );
     }
 
     #[test]
@@ -315,11 +329,12 @@ mod tests {
                 "allow.auto.create.topics".to_string(),
                 "false".to_string(),
             )])),
-        )
-        .with_topic_validation(Topic::new("unknown-topic"), Duration::from_secs(5));
+        );
 
-        assert_producer_creation(
+        assert_topic_validation(
             config,
+            Topic::new("unknown-topic"),
+            Duration::from_secs(5),
             Err(KafkaError::MetadataFetch(
                 RDKafkaErrorCode::UnknownTopicOrPartition,
             )),
@@ -329,15 +344,39 @@ mod tests {
     #[test]
     fn test_topic_validation_metadata_fetch_failure() {
         let config = KafkaConfig::new_producer_config(Vec::new(), None);
-        assert_producer_creation(config.clone(), Ok(()));
-        let config =
-            config.with_topic_validation(Topic::new("physical-topic"), Duration::from_millis(100));
-
-        assert_producer_creation(
+        assert_topic_validation(
             config,
+            Topic::new("physical-topic"),
+            Duration::from_millis(100),
             Err(KafkaError::MetadataFetch(
                 RDKafkaErrorCode::BrokerTransportFailure,
             )),
+        );
+    }
+
+    #[test]
+    fn test_topic_validation_reused_producer() {
+        let cluster = MockCluster::new(1).unwrap();
+        cluster.create_topic("first-topic", 1, 1).unwrap();
+        let timeout = Duration::from_secs(5);
+        let config = KafkaConfig::new_producer_config(
+            vec![cluster.bootstrap_servers()],
+            Some(HashMap::from([(
+                "allow.auto.create.topics".to_string(),
+                "false".to_string(),
+            )])),
+        );
+        let (producer, _reports) = callback_producer(config);
+
+        assert_eq!(
+            producer.validate_topic(Topic::new("first-topic"), timeout),
+            Ok(())
+        );
+        assert_eq!(
+            producer.validate_topic(Topic::new("unknown-topic"), timeout),
+            Err(KafkaError::MetadataFetch(
+                RDKafkaErrorCode::UnknownTopicOrPartition,
+            ))
         );
     }
 
