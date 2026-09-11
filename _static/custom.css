@@ -1,0 +1,10 @@
+/* fix mermaid diagrams in dark mode of shibuya theme we use */
+
+html.dark .mermaid path {
+  stroke: #fff !important;
+}
+
+html.dark .mermaid .marker {
+  stroke: #fff !important;
+  fill: #fff !important;
+}
