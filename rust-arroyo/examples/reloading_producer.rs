@@ -57,6 +57,9 @@ async fn main() {
         // typo'd address cannot retire a working producer.
         probe_timeout: Some(Duration::from_secs(5)),
         probe_retry_interval: Duration::from_secs(5),
+        // Relay keys messages to spread them across partitions, not to order
+        // them, so produce calls need not wait for a drain.
+        ignore_key_ordering: true,
     };
 
     let producer = ReloadingKafkaProducer::new(&config_blob("all"), selector, settings)
