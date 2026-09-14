@@ -1,5 +1,36 @@
 # Changelog and versioning
 
+## 2.44.0
+
+### New Features ✨
+
+#### Kafka
+
+- Expose topic validation on existing producers by @lvthanh03 in [#571](https://github.com/getsentry/arroyo/pull/571)
+- Add opt-in topic validation during producer creation by @lvthanh03 in [#569](https://github.com/getsentry/arroyo/pull/569)
+- Expand Rust producer statistics and expose in-flight counts by @lvthanh03 in [#568](https://github.com/getsentry/arroyo/pull/568)
+
+#### Producer
+
+- Support producing Kafka BaseRecord by @lvthanh03 in [#572](https://github.com/getsentry/arroyo/pull/572)
+- Support custom contexts for synchronous Kafka producers by @lvthanh03 in [#570](https://github.com/getsentry/arroyo/pull/570)
+
+#### Other
+
+- (metrics) DLQ produce failures no increment a counter and log instead of panic. by @tryangul in [#564](https://github.com/getsentry/arroyo/pull/564)
+
+### Bug Fixes 🐛
+
+#### Producer
+
+- Return original Kafka errors from synchronous producer by @lvthanh03 in [#565](https://github.com/getsentry/arroyo/pull/565)
+- Make Rust Kafka producer constructors fallible by @lvthanh03 in [#563](https://github.com/getsentry/arroyo/pull/563)
+
+### Internal Changes 🔧
+
+- (metrics) Standardize on metrics-rs (breaking change) by @lvthanh03 in [#567](https://github.com/getsentry/arroyo/pull/567)
+- Widens supported rdkafka range to >=0.37.0,<0.40 by @lvthanh03 in [#562](https://github.com/getsentry/arroyo/pull/562)
+
 ## 2.43.1
 
 ### New Features ✨
