@@ -9,9 +9,10 @@ use crate::types::{Topic, TopicOrPartition};
 use rdkafka::client::{Client, ClientContext};
 use rdkafka::config::ClientConfig;
 use rdkafka::error::{KafkaError, RDKafkaErrorCode};
+use rdkafka::message::ToBytes;
 use rdkafka::producer::{
-    DeliveryResult, FutureProducer, Producer as _, ProducerContext as RdkafkaProducerContext,
-    ThreadedProducer,
+    BaseRecord, DeliveryResult, FutureProducer, Producer as _,
+    ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
 use rdkafka::{Message, Statistics};
 use std::time::Duration;
@@ -100,6 +101,16 @@ where
         })
     }
 
+    pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
+    where
+        K: ToBytes + ?Sized,
+        P: ToBytes + ?Sized,
+    {
+        self.producer
+            .send(record)
+            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))
+    }
+
     /// Synchronously validates a physical topic
     pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
         validate_topic_metadata(self.producer.client(), topic, timeout)
@@ -124,12 +135,7 @@ where
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
         let base_record = payload.to_base_record(destination);
-
-        self.producer
-            .send(base_record)
-            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))?;
-
-        Ok(())
+        self.produce_record(base_record)
     }
 }
 
@@ -271,9 +277,9 @@ mod tests {
     use crate::types::{Topic, TopicOrPartition};
     use rdkafka::client::ClientContext;
     use rdkafka::error::{KafkaError, RDKafkaErrorCode};
-    use rdkafka::message::Message;
+    use rdkafka::message::{Header, Message, OwnedHeaders};
     use rdkafka::mocking::MockCluster;
-    use rdkafka::producer::{DeliveryResult, Producer as _};
+    use rdkafka::producer::{BaseRecord, DeliveryResult, Producer as _};
     use rdkafka::types::{RDKafkaApiKey, RDKafkaRespErr};
     use std::collections::HashMap;
     use std::sync::mpsc::{self, Receiver, Sender};
@@ -545,6 +551,37 @@ mod tests {
                 KafkaPayload::new(None, None, Some(b"payload".to_vec())),
             )
             .unwrap();
+        producer.producer.flush(Duration::from_secs(10)).unwrap();
+        drop(producer);
+        assert_eq!(
+            reports.into_iter().collect::<Vec<_>>(),
+            vec![(None, "test".to_owned(), 7)]
+        );
+    }
+
+    #[test]
+    fn test_produce_record() {
+        let cluster = MockCluster::new(1).unwrap();
+        let config = KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None);
+        let (producer, reports) = callback_producer(config);
+
+        {
+            let key = 42_u128.to_be_bytes();
+            let payload = *b"payload";
+            let headers = OwnedHeaders::new().insert(Header {
+                key: "version",
+                value: Some("1"),
+            });
+            producer
+                .produce_record(
+                    BaseRecord::to("test")
+                        .key(key.as_slice())
+                        .payload(payload.as_slice())
+                        .headers(headers),
+                )
+                .unwrap();
+        }
+        // The borrowed buffers need not stay in scope while waiting for delivery.
         producer.producer.flush(Duration::from_secs(10)).unwrap();
         drop(producer);
         assert_eq!(
