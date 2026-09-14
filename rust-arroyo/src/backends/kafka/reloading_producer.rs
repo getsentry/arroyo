@@ -12,6 +12,10 @@
 //! unkeyed produce calls, which have no ordering requirement, go straight to
 //! the new client.
 //!
+//! Applications that key only to spread load, and do not care about the order
+//! of same-key messages, can set [`ReloadConfig::ignore_key_ordering`] to skip
+//! the wait entirely.
+//!
 //! If the drain outlasts [`ReloadConfig::drain_timeout`], keyed produce calls
 //! stop waiting rather than blocking the application indefinitely, accepting
 //! that ordering may break.
@@ -68,6 +72,13 @@ pub struct ReloadConfig {
     /// Probing retries until it succeeds or a newer config supersedes it,
     /// since an unreachable broker is as likely to be a blip as a bad config.
     pub probe_retry_interval: Duration,
+    /// Treat keyed messages like unkeyed ones: never wait for a drain.
+    ///
+    /// Set this when the key is only there to spread load across partitions
+    /// and nothing downstream depends on same-key messages arriving in order.
+    /// Produce calls then never block on a reload, at the cost of the ordering
+    /// guarantee described in the module docs.
+    pub ignore_key_ordering: bool,
 }
 
 impl Default for ReloadConfig {
@@ -77,6 +88,7 @@ impl Default for ReloadConfig {
             jitter: Duration::ZERO,
             probe_timeout: Some(Duration::from_secs(5)),
             probe_retry_interval: Duration::from_secs(5),
+            ignore_key_ordering: false,
         }
     }
 }
@@ -667,8 +679,9 @@ impl ArroyoProducer<KafkaPayload> for ReloadingKafkaProducer {
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
         // Unkeyed messages have no ordering constraint, so they never wait for
-        // a drain and go straight to whichever client is live.
-        if payload.key().is_none() {
+        // a drain and go straight to whichever client is live. With
+        // `ignore_key_ordering` the caller says the same holds for keyed ones.
+        if payload.key().is_none() || self.inner.settings.ignore_key_ordering {
             let current = self.inner.current.read();
             return current.producer.produce(destination, payload);
         }
@@ -766,6 +779,7 @@ mod tests {
             // MockCluster answers metadata, so probing stays on in tests.
             probe_timeout: Some(Duration::from_secs(5)),
             probe_retry_interval: Duration::from_millis(50),
+            ignore_key_ordering: false,
         }
     }
 
@@ -1444,6 +1458,44 @@ mod tests {
             .recv_timeout(Duration::from_secs(2))
             .expect("keyed produce did not resume after the drain");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_keyed_produce_does_not_wait_when_ordering_is_ignored() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = ReloadingKafkaProducer::new(
+            &blob(&servers, "all"),
+            selector(),
+            ReloadConfig {
+                // Long enough that waiting would show up as a timeout below.
+                drain_timeout: Duration::from_secs(30),
+                ignore_key_ordering: true,
+                ..settings()
+            },
+        )
+        .unwrap();
+        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
+
+        let held = producer.block_drain_for_test();
+
+        let (tx, rx) = mpsc::channel();
+        let keyed = producer.clone();
+        let dest = destination;
+        std::thread::spawn(move || {
+            let result = keyed.produce(
+                &dest,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
+            );
+            let _ = tx.send(result);
+        });
+
+        // Returns while the drain is still running, like an unkeyed produce.
+        let result = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("keyed produce waited for the drain despite ignore_key_ordering");
+        assert!(result.is_ok());
+        drop(held);
     }
 
     #[test]
