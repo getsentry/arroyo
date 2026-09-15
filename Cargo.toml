@@ -45,3 +45,7 @@ path = "rust-arroyo/examples/transform_and_produce.rs"
 [[example]]
 name = "base_consumer"
 path = "rust-arroyo/examples/base_consumer.rs"
+
+[[example]]
+name = "reloading_producer"
+path = "rust-arroyo/examples/reloading_producer.rs"

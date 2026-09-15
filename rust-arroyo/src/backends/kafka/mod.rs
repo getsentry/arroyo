@@ -26,8 +26,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod config;
+pub mod config_blob;
 mod errors;
 pub mod producer;
+pub mod reloading_producer;
 pub mod types;
 
 #[derive(Eq, Hash, PartialEq)]
