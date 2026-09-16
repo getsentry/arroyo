@@ -14,6 +14,7 @@ path = "rust-arroyo/src/lib.rs"
 
 [features]
 ssl = ["rdkafka/ssl"]
+pull = []
 
 [dependencies]
 async-stream = "0.3"
@@ -52,3 +53,4 @@ path = "rust-arroyo/examples/base_consumer.rs"
 [[example]]
 name = "transform_and_produce_pull"
 path = "rust-arroyo/examples/transform_and_produce_pull.rs"
+required-features = ["pull"]

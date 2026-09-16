@@ -22,6 +22,8 @@ use crate::{counter, timer};
 pub mod dlq;
 mod metrics_buffer;
 pub mod strategies;
+/// Experimental pull-based pipeline API. Gated behind the `pull` feature flag.
+#[cfg(feature = "pull")]
 pub mod stream;
 
 use strategies::{ProcessingStrategy, ProcessingStrategyFactory};
