@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use tokio::runtime::{Handle, Runtime};
 use tokio::task::JoinHandle;
 
+use crate::metrics;
 use crate::processing::strategies::{
     merge_commit_request, CommitRequest, InvalidMessage, MessageRejected, ProcessingStrategy,
     SubmitError,

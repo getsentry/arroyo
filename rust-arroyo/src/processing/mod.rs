@@ -11,6 +11,7 @@ use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::kafka::KafkaConsumer;
 use crate::backends::{AssignmentCallbacks, CommitOffsets, Consumer, ConsumerError};
+use crate::metrics;
 use crate::processing::dlq::{DlqPolicy, DlqPolicyWrapper};
 use crate::processing::strategies::{
     InvalidMessageReason, MessageRejected, StrategyError, SubmitError,

@@ -4,6 +4,7 @@ use super::CommitOffsets;
 use super::Consumer as ArroyoConsumer;
 use super::ConsumerError;
 use crate::backends::kafka::types::KafkaPayload;
+use crate::metrics;
 use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;

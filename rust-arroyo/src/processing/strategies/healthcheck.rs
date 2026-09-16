@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use crate::metrics;
 use crate::processing::strategies::{
     CommitRequest, ProcessingStrategy, StrategyError, SubmitError,
 };
