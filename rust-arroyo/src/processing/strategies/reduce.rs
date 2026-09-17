@@ -1,3 +1,4 @@
+use crate::metrics;
 use crate::processing::strategies::{
     merge_commit_request, CommitRequest, MessageRejected, ProcessingStrategy, StrategyError,
     SubmitError,

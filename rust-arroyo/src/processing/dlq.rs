@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use crate::backends::kafka::producer::KafkaProducer;
 use crate::backends::kafka::types::KafkaPayload;
 use crate::backends::Producer;
+use crate::metrics;
 use crate::processing::strategies::InvalidMessageReason;
 use crate::types::{BrokerMessage, Partition, Topic, TopicOrPartition};
 

@@ -5,6 +5,7 @@ use crate::backends::ProducerError;
 use crate::backends::{
     AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer, ProducerFuture,
 };
+use crate::metrics;
 use crate::types::{Topic, TopicOrPartition};
 use rdkafka::client::{Client, ClientContext};
 use rdkafka::config::ClientConfig;

@@ -34,6 +34,10 @@ parking_lot = "0.12.1"
 [dev-dependencies]
 tracing-subscriber = "0.3.18"
 
+[[test]]
+name = "metrics"
+path = "rust-arroyo/tests/metrics.rs"
+
 [[example]]
 name = "base_processor"
 path = "rust-arroyo/examples/base_processor.rs"

@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 
+use crate::metrics;
 use crate::processing::strategies::{CommitRequest, ProcessingStrategy, SubmitError};
 use crate::types::{Message, Partition};
 

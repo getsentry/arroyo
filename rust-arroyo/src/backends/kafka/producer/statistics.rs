@@ -1,5 +1,7 @@
 use rdkafka::Statistics;
 
+use crate::metrics;
+
 const BROKER_STATES: &[&str] = &[
     "INIT",
     "DOWN",
