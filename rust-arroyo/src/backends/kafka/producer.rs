@@ -124,6 +124,16 @@ where
     pub fn in_flight_count(&self) -> i32 {
         self.producer.in_flight_count()
     }
+
+    /// Blocks until every queued message has been delivered, or the timeout
+    /// expires.
+    ///
+    /// On timeout, messages are left in the queue. Note that dropping the
+    /// producer purges them rather than delivering them, so a timeout here
+    /// means those messages are lost unless the caller flushes again.
+    pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
+        self.producer.flush(timeout)
+    }
 }
 
 impl<C> ArroyoProducer<KafkaPayload> for KafkaProducer<C>
