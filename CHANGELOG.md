@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.44.1
+
+### New Features ✨
+
+- (metrics) Add global default tags to Rust Arroyo metrics by @lvthanh03 in [#574](https://github.com/getsentry/arroyo/pull/574)
+
 ## 2.44.0
 
 ### New Features ✨
