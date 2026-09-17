@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Arroyo Architecture - Arroyo documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Processing Strategies" href="strategies/index.html" /><link rel="prev" title="Getting started with Arroyo" href="getstarted.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=ad592e98" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=14737038" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=d78f5285" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/><meta property="og:title" content="Arroyo Architecture"/>
+    <meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      <img class="light-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <img class="dark-logo" src="_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <strong>Arroyo</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="what_for.html">What is Arroyo for?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getstarted.html">Getting started with Arroyo</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Arroyo Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="strategies/index.html">Processing Strategies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="strategies/filter.html">Filter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/reduce.html">Reduce (Fold)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/unfold.html">Unfold</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/batching.html">Batch and Unbatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task.html">Run Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_in_threads.html">Run Task in Threads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/run_task_with_multiprocessing.html">Run Task with Multiprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/produce.html">Produce</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/commit_offsets.html">Commit offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/noop.html">Noop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="strategies/healthcheck.html">Healthchecks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="offsets.html">Committing offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dlqs.html">Dead letter queues</a></li>
+<li class="toctree-l1"><a class="reference internal" href="backpressure.html">Backpressure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="metrics.html">Metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameters.html">Common consumer parameters</a></li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#streaming-interface-and-streaming-engine">Streaming Interface and Streaming Engine</a></li>
+<li><a class="reference internal" href="#high-level-strategies">High level strategies</a></li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="index.html"><span itemprop="name">Arroyo</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Arroyo Architecture</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="arroyo-architecture">
+<h1>Arroyo Architecture<a class="headerlink" href="#arroyo-architecture" title="Link to this heading">¶</a></h1>
+<p>Arroyo is a set of high level abstractions to interact with Kafka.
+These are meant to help the developer in writing performant consumers with
+specific delivery guarantees.</p>
+<p>Common problems addressed by Arroyo are guaranteeing at-least-once delivery,
+providing a dead letter queue abstraction, support parallel (multi-processing)
+message processing, etc.</p>
+<p>The library is divided into three layers: the basic Kafka connectivity, the
+streaming engine and the high level abstractions.</p>
+<p>The basic connectivity layer is a simple wrapper around the Confluent python
+library, which is itself based on librdkafka. Besides some cosmetic changes,
+this level provides a Fake in memory broker and consumer to make unit test quick
+to run.</p>
+<p>The streaming engine provides an asynchronous processing interface to write
+consumers. The consumer is written as a pipeline where each segment is an
+asynchronous operation. The streaming engine implements the main consumer loop
+and delegates the processing to the pipeline.</p>
+<p>On top of the streaming engine, the library provides high-level abstractions that
+are common when writing Kafka consumers like: <em>map</em>, <em>reduce</em>, <em>filter</em> together
+with some common messaging application patterns like the dead letter queue.</p>
+<section id="streaming-interface-and-streaming-engine">
+<h2>Streaming Interface and Streaming Engine<a class="headerlink" href="#streaming-interface-and-streaming-engine" title="Link to this heading">¶</a></h2>
+<p>A Kafka consumer is built as a pipeline where each segment processes messages in
+an asynchronous way. The Streaming engine provides a message to a segment. The
+segment is not supposed to execute small CPU work in a blocking way or do IO in a
+non-blocking way. We generally use futures for this, and heavier CPU work in a
+separate process.</p>
+<p>Arroyo provides an interface to implement to write a pipeline segment.
+The segment interface is called <em>ProcessingStrategy</em> and is in
+<a class="reference external" href="https://github.com/getsentry/arroyo/blob/main/arroyo/processing/strategies/abstract.py">this module</a>.
+(TODO: bring the docstrings to the docs and reference that).</p>
+<p>In most cases, when developing a consumer, the developer would not implement
+that interface directly. A higher level abstraction would be used.</p>
+<figure class="align-default">
+<img alt="_images/arroyo_processing.png" src="_images/arroyo_processing.png" />
+</figure>
+<p>The main consumer loop is managed by the <a class="reference external" href="https://github.com/getsentry/arroyo/blob/main/arroyo/processing/processor.py">stream engine</a>.
+These are the phases:</p>
+<ul class="simple">
+<li><p>Poll from the Kafka consumer through the basic library. If a message is there
+proceed or repeat.</p></li>
+<li><p>Submit the message to the first <em>ProcessingStrategy</em>. This is supposed to deliver
+work for the strategy to do. It is not supposed to be a blocking operation. The
+strategy should return immediately.</p></li>
+<li><p>Poll the strategy to execute work or to forward results to the following step
+in the pipeline. Ideally all IO should be done in separate threads and heavy cpu
+work should be done in separate processes so the <em>poll</em> method should check for
+completed work, dispatch to the next step and return. In practice, work is executed
+here in a blocking way if the overhead of offloading the work is too high.</p></li>
+</ul>
+<p>The <em>ProcessingStrategy</em> may decide not to take the message and instead apply back-pressure.
+This is done by raising the <em>MessageRejected</em> exception. In this case, the streaming
+engine pauses the consumer till the strategy is ready to accept the message.</p>
+<p>The <em>ProcessingStrategy</em> decides when it is time to commit a message. This is done
+through a commit callback provided to the strategy when it is instantiated.</p>
+<p>The streaming engine orchestrates the life cycle of the <em>ProcessingStrategy</em>, thus
+when it thinks it is time to shut the strategy down it would wait for all in-flight
+work to be completed and then destroy the strategy.</p>
+<p>There are two scenarios where this can happen:</p>
+<ul class="simple">
+<li><p>The consumer is being terminated.</p></li>
+<li><p>A rebalancing happened. A rebalancing revokes partitions and assigns new ones.
+After a rebalancing is complete it is impossible to commit a message from a partition
+that was revoked. In order to ensure the consumer behaves in a consistent way,
+upon rebalancing, the streaming engine destroys the strategy and builds a new one.
+This allows the strategy to complete all in-flight work before being terminated.</p></li>
+</ul>
+</section>
+<section id="high-level-strategies">
+<h2>High level strategies<a class="headerlink" href="#high-level-strategies" title="Link to this heading">¶</a></h2>
+<p>Most consumers follow the same few patterns, so Arroyo provides abstractions that
+are based on the <em>ProcessingStrategy</em> but are simpler to implement for the common
+use cases.</p>
+<p>Common examples are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">task,</span> <span class="pre">run</span> <span class="pre">task</span> <span class="pre">in</span> <span class="pre">threads,</span> <span class="pre">run</span> <span class="pre">task</span> <span class="pre">with</span> <span class="pre">multiprocessing</span></code>. The run task
+set of strategies are designed to be the most flexible and simple to use. They take
+a function provided by the user and execute it on every message, passing the output
+to the next step. The library includes synchronous and asynchronous versions depending
+on the kind of concurrency required by the user.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">filter,</span> <span class="pre">map</span> <span class="pre">and</span> <span class="pre">forward</span></code>. This type of consumer inspects a message, decides
+whether to process it or discard it, transforms its content, and produces the result
+on a new topic. In this case, Arroyo provides three implementations of the
+<em>ProcessingStrategy</em>: <em>filter</em>, <em>transform</em>, and <em>produce</em>. The developer only needs
+to wire them together and provide the map and filtering logic.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">consume,</span> <span class="pre">apply</span> <span class="pre">side</span> <span class="pre">effects,</span> <span class="pre">produce</span></code>. This is a variation of the one above.
+In this case, the transform operation can have side-effects like storing the content
+of the message somewhere.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">high</span> <span class="pre">throughput</span> <span class="pre">cpu</span> <span class="pre">intensive</span> <span class="pre">transform</span></code>. The python GIL does not allow CPU intensive
+work to take advantage of parallelism. Arroyo provides an implementation of the <em>map</em>
+pattern that batches messages and dispatches the work to separate processes via shared
+memory. This is largely transparent to the developers.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">map,</span> <span class="pre">reduce</span> <span class="pre">and</span> <span class="pre">store</span></code>. The reduce function is carried out by the <em>Collector</em>, which
+batches messages and executes some logic with side-effects when the batch is full.
+This is a typical way to write messages on a storages in batches to reduce the
+round trips.</p></li>
+</ul>
+<p>All strategies included with Arroyo are in <a class="reference external" href="https://github.com/getsentry/arroyo/tree/main/arroyo/processing/strategies">the strategies module</a>.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="getstarted.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Getting started with Arroyo</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="strategies/index.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Processing Strategies</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2023, Sentry Team and Contributors</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/shibuya.js?v=c1cf1a6b"></script></body>
+</html>
