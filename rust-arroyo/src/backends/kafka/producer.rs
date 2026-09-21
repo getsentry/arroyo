@@ -14,7 +14,7 @@ use rdkafka::producer::{
     ThreadedProducer,
 };
 use rdkafka::{Message, Statistics};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod statistics;
 
@@ -113,14 +113,23 @@ where
         self.producer.in_flight_count()
     }
 
-    /// Blocks until every queued message has been delivered, or the timeout
-    /// expires.
+    /// Blocks until the queue is delivered or the timeout expires. Messages
+    /// remain queued on timeout.
     ///
-    /// On timeout, messages are left in the queue. Note that dropping the
-    /// producer purges them rather than delivering them, so a timeout here
-    /// means those messages are lost unless the caller flushes again.
+    /// Retries against a wall-clock deadline because rdkafka before 0.38
+    /// budgets `flush` by poll count, so early-returning polls can exhaust its
+    /// timeout before the requested time passes.
     pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
-        self.producer.flush(timeout)
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match self.producer.flush(remaining) {
+                Ok(()) => return Ok(()),
+                Err(error) if remaining.is_zero() => return Err(error),
+                Err(_) => {}
+            }
+        }
     }
 }
 

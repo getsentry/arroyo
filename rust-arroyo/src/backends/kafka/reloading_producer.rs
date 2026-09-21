@@ -1,41 +1,23 @@
-//! A producer that swaps its underlying Kafka client when config changes.
-//!
-//! The host pushes an opaque config blob at startup and on changes. Arroyo
-//! validates it, detects changes, and drains and replaces the client.
+//! A producer that swaps its Kafka client when config changes.
 //!
 //! # Ordering across a swap
 //!
-//! Messages already queued on the old client have not been written yet. If a
-//! keyed message went to the new client while an older message with the same
-//! key sat in the old client's queue, the two could reach the partition out of
-//! order. So keyed produce calls wait for the old client to drain, while
-//! unkeyed produce calls, which have no ordering requirement, go straight to
-//! the new client.
+//! A keyed message sent through the new client could overtake an older message
+//! queued on the old client. During a swap, produce calls therefore append to a
+//! buffer while the old client drains. The new client is then installed and
+//! the buffer is replayed under the write lock. Produce does not wait for the
+//! drain.
 //!
-//! Applications that key only to spread load, and do not care about the order
-//! of same-key messages, can set [`ReloadConfig::ignore_key_ordering`] to skip
-//! the wait entirely.
+//! Unkeyed messages also buffer. Sending them to the old client would prevent
+//! its queue from emptying, while sending them to the new client would bypass
+//! the buffered keyed messages.
 //!
-//! If the drain outlasts [`ReloadConfig::drain_timeout`], keyed produce calls
-//! stop waiting rather than blocking the application indefinitely, accepting
-//! that ordering may break.
+//! [`ReloadConfig::ignore_key_ordering`] skips the buffer, installs the new
+//! client immediately, and drains the old client in the background.
 //!
-//! # Messages lost on a slow drain
-//!
-//! rdkafka purges queued and in-flight messages when a producer is dropped, so
-//! a drain timeout loses messages rather than delivering them late. Size
-//! [`ReloadConfig::drain_timeout`] for the queue depth at reload time, and alert
-//! on `arroyo.producer.config_reload_purged_messages`.
-//!
-//! # Scope
-//!
-//! This wraps [`KafkaProducer`] only. There is deliberately no reloading
-//! counterpart for [`AsyncKafkaProducer`]: the ordering guarantee above is
-//! built on a blocking condvar wait made while holding a lock, which an async
-//! produce path cannot reuse. An async version would be a sibling type sharing
-//! the config and settings here, not a generalization of this one.
-//!
-//! [`AsyncKafkaProducer`]: super::producer::AsyncKafkaProducer
+//! The buffer is capped by [`ReloadConfig::max_buffered_messages`]. A timed-out
+//! drain drops messages left on the old client because rdkafka purges them when
+//! the client is dropped.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -54,30 +36,25 @@ use crate::types::TopicOrPartition;
 /// Knobs for how reloads are carried out.
 #[derive(Debug, Clone)]
 pub struct ReloadConfig {
-    /// How long to drain the old client and how long keyed produces wait for it.
+    /// How long to flush the old client before dropping it and purging what
+    /// remains. Produce calls buffer during this time.
     pub drain_timeout: Duration,
+    /// Maximum messages held while the old client drains. Produce calls fail
+    /// once this is reached. Keep it below `queue.buffering.max.messages`.
+    pub max_buffered_messages: usize,
     /// Upper bound on the random delay before a swap. Spreads swaps across a
     /// fleet so a config change does not stall every pod at once.
     pub jitter: Duration,
-    /// How long to wait for the new client to reach a broker before swapping
-    /// it in. `None` skips the check.
-    ///
-    /// Building a client does no I/O, so a config naming an unreachable broker
-    /// constructs fine. Without this check such a config would retire a
-    /// working producer and install a dead one. The check runs off the
-    /// caller's thread, so it delays a swap rather than blocking anyone.
+    /// How long the worker waits for the new client to reach a broker before
+    /// swapping it in. `None` skips the check.
     pub probe_timeout: Option<Duration>,
-    /// How long to wait before probing again after a failed probe.
-    ///
-    /// Probing retries until it succeeds or a newer config supersedes it,
-    /// since an unreachable broker is as likely to be a blip as a bad config.
+    /// Delay between failed broker probes. Probes continue until one succeeds
+    /// or the config is superseded.
     pub probe_retry_interval: Duration,
-    /// Treat keyed messages like unkeyed ones: never wait for a drain.
+    /// Install the new client immediately and drain the old one afterwards,
+    /// with no buffering.
     ///
-    /// Set this when the key is only there to spread load across partitions
-    /// and nothing downstream depends on same-key messages arriving in order.
-    /// Produce calls then never block on a reload, at the cost of the ordering
-    /// guarantee described in the module docs.
+    /// Set this only when same-key message order does not matter.
     pub ignore_key_ordering: bool,
 }
 
@@ -85,6 +62,7 @@ impl Default for ReloadConfig {
     fn default() -> Self {
         Self {
             drain_timeout: Duration::from_secs(10),
+            max_buffered_messages: 10_000,
             jitter: Duration::ZERO,
             probe_timeout: Some(Duration::from_secs(5)),
             probe_retry_interval: Duration::from_secs(5),
@@ -96,13 +74,8 @@ impl Default for ReloadConfig {
 /// What a call to [`ReloadingKafkaProducer::push_config`] did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReloadOutcome {
-    /// The config is valid and differs from what is running, so it has been
-    /// handed to the reload worker.
-    ///
-    /// The swap happens in the background once the config clears the broker
-    /// probe and jitter, so the new client is not live yet when this
-    /// returns. Watch [`ReloadingKafkaProducer::generation`] or the
-    /// `arroyo.producer.config_reload_applied` metric for that.
+    /// The valid, changed config was handed to the worker. It is not live yet;
+    /// watch [`ReloadingKafkaProducer::generation`] for the swap.
     Accepted,
     /// The blob parsed, but produced the same config as the running client.
     /// Any config queued but not yet applied is dropped.
@@ -112,6 +85,12 @@ pub enum ReloadOutcome {
 struct Current {
     producer: Arc<KafkaProducer>,
     config: KafkaConfig,
+    /// Set while `producer` is draining for a swap. Produce calls append here
+    /// instead of enqueueing on a client that is on its way out.
+    ///
+    /// The worker changes this only under the write lock, so a produce call
+    /// sees either a usable client or the buffer.
+    buffer: Option<Mutex<Vec<(TopicOrPartition, KafkaPayload)>>>,
 }
 
 /// A producer whose configuration can be replaced while it is running.
@@ -120,9 +99,7 @@ struct Current {
 #[derive(Clone)]
 pub struct ReloadingKafkaProducer {
     inner: Arc<Inner>,
-    /// Held only for its `Drop`: when the last handle goes away, this stops
-    /// the reload worker. The worker holds a `Weak<Inner>` instead of a handle,
-    /// so it does not keep this alive.
+    /// Its final `Drop` stops the worker, which holds only a weak reference.
     _shutdown: Arc<ShutdownOnDrop>,
 }
 
@@ -139,14 +116,9 @@ impl Drop for ShutdownOnDrop {
 }
 
 struct Inner {
-    /// Read on every produce, write only during a swap.
+    /// Read on every produce, taken for writing only to start buffering and
+    /// to install.
     current: RwLock<Current>,
-    /// Number of drains in progress, normally zero or one. Keyed produce calls
-    /// wait for it to reach zero. Separate from `current` so produce calls are
-    /// not blocked merely to read the pointer.
-    drains_in_flight: Mutex<usize>,
-    /// Signalled when `drains_in_flight` reaches zero.
-    drain_done: Condvar,
     /// Serializes reloads and holds the state a swap needs.
     reload: Mutex<ReloadState>,
     /// Signalled when `reload.desired` or `reload.shutdown` changes.
@@ -154,45 +126,43 @@ struct Inner {
     selector: ProducerSelector,
     settings: ReloadConfig,
     generation: AtomicU64,
-    /// Test-only: keyed enqueues without the ordering proof.
+    /// `client.id`, for metric tags. Resolved once: the selector this producer
+    /// serves is fixed, so the name is too.
+    producer_name: String,
+    /// Test-only queue depth when the old client was swapped out.
     #[cfg(test)]
-    enqueued_during_drain: AtomicU64,
-    /// Test-only: keyed enqueues with the ordering proof.
+    queue_depth_at_swap: std::sync::atomic::AtomicI32,
+    /// Test-only messages purged when the retired client was dropped.
     #[cfg(test)]
-    keyed_enqueues: AtomicU64,
-    /// Test-only: blocks the worker inside `probe` so a test can make a push
-    /// land while a rollout is provably in flight, instead of racing a sleep
-    /// against a probe that finishes in microseconds.
+    purged_at_drop: AtomicU64,
+    /// Test-only calls to `drain`.
+    #[cfg(test)]
+    drains: AtomicU64,
+    /// Test-only gate that holds the worker inside `probe`.
     #[cfg(test)]
     probe_gate: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
-    /// Test-only: counts probe attempts, so a test can tell whether the worker
-    /// abandoned a config or is still retrying it.
+    /// Test-only probe attempt count.
     #[cfg(test)]
     probe_attempts: AtomicU64,
-    /// Test-only: parks the worker after the probe and jitter, immediately
-    /// before the install decision, so a test can land a push inside the exact
-    /// window the atomic re-check in `swap` guards. In production that window
-    /// is the jitter sleep; the gate makes it wide deterministically where
-    /// jitter makes it wide randomly.
+    /// Test-only gate immediately before `install`.
     ///
-    /// This must sit between the jitter sleep and the `reload` lock. Moving it
-    /// inside the critical section would quietly weaken the test that depends
-    /// on it into a duplicate of `test_revert_cancels_an_in_flight_rollout`.
+    /// This must sit after the drain and before `install` takes `reload`.
+    /// Moving it earlier lets `swap` catch the push and weakens the test into a
+    /// duplicate of `test_revert_cancels_an_in_flight_rollout`.
     #[cfg(test)]
     swap_gate: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
-    /// Test-only: rollouts the worker has finished, however they ended, so a
-    /// test can wait for the outcome to be settled instead of sleeping.
+    /// Test-only completed rollout count.
     #[cfg(test)]
     rollouts_finished: AtomicU64,
 }
 
 struct ReloadState {
-    /// The config the host wants instead of the current one.
-    ///
-    /// Each push overwrites it; a revert clears it. The worker clones it and
-    /// leaves it in place while working, so either change cancels an in-flight
-    /// rollout before it can swap.
+    /// Desired config. A push overwrites it and a revert clears it, which can
+    /// cancel an in-flight rollout.
     desired: Option<KafkaConfig>,
+    /// When `desired` was last set, to measure how long a config took to go
+    /// live. Reset on overwrite, so it always belongs to the current `desired`.
+    desired_since: Option<Instant>,
     /// Set when every handle is dropped, to stop the worker.
     shutdown: bool,
 }
@@ -200,15 +170,33 @@ struct ReloadState {
 impl ReloadingKafkaProducer {
     /// Builds a producer from an initial config blob.
     ///
-    /// The blob is opaque to the caller: pass the bytes from options-automator
-    /// straight through. `selector` says which topic and application to resolve
-    /// config for.
+    /// Pass the opaque config bytes through. `selector` chooses the topic and
+    /// application config.
     pub fn new(
         blob: &[u8],
         selector: ProducerSelector,
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
-        let config = ConfigBlob::parse(blob)?.producer_config(&selector)?;
+        let parsed = ConfigBlob::parse(blob).and_then(|blob| blob.producer_config(&selector));
+
+        let config = match parsed {
+            Ok(config) => config,
+            Err(error) => {
+                // Tagged `initial` because a blob that is bad at startup and one
+                // that goes bad later are different problems: the first fails a
+                // deploy, the second leaves a pod running stale config.
+                metrics::counter!(
+                    "arroyo.producer.config_reload_rejected",
+                    "topic" => selector.topic().to_owned(),
+                    "producer_name" => UNNAMED_PRODUCER,
+                    "source" => "initial",
+                    "reason" => blob_error_reason(&error),
+                )
+                .increment(1);
+                return Err(error.into());
+            }
+        };
+
         Self::from_config(config, selector, settings)
     }
 
@@ -221,29 +209,44 @@ impl ReloadingKafkaProducer {
         selector: ProducerSelector,
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
+        let producer_name = producer_name_of(&config);
         let producer = Arc::new(KafkaProducer::new(config.clone())?);
         tracing::info!(
             topic = %selector.topic(),
             app = %selector.app(),
+            producer_name = %producer_name,
             "loaded initial producer config"
         );
 
+        metrics::counter!(
+            "arroyo.producer.config_reload_loaded",
+            "topic" => selector.topic().to_owned(),
+            "producer_name" => producer_name.clone(),
+        )
+        .increment(1);
+
         let inner = Arc::new(Inner {
-            current: RwLock::new(Current { producer, config }),
-            drains_in_flight: Mutex::new(0),
-            drain_done: Condvar::new(),
+            current: RwLock::new(Current {
+                producer,
+                config,
+                buffer: None,
+            }),
             reload: Mutex::new(ReloadState {
                 desired: None,
+                desired_since: None,
                 shutdown: false,
             }),
             reload_wake: Condvar::new(),
             selector,
             settings,
             generation: AtomicU64::new(0),
+            producer_name,
             #[cfg(test)]
-            enqueued_during_drain: AtomicU64::new(0),
+            queue_depth_at_swap: std::sync::atomic::AtomicI32::new(0),
             #[cfg(test)]
-            keyed_enqueues: AtomicU64::new(0),
+            purged_at_drop: AtomicU64::new(0),
+            #[cfg(test)]
+            drains: AtomicU64::new(0),
             #[cfg(test)]
             probe_gate: Mutex::new(None),
             #[cfg(test)]
@@ -274,14 +277,36 @@ impl ReloadingKafkaProducer {
 
     /// Hands a new config blob to the producer.
     ///
-    /// Call when the blob changes. Unchanged blobs do nothing; invalid blobs
-    /// leave the current client untouched.
-    ///
-    /// This parses and hands off without blocking. [`ReloadOutcome::Accepted`]
-    /// means rollout started, not that the config is live; watch
-    /// [`ReloadingKafkaProducer::generation`]. Broker work happens on the worker.
+    /// Parses and hands a changed blob to the worker. Invalid blobs leave the
+    /// current client untouched. [`ReloadOutcome::Accepted`] does not mean the
+    /// config is live; watch [`ReloadingKafkaProducer::generation`].
     pub fn push_config(&self, blob: &[u8]) -> Result<ReloadOutcome, ReloadError> {
-        let config = ConfigBlob::parse(blob)?.producer_config(&self.inner.selector)?;
+        let parsed =
+            ConfigBlob::parse(blob).and_then(|blob| blob.producer_config(&self.inner.selector));
+
+        let config = match parsed {
+            Ok(config) => config,
+            Err(error) => {
+                // Named after the running client: a blob that does not parse
+                // has no name of its own, and what an operator needs to know is
+                // which producer is now stuck on stale config.
+                metrics::counter!(
+                    "arroyo.producer.config_reload_rejected",
+                    "topic" => self.inner.selector.topic().to_owned(),
+                    "producer_name" => self.inner.producer_name.clone(),
+                    "source" => "push",
+                    "reason" => blob_error_reason(&error),
+                )
+                .increment(1);
+                tracing::error!(
+                    topic = %self.inner.selector.topic(),
+                    %error,
+                    "could not resolve the pushed config blob, staying on the running config"
+                );
+                return Err(error.into());
+            }
+        };
+
         Ok(self.inner.set_desired(config))
     }
 
@@ -291,20 +316,34 @@ impl ReloadingKafkaProducer {
         self.inner.generation.load(Ordering::SeqCst)
     }
 
-    /// Messages accepted but not yet delivered by the live client.
+    /// Messages accepted but not yet delivered, including any held while a
+    /// reload drains the old client.
     pub fn in_flight_count(&self) -> i32 {
-        self.inner.current.read().producer.in_flight_count()
-    }
+        let current = self.inner.current.read();
+        let buffered = current
+            .buffer
+            .as_ref()
+            .map_or(0, |buffer| buffer.lock().len());
 
-    /// Pretends a drain is in progress, so tests can observe how produce calls
-    /// behave during one without racing a real flush.
-    #[cfg(test)]
-    fn block_drain_for_test(&self) -> DrainGuard {
-        DrainGuard::new(self.inner.clone())
+        current
+            .producer
+            .in_flight_count()
+            .saturating_add(buffered.try_into().unwrap_or(i32::MAX))
     }
 }
 
 impl Inner {
+    /// Records whether a rollout is pending. Call under `reload` after each
+    /// change to `desired` so the gauge cannot drift.
+    fn record_pending(&self, reload: &ReloadState) {
+        metrics::gauge!(
+            "arroyo.producer.config_reload_pending",
+            "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
+        )
+        .set(u8::from(reload.desired.is_some()));
+    }
+
     /// Records the config the host wants running and wakes the worker.
     fn set_desired(self: &Arc<Self>, config: KafkaConfig) -> ReloadOutcome {
         let mut reload = self.reload.lock();
@@ -313,33 +352,35 @@ impl Inner {
         if config_eq(&config, &self.current.read().config) {
             // Clearing `desired` cancels any rollout back to this current config.
             reload.desired = None;
+            reload.desired_since = None;
             self.reload_wake.notify_all();
+            self.record_pending(&reload);
             metrics::counter!(
                 "arroyo.producer.config_reload_unchanged",
                 "topic" => self.selector.topic().to_owned(),
+                "producer_name" => self.producer_name.clone(),
             )
             .increment(1);
             return ReloadOutcome::Unchanged;
         }
 
-        // Overwrite so only the newest config remains. An identical push leaves
-        // an in-flight rollout undisturbed.
+        // Overwrite so only the newest config remains.
         reload.desired = Some(config);
+        reload.desired_since = Some(Instant::now());
         self.reload_wake.notify_all();
+        self.record_pending(&reload);
 
         metrics::counter!(
             "arroyo.producer.config_reload_accepted",
             "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
         )
         .increment(1);
 
         ReloadOutcome::Accepted
     }
 
-    /// Runs the reload worker until every handle is dropped.
-    ///
-    /// Owns everything that must not block the application: the broker probe,
-    /// jitter, the swap, and draining the old client.
+    /// Runs broker probes and swaps until every handle is dropped.
     fn run_worker(self: &Arc<Self>) {
         loop {
             let config = {
@@ -364,33 +405,38 @@ impl Inner {
             #[cfg(test)]
             self.rollouts_finished.fetch_add(1, Ordering::SeqCst);
 
-            // Done with this config, whether it went live or was abandoned.
-            // Clear it so the worker can go back to sleep, unless a push
-            // replaced it while we worked, in which case leave the newer one
-            // for the next iteration.
+            // Clear the handled config, but preserve a newer one.
+            //
+            // Known gap: the lock is released between abandoning a rollout and
+            // getting here, and a config re-pushed inside that window is
+            // indistinguishable from the one just handled, so it gets cleared
+            // and never rolls out despite `push_config` returning `Accepted`.
+            // Needs a sequence number on `desired` to fix properly.
             let mut reload = self.reload.lock();
             if reload
                 .desired
                 .as_ref()
-                .is_some_and(|d| config_eq(d, &config))
+                .is_some_and(|desired| config_eq(desired, &config))
             {
                 reload.desired = None;
+                reload.desired_since = None;
             }
+            self.record_pending(&reload);
         }
     }
 
     /// Probes a config and swaps to it, retrying until it is healthy or the
     /// host stops wanting it.
     fn reload_to(self: &Arc<Self>, config: &KafkaConfig) {
-        // Build once outside the retry loop. Rebuilding would spawn fresh
-        // rdkafka threads to connect-spam a dead broker on every retry.
-        // Invalid client config never reaches the probe or affects the current client.
+        // Build once; rebuilding would spawn rdkafka threads on every retry.
         let candidate = match KafkaProducer::new(config.clone()) {
             Ok(producer) => Arc::new(producer),
             Err(error) => {
                 metrics::counter!(
                     "arroyo.producer.config_reload_rejected",
                     "topic" => self.selector.topic().to_owned(),
+                    "producer_name" => self.producer_name.clone(),
+                    "source" => "push",
                     "reason" => "client_build",
                 )
                 .increment(1);
@@ -403,9 +449,20 @@ impl Inner {
             }
         };
 
+        let mut attempts = 0u64;
+
         loop {
+            attempts += 1;
+
             match self.probe(&candidate) {
                 Ok(()) => {
+                    metrics::histogram!(
+                        "arroyo.producer.config_reload_probe_attempts",
+                        "topic" => self.selector.topic().to_owned(),
+                        "producer_name" => self.producer_name.clone(),
+                    )
+                    .record(attempts as f64);
+
                     // `swap` re-checks that the config is still wanted itself,
                     // atomically with installing the client.
                     self.swap(candidate.clone(), config);
@@ -415,19 +472,18 @@ impl Inner {
                     metrics::counter!(
                         "arroyo.producer.config_reload_probe_failed",
                         "topic" => self.selector.topic().to_owned(),
+                        "producer_name" => self.producer_name.clone(),
                     )
                     .increment(1);
                     tracing::warn!(
                         topic = %self.selector.topic(),
                         %error,
+                        attempts,
                         "new config cannot reach a broker, staying on the running one"
                     );
                 }
             }
 
-            // Retry until healthy or superseded. An unreachable broker is as
-            // likely to be a blip as a bad config, and the running producer is
-            // unaffected while we wait.
             let mut reload = self.reload.lock();
             let interval = self.settings.probe_retry_interval;
 
@@ -441,8 +497,6 @@ impl Inner {
             self.reload_wake.wait_for(&mut reload, interval);
 
             if superseded(&reload, config) {
-                // The host wants something else, or we are shutting down.
-                // Abandon this one; the worker loop picks up what is desired.
                 return;
             }
         }
@@ -471,30 +525,55 @@ impl Inner {
         }
 
         let started = Instant::now();
-        // Metadata for the topic we produce to: one round-trip, no message
-        // written, and it also catches a topic that does not exist.
+        // Topic metadata probes the broker without producing a message.
         let result =
             candidate.validate_topic(crate::types::Topic::new(self.selector.topic()), timeout);
 
         metrics::histogram!(
             "arroyo.producer.config_reload_probe_ms",
             "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
         )
         .record(started.elapsed().as_millis() as f64);
 
         result
     }
 
-    /// Installs an already-probed client and drains the old one.
+    /// Drains the old client and installs an already-probed one in its place.
     fn swap(self: &Arc<Self>, new_producer: Arc<KafkaProducer>, config: &KafkaConfig) {
-        // Jitter before claiming anything, so a fleet does not swap in unison.
+        // Spread swaps across instances.
         if !self.settings.jitter.is_zero() {
             let jitter = rand::random::<f64>() * self.settings.jitter.as_secs_f64();
             std::thread::sleep(Duration::from_secs_f64(jitter));
         }
 
-        // Test-only: park here, after the jitter and before the install
-        // decision, so a test can land a push inside the guarded window.
+        // Bail out before doing any work if the host already wants something
+        // else. `install` checks again, atomically with the install itself;
+        // this one just avoids buffering and draining for nothing.
+        if superseded(&self.reload.lock(), config) {
+            self.record_superseded(0);
+            return;
+        }
+
+        // Start buffering, so the old client stops receiving messages and its
+        // queue can actually reach zero. Produce calls append to the buffer
+        // from here until `install` takes it away again.
+        //
+        // Skipped when ordering does not matter: the new client then goes in
+        // straight away and the old one drains behind it.
+        if !self.settings.ignore_key_ordering {
+            let mut current = self.current.write();
+            current.buffer = Some(Mutex::new(Vec::new()));
+            let draining = current.producer.clone();
+            drop(current);
+
+            // Nothing feeds this client now, so the flush can converge.
+            self.drain(&draining, self.settings.drain_timeout);
+        }
+
+        // Test-only: park here, with the buffer live and the old client
+        // drained, so a test can land a push in the window that the atomic
+        // re-check inside `install` guards.
         #[cfg(test)]
         {
             let gate = self.swap_gate.lock().take();
@@ -503,171 +582,213 @@ impl Inner {
             }
         }
 
-        // After jitter, hold `reload` across the superseded check and install;
-        // otherwise a push between them could install an unwanted client.
-        // Lock order is `reload` then `current`, matching `set_desired`; never
-        // reverse it.
-        let reload = self.reload.lock();
-
-        if superseded(&reload, config) {
-            metrics::counter!(
-                "arroyo.producer.config_reload_superseded",
-                "topic" => self.selector.topic().to_owned(),
-            )
-            .increment(1);
-            tracing::info!(
-                topic = %self.selector.topic(),
-                "config superseded before it went live, not swapping to it"
-            );
+        let Some(old) = self.install(new_producer, config) else {
             return;
+        };
+
+        // Only the unordered path still has a client to drain. On the ordered
+        // path it was drained before the install, and anything the drain did
+        // not get to has to be purged rather than delivered: the buffer has
+        // just gone out on the new client, so delivering older same-key
+        // messages now is the reorder this whole design exists to prevent.
+        if self.settings.ignore_key_ordering {
+            self.drain(&old, self.settings.drain_timeout);
         }
 
-        // Count the drain before the swap becomes visible. A keyed produce
-        // checks this counter while holding a read guard on `current`, so
-        // anything that sees the new client also sees the drain and waits.
-        //
-        // Decremented when this guard is dropped on the drain thread, even if
-        // that thread panics. Leaking a count would make every later keyed
-        // produce wait out the full drain timeout, forever.
-        let drain_guard = DrainGuard::new(self.clone());
+        let purged = old.in_flight_count().max(0) as u64;
 
-        let old = {
-            let mut current = self.current.write();
-            std::mem::replace(
-                &mut *current,
-                Current {
-                    producer: new_producer,
-                    config: config.clone(),
-                },
+        #[cfg(test)]
+        self.purged_at_drop.store(purged, Ordering::SeqCst);
+
+        if purged > 0 {
+            metrics::counter!(
+                "arroyo.producer.config_reload_purged_messages",
+                "topic" => self.selector.topic().to_owned(),
+                "producer_name" => self.producer_name.clone(),
             )
+            .increment(purged);
+            tracing::error!(
+                topic = %self.selector.topic(),
+                purged,
+                "dropping the old client with messages still queued, they are lost"
+            );
+        }
+
+        drop(old);
+    }
+
+    /// Installs a drained client and returns the one it replaced, or `None` if
+    /// the config went stale, in which case the buffer goes back to the client
+    /// that stays.
+    fn install(
+        self: &Arc<Self>,
+        new_producer: Arc<KafkaProducer>,
+        config: &KafkaConfig,
+    ) -> Option<Arc<KafkaProducer>> {
+        // Hold `reload` across the superseded check and the install; otherwise
+        // a push between them could install an unwanted client. Lock order is
+        // `reload` then `current`, matching `set_desired`; never reverse it.
+        let reload = self.reload.lock();
+        let superseded = superseded(&reload, config);
+        let waited_for = reload.desired_since.map(|since| since.elapsed());
+
+        let (old, buffered) = {
+            let mut current = self.current.write();
+
+            // Taking and replaying the buffer under the same guard as the
+            // install is what keeps the order intact: nothing can enqueue in
+            // between, so the buffer goes out ahead of anything produced after.
+            let buffer = current.buffer.take();
+
+            let old = (!superseded).then(|| {
+                #[cfg(test)]
+                self.queue_depth_at_swap
+                    .store(current.producer.in_flight_count(), Ordering::SeqCst);
+
+                current.config = config.clone();
+                std::mem::replace(&mut current.producer, new_producer)
+            });
+
+            let buffered = match buffer {
+                Some(buffer) => self.replay(buffer.into_inner(), &current.producer),
+                None => 0,
+            };
+
+            (old, buffered)
         };
 
         drop(reload);
 
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        let Some(old) = old else {
+            self.record_superseded(buffered);
+            return None;
+        };
+
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         metrics::counter!(
             "arroyo.producer.config_reload_applied",
             "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
         )
         .increment(1);
 
-        let timeout = self.settings.drain_timeout;
-        let selector_topic = self.selector.topic().to_owned();
+        metrics::gauge!(
+            "arroyo.producer.config_reload_generation",
+            "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
+        )
+        .set(generation as f64);
 
-        // Drain inline on the worker to keep `drains_in_flight` at one. Thus a
-        // keyed produce waits for at most one drain; unkeyed produce is unaffected.
-        {
-            let _drain_guard = drain_guard;
-
-            let started = Instant::now();
-            let result = old.producer.flush_for(timeout);
-            let elapsed = started.elapsed();
-
+        if let Some(waited_for) = waited_for {
             metrics::histogram!(
-                "arroyo.producer.config_reload_drain_ms",
-                "topic" => selector_topic.clone(),
+                "arroyo.producer.config_reload_latency_ms",
+                "topic" => self.selector.topic().to_owned(),
+                "producer_name" => self.producer_name.clone(),
             )
-            .record(elapsed.as_millis() as f64);
-
-            match result {
-                Ok(()) => {
-                    tracing::info!(
-                        topic = %selector_topic,
-                        drain_ms = elapsed.as_millis() as u64,
-                        "drained producer after config reload"
-                    );
-                }
-                Err(error) => {
-                    // Drop purges queued and in-flight messages, so a timeout
-                    // loses them rather than delivering them late. Their callbacks report
-                    // purge errors in `arroyo.producer.produce_status`; alert on
-                    // `arroyo.producer.config_reload_purged_messages`.
-                    let queued = old.producer.in_flight_count();
-                    metrics::counter!(
-                        "arroyo.producer.config_reload_drain_timeout",
-                        "topic" => selector_topic.clone(),
-                    )
-                    .increment(1);
-                    metrics::counter!(
-                        "arroyo.producer.config_reload_purged_messages",
-                        "topic" => selector_topic.clone(),
-                    )
-                    .increment(queued.max(0) as u64);
-                    tracing::error!(
-                        topic = %selector_topic,
-                        %error,
-                        queued,
-                        "producer drain timed out after config reload, queued messages will be dropped"
-                    );
-                }
-            }
-
-            drop(old);
+            .record(waited_for.as_millis() as f64);
         }
+
+        tracing::info!(
+            topic = %self.selector.topic(),
+            producer_name = %self.producer_name,
+            generation,
+            latency_ms = waited_for.map(|waited| waited.as_millis() as u64),
+            buffered,
+            "config reload applied"
+        );
+
+        Some(old)
     }
 
-    /// Blocks until no drain is in progress, or until the drain timeout
-    /// expires. Returns `false` if it gave up waiting.
-    ///
-    /// On timeout we fail open: producing matters more than ordering, so the
-    /// caller proceeds and we record that ordering may have been broken.
-    fn wait_for_drain(&self, deadline: Instant) -> bool {
-        let mut in_flight = self.drains_in_flight.lock();
+    fn record_superseded(&self, buffered: usize) {
+        metrics::counter!(
+            "arroyo.producer.config_reload_superseded",
+            "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
+        )
+        .increment(1);
+        tracing::info!(
+            topic = %self.selector.topic(),
+            buffered,
+            "config superseded before it went live, not swapping to it"
+        );
+    }
 
-        while *in_flight > 0 {
-            if self
-                .drain_done
-                .wait_until(&mut in_flight, deadline)
-                .timed_out()
-            {
+    /// Hands buffered messages to `producer`, in the order they were produced.
+    /// Returns how many there were.
+    fn replay(
+        &self,
+        buffer: Vec<(TopicOrPartition, KafkaPayload)>,
+        producer: &KafkaProducer,
+    ) -> usize {
+        let buffered = buffer.len();
+
+        metrics::histogram!(
+            "arroyo.producer.config_reload_buffered_messages",
+            "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
+        )
+        .record(buffered as f64);
+
+        for (destination, payload) in buffer {
+            // The produce call that buffered this already returned Ok, so
+            // there is nobody left to report the error to.
+            if let Err(error) = producer.produce(&destination, payload) {
                 metrics::counter!(
-                    "arroyo.producer.config_reload_produce_fail_open",
+                    "arroyo.producer.config_reload_replay_failed",
                     "topic" => self.selector.topic().to_owned(),
+                    "producer_name" => self.producer_name.clone(),
                 )
                 .increment(1);
-                tracing::warn!(
+                tracing::error!(
                     topic = %self.selector.topic(),
-                    "keyed produce proceeding before drain finished, ordering may be broken"
+                    %error,
+                    "could not replay a buffered message onto the new client"
                 );
-                return false;
             }
         }
 
-        true
+        buffered
     }
 
-    /// Records whether a keyed enqueue observed no drain under its `current`
-    /// guard. Checking first or enqueueing after releasing the guard records no
-    /// proof; only the deliberate timeout path may do so.
-    #[cfg(test)]
-    fn record_keyed_enqueue(&self, ordered: bool) {
-        if ordered {
-            self.keyed_enqueues.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.enqueued_during_drain.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-}
+    /// Flushes a client that no longer accepts messages.
+    fn drain(&self, producer: &KafkaProducer, timeout: Duration) {
+        #[cfg(test)]
+        self.drains.fetch_add(1, Ordering::SeqCst);
 
-/// Releases the drain count on drop, including during panic.
-struct DrainGuard {
-    inner: Arc<Inner>,
-}
+        let started = Instant::now();
+        let result = producer.flush_for(timeout);
+        let elapsed = started.elapsed();
 
-impl DrainGuard {
-    /// Registers a drain; `Drop` guarantees the matching decrement.
-    fn new(inner: Arc<Inner>) -> Self {
-        *inner.drains_in_flight.lock() += 1;
-        Self { inner }
-    }
-}
+        metrics::histogram!(
+            "arroyo.producer.config_reload_drain_ms",
+            "topic" => self.selector.topic().to_owned(),
+            "producer_name" => self.producer_name.clone(),
+        )
+        .record(elapsed.as_millis() as f64);
 
-impl Drop for DrainGuard {
-    fn drop(&mut self) {
-        let mut in_flight = self.inner.drains_in_flight.lock();
-        *in_flight -= 1;
-        if *in_flight == 0 {
-            self.inner.drain_done.notify_all();
+        match result {
+            Ok(()) => tracing::info!(
+                topic = %self.selector.topic(),
+                producer_name = %self.producer_name,
+                drain_ms = elapsed.as_millis() as u64,
+                "drained old producer for config reload"
+            ),
+            Err(error) => {
+                metrics::counter!(
+                    "arroyo.producer.config_reload_drain_timeout",
+                    "topic" => self.selector.topic().to_owned(),
+                    "producer_name" => self.producer_name.clone(),
+                )
+                .increment(1);
+                tracing::error!(
+                    topic = %self.selector.topic(),
+                    producer_name = %self.producer_name,
+                    %error,
+                    queued = producer.in_flight_count(),
+                    "old producer did not drain in time, its queued messages will be dropped"
+                );
+            }
         }
     }
 }
@@ -678,47 +799,33 @@ impl ArroyoProducer<KafkaPayload> for ReloadingKafkaProducer {
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
-        // Unkeyed messages have no ordering constraint, so they never wait for
-        // a drain and go straight to whichever client is live. With
-        // `ignore_key_ordering` the caller says the same holds for keyed ones.
-        if payload.key().is_none() || self.inner.settings.ignore_key_ordering {
-            let current = self.inner.current.read();
+        // The read guard is the whole of the coordination with a reload: the
+        // swap takes the write lock to start buffering and again to install and
+        // replay, so this either enqueues on a client that is still live or
+        // lands in the buffer, never in between.
+        let current = self.inner.current.read();
+
+        let Some(buffer) = &current.buffer else {
             return current.producer.produce(destination, payload);
+        };
+
+        let mut buffer = buffer.lock();
+
+        if buffer.len() >= self.inner.settings.max_buffered_messages {
+            metrics::counter!(
+                "arroyo.producer.config_reload_buffer_full",
+                "topic" => self.inner.selector.topic().to_owned(),
+                "producer_name" => self.inner.producer_name.clone(),
+            )
+            .increment(1);
+            return Err(ProducerError::ProducerFailure {
+                error: "reload buffer is full".to_owned(),
+            });
         }
 
-        // Take `current` first and hold it through the counter check and enqueue.
-        // `swap` counts the drain before taking the write lock, so we either see
-        // the drain and wait, or block the swap until enqueueing on the old client.
-        // Checking the counter first would let a swap land before the `current`
-        // read, enqueueing this message on the new client ahead of older ones.
-        let deadline = Instant::now() + self.inner.settings.drain_timeout;
+        buffer.push((*destination, payload));
 
-        loop {
-            let current = self.inner.current.read();
-            let draining = *self.inner.drains_in_flight.lock() > 0;
-
-            if !draining {
-                #[cfg(test)]
-                self.inner.record_keyed_enqueue(true);
-
-                // Enqueue under the read guard so `swap` cannot install first.
-                return current.producer.produce(destination, payload);
-            }
-
-            // Release the read guard before waiting so the swap can proceed.
-            drop(current);
-
-            if !self.inner.wait_for_drain(deadline) {
-                // Timed out. Fail open: produce against whatever is live now.
-                // The only sanctioned way to enqueue a keyed message without
-                // the ordering proof.
-                #[cfg(test)]
-                self.inner.record_keyed_enqueue(false);
-
-                let current = self.inner.current.read();
-                return current.producer.produce(destination, payload);
-            }
-        }
+        Ok(())
     }
 }
 
@@ -736,7 +843,29 @@ pub enum ReloadError {
     WorkerSpawn(#[source] std::io::Error),
 }
 
-/// Whether shutdown, a newer push, or a revert clearing `desired` cancels this config.
+/// Default `client.id` before config is resolved.
+const UNNAMED_PRODUCER: &str = "unknown";
+
+/// Returns the producer name used in metric tags.
+fn producer_name_of(config: &KafkaConfig) -> String {
+    config
+        .get_config_value("client.id")
+        .cloned()
+        .unwrap_or_else(|| UNNAMED_PRODUCER.to_owned())
+}
+
+/// Metric tag for why a pushed blob was rejected. Low cardinality on purpose:
+/// the offending topic or variable goes in the log line, not the tag.
+fn blob_error_reason(error: &ConfigBlobError) -> &'static str {
+    match error {
+        ConfigBlobError::Malformed(_) => "malformed",
+        ConfigBlobError::UnknownTopic { .. } => "unknown_topic",
+        ConfigBlobError::UnknownCluster { .. } => "unknown_cluster",
+        ConfigBlobError::MissingEnvVar { .. } => "missing_env_var",
+        ConfigBlobError::UnexpectedLogicalTopic { .. } => "unexpected_logical_topic",
+    }
+}
+
 fn superseded(reload: &ReloadState, config: &KafkaConfig) -> bool {
     reload.shutdown
         || !reload
@@ -772,9 +901,26 @@ mod tests {
         .into_bytes()
     }
 
+    /// Builds a config whose queue does not drain by itself during tests.
+    fn lingering_blob(servers: &str, acks: &str) -> Vec<u8> {
+        format!(
+            r#"{{
+                "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
+                "topics": {{
+                    "ingest-events": {{
+                        "cluster": "events",
+                        "producer_config": {{"acks": "{acks}", "linger.ms": "1000"}}
+                    }}
+                }}
+            }}"#
+        )
+        .into_bytes()
+    }
+
     fn settings() -> ReloadConfig {
         ReloadConfig {
             drain_timeout: Duration::from_secs(5),
+            max_buffered_messages: 10_000,
             jitter: Duration::ZERO,
             // MockCluster answers metadata, so probing stays on in tests.
             probe_timeout: Some(Duration::from_secs(5)),
@@ -783,8 +929,6 @@ mod tests {
         }
     }
 
-    /// Waits for the reload worker to reach `generation`, since swaps are no
-    /// longer synchronous with `push_config`.
     #[track_caller]
     fn await_generation(producer: &ReloadingKafkaProducer, generation: u64) {
         let deadline = Instant::now() + Duration::from_secs(15);
@@ -798,8 +942,16 @@ mod tests {
         }
     }
 
-    /// Blocks until the worker is inside `probe`, which it signals by taking
-    /// the gate receiver. Deterministic, unlike sleeping and hoping.
+    /// Waits for post-install drain and drop work to finish.
+    #[track_caller]
+    fn await_rollout(producer: &ReloadingKafkaProducer, rollouts: u64) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while producer.inner.rollouts_finished.load(Ordering::SeqCst) < rollouts {
+            assert!(Instant::now() < deadline, "timed out waiting for a rollout");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[track_caller]
     fn wait_until_probing(producer: &ReloadingKafkaProducer) {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -809,7 +961,6 @@ mod tests {
         }
     }
 
-    /// Asserts no swap happens within a short window.
     #[track_caller]
     fn assert_stays_at_generation(producer: &ReloadingKafkaProducer, generation: u64) {
         std::thread::sleep(Duration::from_millis(300));
@@ -860,7 +1011,6 @@ mod tests {
         assert!(producer.push_config(br#"{"topics": {}}"#).is_err());
 
         assert_stays_at_generation(&producer, 0);
-        // Still usable.
         producer
             .produce(
                 &TopicOrPartition::Topic(crate::types::Topic::new("ingest-events")),
@@ -888,7 +1038,6 @@ mod tests {
         );
         assert_stays_at_generation(&producer, 0);
 
-        // Still producing on the original config.
         producer
             .produce(
                 &TopicOrPartition::Topic(crate::types::Topic::new("ingest-events")),
@@ -916,7 +1065,6 @@ mod tests {
         producer.push_config(&blob("127.0.0.1:1", "all")).unwrap();
         assert_stays_at_generation(&producer, 0);
 
-        // A reachable config replaces the one stuck retrying.
         producer.push_config(&blob(&servers, "1")).unwrap();
         await_generation(&producer, 1);
         assert_eq!(
@@ -985,19 +1133,15 @@ mod tests {
         let (release, gate) = mpsc::channel();
         *producer.inner.probe_gate.lock() = Some(gate);
 
-        // Roll out "1" and hold the worker in its probe.
         producer.push_config(&blob(&servers, "1")).unwrap();
         wait_until_probing(&producer);
 
-        // Queue a further change, then revert to the config being rolled out.
         producer.push_config(&blob(&servers, "0")).unwrap();
         producer.push_config(&blob(&servers, "1")).unwrap();
 
         release.send(()).unwrap();
         await_generation(&producer, 1);
 
-        // Settles on "1" with no second swap: the "0" was replaced before the
-        // worker ever took it.
         assert_stays_at_generation(&producer, 1);
         assert_eq!(
             producer
@@ -1038,137 +1182,131 @@ mod tests {
         await_generation(&producer, 1);
     }
 
-    /// The ordering guarantee: a keyed message must never be enqueued while an
-    /// older client is still draining.
-    ///
-    /// The test holds a drain open because MockCluster drains in microseconds,
-    /// then races a keyed produce with a real swap. It fails if `produce` checks
-    /// the counter before `current`, which can enqueue on the new client first.
+    /// The old queue must be empty at the swap or a same-key message on the
+    /// new client can overtake it. The lingering config makes draining the only
+    /// way to empty the queue.
     #[test]
-    fn test_keyed_produce_never_races_a_swap() {
+    fn test_old_queue_is_empty_when_the_swap_happens() {
         let cluster = MockCluster::new(1).unwrap();
         let servers = cluster.bootstrap_servers();
-        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
-
-        for round in 0..40 {
-            let producer = producer(&servers);
-
-            // Hold a drain open so the window is guaranteed to be wide.
-            let held = producer.block_drain_for_test();
-
-            // A keyed produce that must wait for that drain.
-            let (tx, rx) = mpsc::channel();
-            let writer = producer.clone();
-            std::thread::spawn(move || {
-                let _ = tx.send(writer.produce(
-                    &destination,
-                    KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
-                ));
-            });
-
-            // Let it reach the wait, then swap underneath it.
-            std::thread::sleep(Duration::from_millis(5));
-            producer
-                .push_config(&blob(&servers, &format!("{round}")))
+        let producer =
+            ReloadingKafkaProducer::new(&lingering_blob(&servers, "all"), selector(), settings())
                 .unwrap();
-
-            // Release the drain and let the produce complete.
-            drop(held);
-            rx.recv_timeout(Duration::from_secs(5))
-                .expect("keyed produce never completed")
-                .expect("keyed produce failed");
-
-            assert_eq!(
-                producer.inner.enqueued_during_drain.load(Ordering::Relaxed),
-                0,
-                "keyed produce landed on a client while an older one was draining"
-            );
-            assert!(
-                producer.inner.keyed_enqueues.load(Ordering::Relaxed) > 0,
-                "no keyed enqueues were recorded"
-            );
-        }
-    }
-
-    /// Unkeyed produce must stay non-blocking even under constant swapping,
-    /// since it has no ordering constraint to preserve.
-    #[test]
-    fn test_unkeyed_produce_never_blocks_under_swaps() {
-        let cluster = MockCluster::new(1).unwrap();
-        let servers = cluster.bootstrap_servers();
-        let producer = producer(&servers);
         let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
 
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let worst = Arc::new(Mutex::new(Duration::ZERO));
-
         let writer = {
             let producer = producer.clone();
             let stop = stop.clone();
-            let worst = worst.clone();
             std::thread::spawn(move || {
                 while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-                    let started = Instant::now();
                     producer
                         .produce(
                             &destination,
-                            KafkaPayload::new(None, None, Some(b"payload".to_vec())),
+                            KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
                         )
                         .unwrap();
-                    let elapsed = started.elapsed();
-
-                    let mut worst = worst.lock();
-                    if elapsed > *worst {
-                        *worst = elapsed;
-                    }
+                    std::thread::sleep(Duration::from_millis(1));
                 }
             })
         };
 
-        for i in 0..25 {
-            producer
-                .push_config(&blob(&servers, &format!("{}", i % 2)))
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(2));
-        }
+        producer
+            .push_config(&lingering_blob(&servers, "1"))
+            .unwrap();
+        await_generation(&producer, 1);
 
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         writer.join().unwrap();
 
-        // Nowhere near drain_timeout (5s); it never waited on a drain.
-        let worst = *worst.lock();
-        assert!(
-            worst < Duration::from_millis(500),
-            "unkeyed produce blocked for {worst:?}, it should never wait for a drain"
+        assert_eq!(
+            producer.inner.queue_depth_at_swap.load(Ordering::SeqCst),
+            0,
+            "swapped out a client that still had messages queued"
         );
     }
 
-    /// A panicking drain must not strand the counter, which would make every
-    /// later keyed produce wait out the full timeout.
+    /// Produce must not stall during a drain. An unreachable broker forces
+    /// this drain to run for the full timeout.
     #[test]
-    fn test_drain_guard_releases_on_panic() {
+    fn test_produce_does_not_wait_for_a_drain_that_never_finishes() {
         let cluster = MockCluster::new(1).unwrap();
-        let producer = producer(&cluster.bootstrap_servers());
+        let servers = cluster.bootstrap_servers();
 
-        let inner = producer.inner.clone();
-        std::thread::spawn(move || {
-            let _guard = DrainGuard::new(inner);
-            panic!("drain exploded");
-        })
-        .join()
-        .unwrap_err();
+        let producer = ReloadingKafkaProducer::new(
+            &blob("127.0.0.1:1", "all"),
+            selector(),
+            ReloadConfig {
+                drain_timeout: Duration::from_secs(30),
+                ..settings()
+            },
+        )
+        .unwrap();
+        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
 
-        assert_eq!(*producer.inner.drains_in_flight.lock(), 0);
-
-        // Keyed produce still proceeds immediately.
-        let started = Instant::now();
         producer
             .produce(
-                &TopicOrPartition::Topic(crate::types::Topic::new("ingest-events")),
-                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"payload".to_vec())),
+                &destination,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"stuck".to_vec())),
             )
             .unwrap();
-        assert!(started.elapsed() < Duration::from_secs(1));
+
+        producer.push_config(&blob(&servers, "1")).unwrap();
+
+        // Wait for buffering to come on, so the count below is not polluted by
+        // produce calls that legitimately went straight to the old client while
+        // the worker was still probing.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while producer.inner.current.read().buffer.is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "worker never turned buffering on"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut worst = Duration::ZERO;
+        let mut produced = 0;
+
+        while Instant::now() < deadline {
+            let started = Instant::now();
+            producer
+                .produce(
+                    &destination,
+                    KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
+                )
+                .unwrap();
+            worst = worst.max(started.elapsed());
+            produced += 1;
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(
+            worst < Duration::from_millis(500),
+            "produce blocked for {worst:?} while a drain was in progress"
+        );
+
+        // Not blocking is only half of it: those messages must have gone into
+        // the buffer, not onto the client that is being retired. Without this
+        // the test passes against an implementation that never buffers at all.
+        let current = producer.inner.current.read();
+        assert_eq!(
+            current
+                .buffer
+                .as_ref()
+                .expect("buffering went away")
+                .lock()
+                .len(),
+            produced
+        );
+        assert_eq!(
+            current.producer.in_flight_count(),
+            1,
+            "produce reached the draining client instead of the buffer"
+        );
+
+        assert_eq!(producer.generation(), 0);
     }
 
     /// Dropping every handle must stop the reload worker, otherwise each
@@ -1199,13 +1337,8 @@ mod tests {
         }
     }
 
-    /// A push that reverts to the running config must cancel a rollout that is
-    /// already in flight.
-    ///
-    /// The worker must clone `desired` and leave it in place so a revert can
-    /// clear it before the swap. The probe is gated instead of raced against a
-    /// sleep because MockCluster answers in microseconds and this path requires
-    /// a successful probe.
+    /// Reverting to the running config must cancel an in-flight rollout. The
+    /// probe gate makes the timing deterministic.
     #[test]
     fn test_revert_cancels_an_in_flight_rollout() {
         let cluster = MockCluster::new(1).unwrap();
@@ -1217,23 +1350,17 @@ mod tests {
         let (release, gate) = mpsc::channel();
         *producer.inner.probe_gate.lock() = Some(gate);
 
-        // Reachable config: this probe will succeed once released.
         producer.push_config(&blob(&servers, "9")).unwrap();
 
-        // The worker is now inside the probe, working on this config while it
-        // remains recorded as the desired one.
         wait_until_probing(&producer);
 
-        // The rollout is provably in flight. Revert to what is running.
         assert_eq!(
             producer.push_config(&blob(&servers, "all")).unwrap(),
             ReloadOutcome::Unchanged
         );
 
-        // Let the probe finish successfully.
         release.send(()).unwrap();
 
-        // The reverted-away config must not go live.
         assert_stays_at_generation(&producer, 0);
         assert_eq!(
             producer
@@ -1247,17 +1374,19 @@ mod tests {
     }
 
     /// A revert that lands after the probe passed but before the install must
-    /// cancel the swap.
+    /// cancel the swap, and the messages buffered in the meantime must go to
+    /// the client that stays rather than be dropped with the abandoned one.
     ///
-    /// The superseded check and install must be atomic after jitter, or a revert
-    /// in between is lost. This test sets jitter to zero and parks the worker at
-    /// the gate between sleep and lock acquisition, so the revert cannot lose a
-    /// wall-clock race.
+    /// The superseded check and the install must be atomic, or a revert in
+    /// between is lost. The worker is parked at the gate after the drain, which
+    /// is the window that check guards, so the revert cannot lose a wall-clock
+    /// race.
     #[test]
     fn test_revert_between_probe_and_install_cancels_the_swap() {
         let cluster = MockCluster::new(1).unwrap();
         let servers = cluster.bootstrap_servers();
         let producer = producer(&servers);
+        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
 
         // Arm before pushing, so the worker cannot get past the gate first.
         let (release, gate) = mpsc::channel();
@@ -1265,12 +1394,39 @@ mod tests {
 
         producer.push_config(&blob(&servers, "9")).unwrap();
 
-        // Worker parked: probe passed, install not reached.
+        // Worker parked: probe passed and the old client is drained, but the
+        // install has not run.
         let deadline = Instant::now() + Duration::from_secs(5);
         while producer.inner.swap_gate.lock().is_some() {
             assert!(Instant::now() < deadline, "worker never reached the swap");
             std::thread::sleep(Duration::from_millis(5));
         }
+
+        // Buffering is on, so these land in the buffer rather than on a client.
+        for i in 0..4 {
+            producer
+                .produce(
+                    &destination,
+                    KafkaPayload::new(
+                        Some(b"key".to_vec()),
+                        None,
+                        Some(format!("msg-{i}").into_bytes()),
+                    ),
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            producer
+                .inner
+                .current
+                .read()
+                .buffer
+                .as_ref()
+                .expect("worker did not turn buffering on")
+                .lock()
+                .len(),
+            4
+        );
 
         // The revert lands inside the window. `Unchanged` is guaranteed here,
         // not raced for: the worker is parked before the install.
@@ -1283,7 +1439,7 @@ mod tests {
 
         // Wait until the rollout ended one way or the other, then check which.
         // Both a correct and a broken implementation reach this point, so the
-        // generation assertion below is what tells them apart.
+        // assertions below are what tell them apart.
         let deadline = Instant::now() + Duration::from_secs(5);
         while producer.inner.rollouts_finished.load(Ordering::SeqCst) == 0 {
             assert!(
@@ -1298,24 +1454,17 @@ mod tests {
             0,
             "a config reverted before install was swapped in anyway"
         );
-        assert_eq!(
-            producer
-                .inner
-                .current
-                .read()
-                .config
-                .get_config_value("acks"),
-            Some(&"all".to_string())
+
+        let current = producer.inner.current.read();
+        assert_eq!(current.config.get_config_value("acks"), Some(&"all".into()));
+        assert!(
+            current.buffer.is_none(),
+            "buffering was left on after the rollout was abandoned"
         );
     }
 
-    /// After a revert, the worker must stop retrying the reverted-away config.
-    ///
-    /// This pins the liveness half of the fix. If the supersede check only
-    /// looked for a *newer* config rather than comparing against `desired`, a
-    /// revert would leave nothing to compare against and the worker would keep
-    /// probing a config the host rolled back. If that broker later recovers,
-    /// the config goes live long after the fact.
+    /// After a revert, the worker must stop retrying the old config or it
+    /// could go live if its broker later recovers.
     #[test]
     fn test_revert_stops_the_probe_retry_loop() {
         let cluster = MockCluster::new(1).unwrap();
@@ -1331,7 +1480,6 @@ mod tests {
         )
         .unwrap();
 
-        // Unreachable broker, so the worker keeps retrying.
         producer.push_config(&blob("127.0.0.1:1", "9")).unwrap();
 
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -1340,7 +1488,6 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        // Revert to the running config.
         assert_eq!(
             producer.push_config(&blob(&servers, "all")).unwrap(),
             ReloadOutcome::Unchanged
@@ -1369,7 +1516,7 @@ mod tests {
         // Hold the worker in the probe for the first rollout, then push the
         // same config again. The duplicate is queued behind a rollout that is
         // about to make it a no-op, which is the case the dedup check in
-        // `reload_to` exists for: without it the worker takes the duplicate
+        // `run_worker` exists for: without it the worker takes the duplicate
         // after the swap and pays for a second build, probe, swap and drain.
         let (release, gate) = mpsc::channel();
         *producer.inner.probe_gate.lock() = Some(gate);
@@ -1399,77 +1546,103 @@ mod tests {
         await_generation(&producer, 1);
     }
 
-    #[test]
-    fn test_unkeyed_produce_does_not_wait_for_drain() {
-        let cluster = MockCluster::new(1).unwrap();
-        let servers = cluster.bootstrap_servers();
-        let producer = producer(&servers);
-        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
-
-        // Stand in for a drain in progress.
-        let held = producer.block_drain_for_test();
-
-        let (tx, rx) = mpsc::channel();
-        let unkeyed = producer.clone();
-        let dest = destination;
-        std::thread::spawn(move || {
-            let result = unkeyed.produce(
-                &dest,
-                KafkaPayload::new(None, None, Some(b"unkeyed".to_vec())),
-            );
-            let _ = tx.send(result);
-        });
-
-        // Returns while the drain is still running.
-        let result = rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("unkeyed produce blocked on the drain");
-        assert!(result.is_ok());
-        drop(held);
+    fn start_buffering(producer: &ReloadingKafkaProducer) {
+        producer.inner.current.write().buffer = Some(Mutex::new(Vec::new()));
     }
 
+    /// Produce during a drain must return at once and use the buffer.
     #[test]
-    fn test_keyed_produce_waits_for_drain() {
+    fn test_produce_buffers_while_the_old_client_drains() {
         let cluster = MockCluster::new(1).unwrap();
-        let servers = cluster.bootstrap_servers();
-        let producer = producer(&servers);
+        let producer = producer(&cluster.bootstrap_servers());
         let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
 
-        let held = producer.block_drain_for_test();
+        start_buffering(&producer);
 
-        let (tx, rx) = mpsc::channel();
-        let keyed = producer.clone();
-        let dest = destination;
-        std::thread::spawn(move || {
-            let result = keyed.produce(
-                &dest,
-                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
-            );
-            let _ = tx.send(result);
-        });
+        let started = Instant::now();
+        for i in 0..3 {
+            producer
+                .produce(
+                    &destination,
+                    KafkaPayload::new(
+                        Some(b"key".to_vec()),
+                        None,
+                        Some(format!("msg-{i}").into_bytes()),
+                    ),
+                )
+                .unwrap();
+        }
+        assert!(started.elapsed() < Duration::from_millis(100));
 
-        // Blocked while the drain is in progress.
-        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
-
-        drop(held);
-
-        // Proceeds once the drain finishes.
-        let result = rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("keyed produce did not resume after the drain");
-        assert!(result.is_ok());
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        assert_eq!(buffer.lock().len(), 3);
+        assert_eq!(
+            current.producer.in_flight_count(),
+            0,
+            "messages reached the draining client instead of the buffer"
+        );
     }
 
+    /// A full buffer must return an error instead of growing without bound.
     #[test]
-    fn test_keyed_produce_does_not_wait_when_ordering_is_ignored() {
+    fn test_buffer_full_is_reported_to_the_caller() {
         let cluster = MockCluster::new(1).unwrap();
         let servers = cluster.bootstrap_servers();
         let producer = ReloadingKafkaProducer::new(
             &blob(&servers, "all"),
             selector(),
             ReloadConfig {
-                // Long enough that waiting would show up as a timeout below.
-                drain_timeout: Duration::from_secs(30),
+                max_buffered_messages: 2,
+                ..settings()
+            },
+        )
+        .unwrap();
+        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
+
+        start_buffering(&producer);
+
+        let mut produce = || {
+            producer.produce(
+                &destination,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
+            )
+        };
+
+        assert!(produce().is_ok());
+        assert!(produce().is_ok());
+        assert!(produce().is_err());
+    }
+    /// A swap must drain the client it retires exactly once, before the
+    /// install.
+    ///
+    /// Draining it again afterwards would give whatever the first drain could
+    /// not deliver a second chance, by which point the buffer has already gone
+    /// out on the new client. Older same-key messages would then land behind
+    /// newer ones, which is the reorder the buffer exists to prevent; they have
+    /// to be purged instead.
+    #[test]
+    fn test_retired_client_is_drained_exactly_once() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = producer(&servers);
+
+        producer.push_config(&blob(&servers, "1")).unwrap();
+        await_rollout(&producer, 1);
+
+        assert_eq!(producer.inner.drains.load(Ordering::SeqCst), 1);
+    }
+
+    /// `ignore_key_ordering` skips the buffer but must still drain the retired
+    /// client. The lingering config keeps a message queued until that drain.
+    #[test]
+    fn test_ignoring_ordering_still_drains_the_retired_client() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = ReloadingKafkaProducer::new(
+            &lingering_blob(&servers, "all"),
+            selector(),
+            ReloadConfig {
                 ignore_key_ordering: true,
                 ..settings()
             },
@@ -1477,54 +1650,32 @@ mod tests {
         .unwrap();
         let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
 
-        let held = producer.block_drain_for_test();
-
-        let (tx, rx) = mpsc::channel();
-        let keyed = producer.clone();
-        let dest = destination;
-        std::thread::spawn(move || {
-            let result = keyed.produce(
-                &dest,
+        producer
+            .produce(
+                &destination,
                 KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
-            );
-            let _ = tx.send(result);
-        });
+            )
+            .unwrap();
 
-        // Returns while the drain is still running, like an unkeyed produce.
-        let result = rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("keyed produce waited for the drain despite ignore_key_ordering");
-        assert!(result.is_ok());
-        drop(held);
-    }
+        producer
+            .push_config(&lingering_blob(&servers, "1"))
+            .unwrap();
 
-    #[test]
-    fn test_keyed_produce_fails_open_when_drain_is_slow() {
-        let cluster = MockCluster::new(1).unwrap();
-        let servers = cluster.bootstrap_servers();
-        let producer = ReloadingKafkaProducer::new(
-            &blob(&servers, "all"),
-            selector(),
-            ReloadConfig {
-                drain_timeout: Duration::from_millis(200),
-                ..settings()
-            },
-        )
-        .unwrap();
-        let destination = TopicOrPartition::Topic(crate::types::Topic::new("ingest-events"));
+        // The drain and the drop happen after the install, so waiting for the
+        // generation alone would read the counter before it is written.
+        await_rollout(&producer, 1);
 
-        // A drain that outlasts drain_timeout.
-        let held = producer.block_drain_for_test();
-
-        let started = Instant::now();
-        let result = producer.produce(
-            &destination,
-            KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
+        assert_eq!(
+            producer.inner.purged_at_drop.load(Ordering::SeqCst),
+            0,
+            "retired the old client without draining it, its queued messages were purged"
         );
 
-        // Waited for the timeout, then produced anyway rather than erroring.
-        assert!(result.is_ok());
-        assert!(started.elapsed() >= Duration::from_millis(200));
-        drop(held);
+        producer
+            .produce(
+                &destination,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
+            )
+            .unwrap();
     }
 }

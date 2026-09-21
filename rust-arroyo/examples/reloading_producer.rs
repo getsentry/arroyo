@@ -48,9 +48,12 @@ async fn main() {
         ProducerSelector::new("ingest-events", "relay").expect_logical_topic("ingest-events");
 
     let settings = ReloadConfig {
-        // How long a keyed produce waits for the old client to drain before
-        // giving up on ordering.
+        // How long the reload worker flushes the old client. Off the produce
+        // path entirely.
         drain_timeout: Duration::from_secs(10),
+        // Cap on messages held during a drain. Unused here since
+        // `ignore_key_ordering` is set, so nothing is ever buffered.
+        max_buffered_messages: 10_000,
         // Spread swaps across the fleet so pods do not all stall at once.
         jitter: Duration::from_secs(2),
         // Require the new client to reach a broker before swapping it in, so a
@@ -58,7 +61,7 @@ async fn main() {
         probe_timeout: Some(Duration::from_secs(5)),
         probe_retry_interval: Duration::from_secs(5),
         // Relay keys messages to spread them across partitions, not to order
-        // them, so produce calls need not wait for a drain.
+        // them, so the swap need not drain the old client first.
         ignore_key_ordering: true,
     };
 
@@ -71,7 +74,6 @@ async fn main() {
     let worker = producer.clone();
     tokio::task::spawn_blocking(move || {
         for i in 0..20 {
-            // Keyed messages wait for drains to preserve order; unkeyed ones do not.
             let key = (i % 2 == 0).then(|| b"some-key".to_vec());
             let payload = KafkaPayload::new(key, None, Some(format!("message-{i}").into_bytes()));
 
