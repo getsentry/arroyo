@@ -58,7 +58,7 @@ async fn main() {
         jitter: Duration::from_secs(2),
         // Require the new client to reach a broker before swapping it in, so a
         // typo'd address cannot retire a working producer.
-        probe_timeout: Some(Duration::from_secs(5)),
+        probe_timeout: Duration::from_secs(5),
         probe_retry_interval: Duration::from_secs(5),
         // Relay keys messages to spread them across partitions, not to order
         // them, so the swap need not drain the old client first.

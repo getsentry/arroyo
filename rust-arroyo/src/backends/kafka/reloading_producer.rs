@@ -45,9 +45,12 @@ pub struct ReloadConfig {
     /// Upper bound on the random delay before a swap. Spreads swaps across a
     /// fleet so a config change does not stall every pod at once.
     pub jitter: Duration,
-    /// How long the worker waits for the new client to reach a broker before
-    /// swapping it in. `None` skips the check.
-    pub probe_timeout: Option<Duration>,
+    /// Deadline for one attempt at reaching a broker with the new client.
+    ///
+    /// A client that fails is never installed: the worker retries every
+    /// `probe_retry_interval` until it passes or the config is superseded. So
+    /// this bounds a single round trip, not the rollout.
+    pub probe_timeout: Duration,
     /// Delay between failed broker probes. Probes continue until one succeeds
     /// or the config is superseded.
     pub probe_retry_interval: Duration,
@@ -64,7 +67,7 @@ impl Default for ReloadConfig {
             drain_timeout: Duration::from_secs(10),
             max_buffered_messages: 10_000,
             jitter: Duration::ZERO,
-            probe_timeout: Some(Duration::from_secs(5)),
+            probe_timeout: Duration::from_secs(5),
             probe_retry_interval: Duration::from_secs(5),
             ignore_key_ordering: false,
         }
@@ -507,10 +510,6 @@ impl Inner {
     /// Client construction does no I/O; this prevents swapping in an
     /// unreachable producer.
     fn probe(&self, candidate: &KafkaProducer) -> Result<(), KafkaError> {
-        let Some(timeout) = self.settings.probe_timeout else {
-            return Ok(());
-        };
-
         #[cfg(test)]
         self.probe_attempts.fetch_add(1, Ordering::Relaxed);
 
@@ -526,8 +525,10 @@ impl Inner {
 
         let started = Instant::now();
         // Topic metadata probes the broker without producing a message.
-        let result =
-            candidate.validate_topic(crate::types::Topic::new(self.selector.topic()), timeout);
+        let result = candidate.validate_topic(
+            crate::types::Topic::new(self.selector.topic()),
+            self.settings.probe_timeout,
+        );
 
         metrics::histogram!(
             "arroyo.producer.config_reload_probe_ms",
@@ -922,8 +923,7 @@ mod tests {
             drain_timeout: Duration::from_secs(5),
             max_buffered_messages: 10_000,
             jitter: Duration::ZERO,
-            // MockCluster answers metadata, so probing stays on in tests.
-            probe_timeout: Some(Duration::from_secs(5)),
+            probe_timeout: Duration::from_secs(5),
             probe_retry_interval: Duration::from_millis(50),
             ignore_key_ordering: false,
         }
@@ -1055,7 +1055,7 @@ mod tests {
             &blob(&servers, "all"),
             selector(),
             ReloadConfig {
-                probe_timeout: Some(Duration::from_millis(300)),
+                probe_timeout: Duration::from_millis(300),
                 probe_retry_interval: Duration::from_millis(50),
                 ..settings()
             },
@@ -1473,7 +1473,7 @@ mod tests {
             &blob(&servers, "all"),
             selector(),
             ReloadConfig {
-                probe_timeout: Some(Duration::from_millis(50)),
+                probe_timeout: Duration::from_millis(50),
                 probe_retry_interval: Duration::from_millis(20),
                 ..settings()
             },
@@ -1602,7 +1602,7 @@ mod tests {
 
         start_buffering(&producer);
 
-        let mut produce = || {
+        let produce = || {
             producer.produce(
                 &destination,
                 KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
