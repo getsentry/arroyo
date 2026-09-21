@@ -48,23 +48,11 @@ impl RdkafkaProducerContext for ProducerContext {
         delivery_result: &DeliveryResult<'_>,
         _delivery_opaque: Self::DeliveryOpaque,
     ) {
-        let producer_name = self.get_producer_name().to_owned();
-        let counter = match delivery_result {
-            Ok(message) => metrics::counter!(
-                "arroyo.producer.produce_status",
-                "status" => "success",
-                "topic" => message.topic().to_owned(),
-                "producer_name" => producer_name
-            ),
-            Err((err, message)) => metrics::counter!(
-                "arroyo.producer.produce_status",
-                "status" => "error",
-                "code" => get_error_name(err),
-                "topic" => message.topic().to_owned(),
-                "producer_name" => producer_name
-            ),
+        let (message, error) = match delivery_result {
+            Ok(message) => (message, None),
+            Err((error, message)) => (message, Some(get_error_name(error))),
         };
-        counter.increment(1);
+        record_produce_status(self.get_producer_name(), message.topic(), error);
     }
 }
 
@@ -211,99 +199,85 @@ fn validate_topic_metadata<C: ClientContext>(
     Ok(())
 }
 
-fn record_producer_error(
-    kafka_error: Option<KafkaError>,
-    default_error: &str,
-    producer_name: &str,
-) -> ProducerError {
-    if let Some(kafka_error) = kafka_error {
-        let error_name = get_error_name(&kafka_error);
-        let producer_error = ProducerError::ProducerFailure {
-            error: error_name.clone(),
-        };
-        metrics::counter!(
+fn record_produce_status(producer_name: &str, topic: &str, error: Option<String>) {
+    let counter = match error {
+        Some(error) => metrics::counter!(
             "arroyo.producer.produce_status",
             "status" => "error",
-            "code" => error_name,
+            "code" => error,
+            "topic" => topic.to_owned(),
             "producer_name" => producer_name.to_owned()
-        )
-        .increment(1);
-        return producer_error;
-    }
-    let producer_error = ProducerError::ProducerFailure {
-        error: default_error.to_string(),
+        ),
+        None => metrics::counter!(
+            "arroyo.producer.produce_status",
+            "status" => "success",
+            "topic" => topic.to_owned(),
+            "producer_name" => producer_name.to_owned()
+        ),
     };
-    metrics::counter!(
-        "arroyo.producer.produce_status",
-        "status" => "error",
-        "code" => default_error.to_owned(),
-        "producer_name" => producer_name.to_owned()
-    )
-    .increment(1);
-    producer_error
+    counter.increment(1);
 }
 
 impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
     fn produce(&self, destination: &TopicOrPartition, payload: KafkaPayload) -> ProducerFuture {
-        let base_record = payload.to_future_record(destination);
-
+        let record = payload.to_future_record(destination);
+        let topic = record.topic.to_owned();
         let producer_name = self.producer_name.clone();
-        let queue_result = self.producer.send_result(base_record);
-        if queue_result.is_err() {
-            // If the producer couldn't put the message in the queue at all, it won't retry and will return an error directly
-            let producer_error = record_producer_error(
-                queue_result.err().map(|(kafka_error, _record)| kafka_error),
-                "queue_full",
-                &producer_name,
-            );
-            return Box::pin(async move { Err(producer_error) });
-        }
-
-        let future = queue_result.unwrap();
+        // Enqueue immediately, without waiting for the returned future to be polled.
+        let future = match self.producer.send_result(record) {
+            Ok(future) => future,
+            Err((error, _record)) => {
+                record_produce_status(&producer_name, &topic, Some(get_error_name(&error)));
+                return Box::pin(async move { Err(error.into()) });
+            }
+        };
 
         Box::pin(async move {
-            let produce_result = match future.await {
-                Ok(delivery_result) => match delivery_result {
-                    Ok(_) => Ok(()),
-                    Err((kafka_error, _record)) => {
-                        // The producer failed when flushing the message out of the queue
-                        let producer_error = record_producer_error(
-                            Some(kafka_error),
-                            "produce_error",
-                            &producer_name,
-                        );
-                        Err(producer_error)
-                    }
-                },
-                Err(_canceled) => {
-                    // The future was canceled, which means the producer was closed
-                    let producer_error =
-                        record_producer_error(None, "future_canceled", &producer_name);
-                    Err(producer_error)
+            // FutureProducer completes its own delivery future rather than calling
+            // ProducerContext::delivery, so record the outcome here.
+            match future.await {
+                Ok(Ok(_)) => {
+                    record_produce_status(&producer_name, &topic, None);
+                    Ok(())
                 }
-            };
-
-            produce_result
+                Ok(Err((error, _record))) => {
+                    record_produce_status(&producer_name, &topic, Some(get_error_name(&error)));
+                    Err(error.into())
+                }
+                Err(_canceled) => {
+                    record_produce_status(
+                        &producer_name,
+                        &topic,
+                        Some("future_canceled".to_owned()),
+                    );
+                    Err(ProducerError::ProducerFailure {
+                        error: "future_canceled".to_owned(),
+                    })
+                }
+            }
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AsyncKafkaProducer, KafkaProducer, RdkafkaProducerContext};
-    use crate::backends::kafka::config::KafkaConfig;
-    use crate::backends::kafka::types::KafkaPayload;
-    use crate::backends::{AsyncProducer, Producer, ProducerError};
-    use crate::types::{Topic, TopicOrPartition};
+    use std::collections::HashMap;
+    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::time::Duration;
+
     use rdkafka::client::ClientContext;
     use rdkafka::error::{KafkaError, RDKafkaErrorCode};
     use rdkafka::message::{Header, Message, OwnedHeaders};
     use rdkafka::mocking::MockCluster;
     use rdkafka::producer::{BaseRecord, DeliveryResult, Producer as _};
     use rdkafka::types::{RDKafkaApiKey, RDKafkaRespErr};
-    use std::collections::HashMap;
-    use std::sync::mpsc::{self, Receiver, Sender};
-    use std::time::Duration;
+
+    use crate::backends::kafka::config::KafkaConfig;
+    use crate::backends::kafka::types::KafkaPayload;
+    use crate::backends::{AsyncProducer, Producer, ProducerError};
+    use crate::types::{Topic, TopicOrPartition};
+
+    use super::{AsyncKafkaProducer, KafkaProducer, RdkafkaProducerContext};
 
     fn assert_topic_validation(
         config: KafkaConfig,
@@ -435,42 +409,38 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_producer() {
+        let cluster = MockCluster::new(1).unwrap();
         let topic = Topic::new("test");
         let destination = TopicOrPartition::Topic(topic);
         let configuration =
-            KafkaConfig::new_producer_config(vec!["127.0.0.1:9092".to_string()], None);
-
-        let producer = AsyncKafkaProducer::new(configuration);
-        assert!(producer.is_ok());
-        let producer = producer.unwrap();
+            KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None);
+        let producer = AsyncKafkaProducer::new(configuration).unwrap();
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
-        let result = producer.produce(&destination, payload).await;
-        assert!(result.is_ok(), "Message should be produced successfully");
+        producer.produce(&destination, payload).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_async_producer_with_error() {
+        let cluster = MockCluster::new(1).unwrap();
+        cluster.request_errors(
+            RDKafkaApiKey::Produce,
+            &[RDKafkaRespErr::RD_KAFKA_RESP_ERR_MSG_SIZE_TOO_LARGE],
+        );
         let topic = Topic::new("test");
         let destination = TopicOrPartition::Topic(topic);
-        let configuration = KafkaConfig::new_producer_config(
-            vec!["obviously-not-a-valid-broker".to_string()],
-            Some(HashMap::from([(
-                "message.timeout.ms".to_string(),
-                "1".to_string(),
-            )])),
-        );
-
-        let producer = AsyncKafkaProducer::new(configuration);
-        assert!(producer.is_ok());
-        let producer = producer.unwrap();
+        let configuration =
+            KafkaConfig::new_producer_config(vec![cluster.bootstrap_servers()], None);
+        let producer = AsyncKafkaProducer::new(configuration).unwrap();
 
         let payload = KafkaPayload::new(None, None, Some("asdf".as_bytes().to_vec()));
         let result = producer.produce(&destination, payload).await;
-        assert!(
-            result.is_err(),
-            "Message should not be produced successfully"
-        );
+        assert!(matches!(
+            result,
+            Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                RDKafkaErrorCode::MessageSizeTooLarge
+            )))
+        ));
     }
 
     #[test]
@@ -492,6 +462,28 @@ mod tests {
         );
         assert!(matches!(
             second_result,
+            Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                RDKafkaErrorCode::QueueFull
+            )))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_async_enqueue_error_retains_queue_full_error() {
+        let producer = AsyncKafkaProducer::new(queue_full_configuration()).unwrap();
+        let destination = TopicOrPartition::Topic(Topic::new("test"));
+
+        // Keep the first future unpolled to verify that enqueueing is eager.
+        let _first = producer.produce(
+            &destination,
+            KafkaPayload::new(None, None, Some(b"first".to_vec())),
+        );
+        let second = producer.produce(
+            &destination,
+            KafkaPayload::new(None, None, Some(b"second".to_vec())),
+        );
+        assert!(matches!(
+            second.await,
             Err(ProducerError::Kafka(KafkaError::MessageProduction(
                 RDKafkaErrorCode::QueueFull
             )))
