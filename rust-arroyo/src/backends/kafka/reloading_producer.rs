@@ -439,6 +439,18 @@ where
         self.inner.buffer_or_reject(buffer, destination, payload)
     }
 
+    /// Checks a topic against the broker using whichever client is live.
+    ///
+    /// Only meaningful at startup: a later reload can point the producer at a
+    /// cluster where the topic is missing, and nothing re-checks it.
+    pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        self.inner
+            .current
+            .read()
+            .producer
+            .validate_topic(topic, timeout)
+    }
+
     /// Messages accepted but not yet delivered, including any held while a
     /// reload drains the old client.
     pub fn in_flight_count(&self) -> i32 {
