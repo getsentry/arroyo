@@ -46,6 +46,12 @@ impl From<&BorrowedHeaders> for Headers {
     }
 }
 
+impl From<OwnedHeaders> for Headers {
+    fn from(headers: OwnedHeaders) -> Self {
+        Self { headers }
+    }
+}
+
 impl From<Headers> for OwnedHeaders {
     fn from(value: Headers) -> Self {
         value.headers
