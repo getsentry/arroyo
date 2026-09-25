@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="violet" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Processing Strategies - Arroyo documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Filter" href="filter.html" /><link rel="prev" title="Arroyo Architecture" href="../architecture.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=ad592e98" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=14737038" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d78f5285" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/><meta property="og:title" content="Processing Strategies"/>
+    <meta name="twitter:card" content="summary"/>
+  </head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      <img class="light-logo" src="../_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/arroyo-logo.png" alt="Arroyo" height="28" loading="lazy" />
+      <strong>Arroyo</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials"></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="0"><ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../what_for.html">What is Arroyo for?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getstarted.html">Getting started with Arroyo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Arroyo Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Processing Strategies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="filter.html">Filter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reduce.html">Reduce (Fold)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="unfold.html">Unfold</a></li>
+<li class="toctree-l2"><a class="reference internal" href="batching.html">Batch and Unbatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="run_task.html">Run Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="run_task_in_threads.html">Run Task in Threads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="run_task_with_multiprocessing.html">Run Task with Multiprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="produce.html">Produce</a></li>
+<li class="toctree-l2"><a class="reference internal" href="commit_offsets.html">Commit offsets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="noop.html">Noop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="healthcheck.html">Healthchecks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../offsets.html">Committing offsets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../dlqs.html">Dead letter queues</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../backpressure.html">Backpressure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../metrics.html">Metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../parameters.html">Common consumer parameters</a></li>
+</ul>
+
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#strategy-interface">Strategy interface</a><ul>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.MessageRejected"><code class="docutils literal notranslate"><span class="pre">MessageRejected</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy"><code class="docutils literal notranslate"><span class="pre">ProcessingStrategy</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.close"><code class="docutils literal notranslate">close()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.join"><code class="docutils literal notranslate">join()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.poll"><code class="docutils literal notranslate">poll()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.submit"><code class="docutils literal notranslate">submit()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.terminate"><code class="docutils literal notranslate">terminate()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory"><code class="docutils literal notranslate"><span class="pre">ProcessingStrategyFactory</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory.create_with_partitions"><code class="docutils literal notranslate">create_with_partitions()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory.shutdown"><code class="docutils literal notranslate">shutdown()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-arroyo.types">Messages</a><ul>
+<li><a class="reference internal" href="#arroyo.types.BaseValue"><code class="docutils literal notranslate"><span class="pre">BaseValue</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.BaseValue.committable"><code class="docutils literal notranslate">committable</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BaseValue.payload"><code class="docutils literal notranslate">payload</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BaseValue.replace"><code class="docutils literal notranslate">replace()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BaseValue.timestamp"><code class="docutils literal notranslate">timestamp</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue"><code class="docutils literal notranslate"><span class="pre">BrokerValue</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.committable"><code class="docutils literal notranslate">committable</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.next_offset"><code class="docutils literal notranslate">next_offset</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.offset"><code class="docutils literal notranslate">offset</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.partition"><code class="docutils literal notranslate">partition</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.payload"><code class="docutils literal notranslate">payload</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.replace"><code class="docutils literal notranslate">replace()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.BrokerValue.timestamp"><code class="docutils literal notranslate">timestamp</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.types.Commit"><code class="docutils literal notranslate"><span class="pre">Commit</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.FilteredPayload"><code class="docutils literal notranslate"><span class="pre">FilteredPayload</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message"><code class="docutils literal notranslate"><span class="pre">Message</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.Message.committable"><code class="docutils literal notranslate">committable</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message.payload"><code class="docutils literal notranslate">payload</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message.payload_unfiltered"><code class="docutils literal notranslate">payload_unfiltered</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message.replace"><code class="docutils literal notranslate">replace()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message.timestamp"><code class="docutils literal notranslate">timestamp</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Message.value"><code class="docutils literal notranslate">value</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.types.Partition"><code class="docutils literal notranslate"><span class="pre">Partition</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.Partition.index"><code class="docutils literal notranslate">index</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Partition.topic"><code class="docutils literal notranslate">topic</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.types.Topic"><code class="docutils literal notranslate"><span class="pre">Topic</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.Topic.name"><code class="docutils literal notranslate">name</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arroyo.types.Value"><code class="docutils literal notranslate"><span class="pre">Value</span></code></a><ul>
+<li><a class="reference internal" href="#arroyo.types.Value.committable"><code class="docutils literal notranslate">committable</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Value.payload"><code class="docutils literal notranslate">payload</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Value.replace"><code class="docutils literal notranslate">replace()</span></code></a></li>
+<li><a class="reference internal" href="#arroyo.types.Value.timestamp"><code class="docutils literal notranslate">timestamp</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">Arroyo</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Processing Strategies</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+        <article class="yue" role="main">
+          <section id="processing-strategies">
+<h1>Processing Strategies<a class="headerlink" href="#processing-strategies" title="Link to this heading">¶</a></h1>
+<p>The processing strategies are the components to be wired together to
+build a consumer.</p>
+<section id="strategy-interface">
+<h2>Strategy interface<a class="headerlink" href="#strategy-interface" title="Link to this heading">¶</a></h2>
+<p>We normally don’t recommend writing your own strategy, and encourage you to use
+built-in ones such as “reduce” or “run task” to plug in your application logic.
+Nevertheless, all arroyo strategies are written against the following interface:</p>
+<dl class="py exception" id="module-arroyo.processing.strategies.abstract">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.MessageRejected">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.processing.strategies.abstract.</span></span><span class="sig-name descname"><span class="pre">MessageRejected</span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.MessageRejected" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>MessageRejected should be raised in a processing strategy’s submit method
+if it is unable to keep up with the rate of incoming messages. It tells
+the consumer to slow down and retry the message later.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.processing.strategies.abstract.</span></span><span class="sig-name descname"><span class="pre">ProcessingStrategy</span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TStrategyPayload</span></code>]</p>
+<p>A processing strategy defines how a stream processor processes messages
+during the course of a single assignment. The processor is instantiated
+when the assignment is received, and closed when the assignment is
+revoked.</p>
+<p>This interface is intentionally not prescriptive, and affords a
+significant degree of flexibility for the various implementations.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy.close">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.close" title="Link to this definition">¶</a></dt>
+<dd><p>Close this instance. No more messages should be accepted by the
+instance after this method has been called.</p>
+<p>This method should not block. Once this strategy instance has
+finished processing (or discarded) all messages that were submitted
+prior to this method being called, the strategy should commit its
+partition offsets and release any resources that will no longer be
+used (threads, processes, sockets, files, etc.)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy.join">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">join</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.join" title="Link to this definition">¶</a></dt>
+<dd><p>Block until the processing strategy has completed all previously
+submitted work, or the provided timeout has been reached. This method
+should be called after <code class="docutils literal notranslate"><span class="pre">close</span></code> to provide a graceful shutdown.</p>
+<p>This method is called synchronously by the stream processor during
+assignment revocation, and blocks the assignment from being released
+until this function exits, allowing any work in progress to be
+completed and committed before the continuing the rebalancing
+process.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy.poll">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">poll</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.poll" title="Link to this definition">¶</a></dt>
+<dd><p>Poll the processor to check on the status of asynchronous tasks or
+perform other scheduled work.</p>
+<p>This method is called on each consumer loop iteration, so this method
+should not be used to perform work that may block for a significant
+amount of time and block the progress of the consumer or exceed the
+consumer poll interval timeout.</p>
+<p>This method may raise exceptions that were thrown by asynchronous
+tasks since the previous call to <code class="docutils literal notranslate"><span class="pre">poll</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy.submit">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">submit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arroyo.types.Message" title="arroyo.types.Message"><span class="pre">Message</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TStrategyPayload</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.submit" title="Link to this definition">¶</a></dt>
+<dd><p>Submit a message for processing.</p>
+<p>Messages may be processed synchronously or asynchronously, depending
+on the implementation of the processing strategy. Callers of this
+method should not assume that this method returning successfully
+implies that the message was successfully processed.</p>
+<p>If the processing strategy is unable to accept a message (due to it
+being at or over capacity, for example), this method will raise a
+<code class="docutils literal notranslate"><span class="pre">MessageRejected</span></code> exception.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategy.terminate">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">terminate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategy.terminate" title="Link to this definition">¶</a></dt>
+<dd><p>Close the processing strategy immediately, abandoning any work in
+progress. No more messages should be accepted by the instance after
+this method has been called.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategyFactory">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.processing.strategies.abstract.</span></span><span class="sig-name descname"><span class="pre">ProcessingStrategyFactory</span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">TStrategyPayload</span></code>]</p>
+<p>A ProcessingStrategyFactory is used to wrap a series of
+ProcessingStrategy steps, and calls <cite>create_with_partitions</cite>
+to instantiate the ProcessingStrategy on partition assignment
+or partition revocation if the strategy needs to be recreated.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategyFactory.create_with_partitions">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">create_with_partitions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">commit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arroyo.types.Commit" title="arroyo.types.Commit"><span class="pre">Commit</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">partitions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#arroyo.processing.strategies.abstract.ProcessingStrategy" title="arroyo.processing.strategies.abstract.ProcessingStrategy"><span class="pre">ProcessingStrategy</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TStrategyPayload</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory.create_with_partitions" title="Link to this definition">¶</a></dt>
+<dd><p>Instantiate and return a <code class="docutils literal notranslate"><span class="pre">ProcessingStrategy</span></code> instance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>commit</strong> – A function that accepts a mapping of <code class="docutils literal notranslate"><span class="pre">Partition</span></code> instances to offset values that should be committed.</p></li>
+<li><p><strong>partitions</strong> – A mapping of a <code class="docutils literal notranslate"><span class="pre">Partition</span></code> to it’s most recent offset.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.processing.strategies.abstract.ProcessingStrategyFactory.shutdown">
+<span class="sig-name descname"><span class="pre">shutdown</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#arroyo.processing.strategies.abstract.ProcessingStrategyFactory.shutdown" title="Link to this definition">¶</a></dt>
+<dd><p>Custom code to execute when the <code class="docutils literal notranslate"><span class="pre">StreamProcessor</span></code> shuts down entirely.</p>
+<p>Note that this code will also be executed on crashes of the strategy.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-arroyo.types">
+<span id="messages"></span><h2>Messages<a class="headerlink" href="#module-arroyo.types" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.BaseValue">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">BaseValue</span></span><a class="headerlink" href="#arroyo.types.BaseValue" title="Link to this definition">¶</a></dt>
+<dd><dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BaseValue.committable">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">committable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#arroyo.types.BaseValue.committable" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BaseValue.payload">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">payload</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TMessagePayload</span></span><a class="headerlink" href="#arroyo.types.BaseValue.payload" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.types.BaseValue.replace">
+<span class="sig-name descname"><span class="pre">replace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TReplaced</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#arroyo.types.BaseValue" title="arroyo.types.BaseValue"><span class="pre">BaseValue</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TReplaced</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#arroyo.types.BaseValue.replace" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BaseValue.timestamp">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">timestamp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#arroyo.types.BaseValue.timestamp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">BrokerValue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TMessagePayload</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partition</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">datetime</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.BrokerValue" title="Link to this definition">¶</a></dt>
+<dd><p>A payload received from the consumer or producer after it is done producing.
+Partition, offset, and timestamp values are present.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.committable">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">committable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#arroyo.types.BrokerValue.committable" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.next_offset">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">next_offset</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#arroyo.types.BrokerValue.next_offset" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.offset">
+<span class="sig-name descname"><span class="pre">offset</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#arroyo.types.BrokerValue.offset" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.partition">
+<span class="sig-name descname"><span class="pre">partition</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a></span><a class="headerlink" href="#arroyo.types.BrokerValue.partition" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.payload">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">payload</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TMessagePayload</span></span><a class="headerlink" href="#arroyo.types.BrokerValue.payload" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.replace">
+<span class="sig-name descname"><span class="pre">replace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TReplaced</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#arroyo.types.BaseValue" title="arroyo.types.BaseValue"><span class="pre">BaseValue</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TReplaced</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#arroyo.types.BrokerValue.replace" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.BrokerValue.timestamp">
+<span class="sig-name descname"><span class="pre">timestamp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span></span><a class="headerlink" href="#arroyo.types.BrokerValue.timestamp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.Commit">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">Commit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.Commit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.FilteredPayload">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">FilteredPayload</span></span><a class="headerlink" href="#arroyo.types.FilteredPayload" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.Message">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">Message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arroyo.types.BaseValue" title="arroyo.types.BaseValue"><span class="pre">BaseValue</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TMessagePayload</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.Message" title="Link to this definition">¶</a></dt>
+<dd><p>Contains a payload and partitions to be committed after processing.
+Can either represent a single message from a Kafka broker (BrokerValue)
+or something else, such as a number of messages grouped together for a
+batch processing step (Payload).</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Message.committable">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">committable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#arroyo.types.Message.committable" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Message.payload">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">payload</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TMessagePayload</span></span><a class="headerlink" href="#arroyo.types.Message.payload" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Message.payload_unfiltered">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">payload_unfiltered</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TMessagePayload</span></span><a class="headerlink" href="#arroyo.types.Message.payload_unfiltered" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.types.Message.replace">
+<span class="sig-name descname"><span class="pre">replace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TReplaced</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#arroyo.types.Message" title="arroyo.types.Message"><span class="pre">Message</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TReplaced</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#arroyo.types.Message.replace" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Message.timestamp">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">timestamp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#arroyo.types.Message.timestamp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.Message.value">
+<span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#arroyo.types.BaseValue" title="arroyo.types.BaseValue"><span class="pre">BaseValue</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TMessagePayload</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#arroyo.types.Message.value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.Partition">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">Partition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">topic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Topic'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'int'</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.Partition" title="Link to this definition">¶</a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.Partition.index">
+<span class="sig-name descname"><span class="pre">index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#arroyo.types.Partition.index" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.Partition.topic">
+<span class="sig-name descname"><span class="pre">topic</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#arroyo.types.Topic" title="arroyo.types.Topic"><span class="pre">Topic</span></a></span><a class="headerlink" href="#arroyo.types.Partition.topic" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.Topic">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">Topic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.Topic" title="Link to this definition">¶</a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="arroyo.types.Topic.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#arroyo.types.Topic.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arroyo.types.Value">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arroyo.types.</span></span><span class="sig-name descname"><span class="pre">Value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TMessagePayload</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">committable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#arroyo.types.Value" title="Link to this definition">¶</a></dt>
+<dd><p>Any other payload that may not map 1:1 to a single message from a
+consumer. May represent a batch spanning many partitions.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Value.committable">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">committable</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#arroyo.types.Partition" title="arroyo.types.Partition"><span class="pre">Partition</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#arroyo.types.Value.committable" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Value.payload">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">payload</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TMessagePayload</span></span><a class="headerlink" href="#arroyo.types.Value.payload" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arroyo.types.Value.replace">
+<span class="sig-name descname"><span class="pre">replace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TReplaced</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#arroyo.types.BaseValue" title="arroyo.types.BaseValue"><span class="pre">BaseValue</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TReplaced</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#arroyo.types.Value.replace" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="arroyo.types.Value.timestamp">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">timestamp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#arroyo.types.Value.timestamp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<div class="toctree-wrapper compound">
+</div>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="../architecture.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Arroyo Architecture</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="filter.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Filter</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2023, Sentry Team and Contributors</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials"></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/shibuya.js?v=c1cf1a6b"></script></body>
+</html>
