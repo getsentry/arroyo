@@ -1,5 +1,19 @@
 # Changelog and versioning
 
+## 2.44.2
+
+### New Features ✨
+
+- Register 'gssapi' feature for rdkafka by @aldy505 in [#552](https://github.com/getsentry/arroyo/pull/552)
+
+### Internal Changes 🔧
+
+- Add KafkaProducer error handling and metrics to AsyncKafkaProducer by @lvthanh03 in [#575](https://github.com/getsentry/arroyo/pull/575)
+
+### Other
+
+- Add ReloadingKafkaProducer by @untitaker in [#573](https://github.com/getsentry/arroyo/pull/573)
+
 ## 2.44.1
 
 ### New Features ✨
