@@ -12,8 +12,8 @@ use super::{BoxError, PipelineExt};
 ///   1. rdkafka detects partition revocation
 ///   2. `KafkaSource`'s `ConsumerContext` fires, ending the stream
 ///   3. Stream yields `StageResult::Exit(Rebalance)`
-///   4. `Exit` passes through all combinators to `commit()`
-///   5. `commit()` flushes offsets and returns `Ok(PipelineExit::Rebalance)`
+///   4. `Exit` passes through all combinators to `run()`
+///   5. `run()` flushes offsets and returns `Ok(PipelineExit::Rebalance)`
 ///   6. `PipelineRunner` calls the build closure again with a fresh pipeline
 ///   7. New stream picks up the new partition assignment from rdkafka
 pub struct PipelineRunner;
@@ -45,10 +45,7 @@ impl PipelineRunner {
             let pipeline = build();
             let mut collector = OffsetCollector::new(source.committer(), commit_interval);
 
-            let result = pipeline
-                .stream(source.stream())
-                .run(&mut collector)
-                .await?;
+            let result = pipeline.stream(source.stream()).run(&mut collector).await?;
 
             match result {
                 PipelineExit::Rebalance => {

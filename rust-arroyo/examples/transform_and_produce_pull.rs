@@ -1,9 +1,9 @@
 /// Pull-based version of transform_and_produce.
 ///
 /// Pipeline:
-///   KafkaSource → apply(reverse) → on_next(produce) → on_reject(log) → commit
+///   KafkaSource → apply(reverse) → on_next(produce) → on_reject(log) → run
 ///
-/// `PipelineRunner::run_pipeline()` handles the rebalance restart loop —
+/// `PipelineRunner::run()` handles the rebalance restart loop —
 /// the build closure is called once per partition assignment with fresh
 /// stages and handlers.
 extern crate sentry_arroyo;

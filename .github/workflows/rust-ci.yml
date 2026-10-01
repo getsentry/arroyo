@@ -19,6 +19,7 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - run: cargo check
+      - run: cargo check --features pull
       - run: cargo fmt --check
 
   test:
@@ -40,3 +41,5 @@ jobs:
         run: sh scripts/run-kafka.sh
       - name: Run tests
         run: cargo test
+      - name: Run tests (pull)
+        run: cargo test --features pull

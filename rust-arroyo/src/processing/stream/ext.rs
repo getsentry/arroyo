@@ -46,7 +46,7 @@ async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> St
 /// Stream<Item = StageResult<T>>.
 ///
 /// Combinators: `.apply()`, `.apply_concurrent()`, `.on_next()`,
-/// `.on_reject()`, `.commit()`.
+/// `.on_reject()`, `.run()`.
 ///
 /// See `PipelineRunner` for the recommended way to run a pipeline
 /// with rebalance handling.

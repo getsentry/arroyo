@@ -41,7 +41,7 @@ pub enum StageResult<T> {
     Fail(BoxError),
 
     /// Pipeline termination signal from the source.
-    /// Passes through all combinators untouched until reaching commit().
+    /// Passes through all combinators untouched until reaching `run()`.
     Exit(PipelineExit),
 }
 
