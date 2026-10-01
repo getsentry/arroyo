@@ -1,4 +1,5 @@
 use crate::processing::stream::pipeline_envelope::{MessageMetadata, PipelineEnvelope};
+use crate::processing::stream::stage::PipelineExit;
 use crate::processing::stream::BoxError;
 
 use super::stream_collector::StreamCollector;
@@ -11,6 +12,15 @@ impl<T> StreamCollector<T> for NoopCollector {
     fn on_emit(&mut self, _: &PipelineEnvelope<T>) {}
     fn on_drop(&mut self, _: &MessageMetadata) {}
     fn on_reject(&mut self, _: &MessageMetadata) {}
+    fn on_fail(&mut self, _: &BoxError) -> Result<(), BoxError> {
+        Ok(())
+    }
+    fn on_exit(&mut self, _: PipelineExit) -> Result<(), BoxError> {
+        Ok(())
+    }
+    fn after_each(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
     fn on_complete(&mut self) -> Result<(), BoxError> {
         Ok(())
     }

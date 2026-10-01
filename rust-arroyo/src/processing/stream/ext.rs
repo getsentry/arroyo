@@ -246,14 +246,16 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                     collector.on_reject(&metadata);
                 }
                 StageResult::Fail(err) => {
-                    let _ = collector.on_complete();
+                    let _ = collector.on_fail(&err);
                     return Err(err);
                 }
                 StageResult::Exit(reason) => {
-                    collector.on_complete()?;
+                    collector.on_exit(reason)?;
                     return Ok(reason);
                 }
             }
+
+            collector.after_each()?;
         }
 
         collector.on_complete()?;
