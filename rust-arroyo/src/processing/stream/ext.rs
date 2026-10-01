@@ -66,7 +66,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
 
     /// Apply a processing stage concurrently to up to `concurrency` Emit
     /// envelopes at once. Results are yielded in input order.
-    /// Non-Emit items pass through immediately.
+    /// Non-Emit items pass through.
     fn apply_concurrent<S>(
         self,
         stage: S,

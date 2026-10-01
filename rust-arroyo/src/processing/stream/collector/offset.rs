@@ -22,7 +22,6 @@ impl<'a> OffsetCollector<'a> {
     }
 }
 
-
 /// Note: Dropped and Rejected messages do not advance offsets.
 ///
 /// Batching is the blocker: a Drop at offset 5 would commit before a
@@ -32,8 +31,9 @@ impl<'a> OffsetCollector<'a> {
 /// reach `CommitOffsets` advance the offset.
 impl<T> StreamCollector<T> for OffsetCollector<'_> {
     fn on_emit(&mut self, envelope: &PipelineEnvelope<T>) {
-        self.tracker
-            .track(envelope.metadata.partition, envelope.metadata.offset + 1);
+        for (partition, offset) in &envelope.offsets {
+            self.tracker.track(*partition, offset + 1);
+        }
         self.tracker.record_latency(envelope.metadata.timestamp);
     }
 

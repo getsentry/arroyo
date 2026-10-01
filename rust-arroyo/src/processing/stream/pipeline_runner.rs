@@ -140,13 +140,19 @@ mod tests {
     }
 
     fn make_message(payload: &[u8], offset: u64) -> StageResult<KafkaPayload> {
-        let kp = KafkaPayload::new(None, None, Some(payload.to_vec()));
-        let md = MessageMetadata {
+        let payload = KafkaPayload::new(None, None, Some(payload.to_vec()));
+        let meta = MessageMetadata {
             partition: Partition::new(Topic::new("test"), 0),
             offset,
             timestamp: chrono::Utc::now(),
         };
-        StageResult::Emit(PipelineEnvelope::new(kp.clone(), md, kp))
+        let offsets = HashMap::from([(meta.partition, meta.offset)]);
+        StageResult::Emit(PipelineEnvelope::new(
+            payload.clone(),
+            meta,
+            payload,
+            offsets,
+        ))
     }
 
     /// Identity pipeline — passes messages through unchanged.

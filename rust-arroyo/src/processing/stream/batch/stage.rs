@@ -42,19 +42,17 @@ impl<T: Send + Sync, B: Buffer<T>> BatchState<T, B> {
         }
 
         let items = self.buffer.flush();
-        let mut metadata = self.last_metadata.take()?;
+        let metadata = self.last_metadata.take()?;
         let raw = self.last_raw.take()?;
 
-        if let Some(&max_offset) = self.offsets.get(&metadata.partition) {
-            metadata.offset = max_offset;
-        }
-        self.offsets.clear();
+        // The batch may span partitions; `metadata` can only name one.
+        let offsets = std::mem::take(&mut self.offsets);
 
         self.row_trigger = SizeTrigger::new(max_rows);
         self.byte_trigger = SizeTrigger::new(max_bytes);
 
         Some(StageResult::Emit(PipelineEnvelope::new(
-            items, metadata, raw,
+            items, metadata, raw, offsets,
         )))
     }
 }
@@ -84,12 +82,15 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> Stage for BatchStage<T, B
     async fn process(&self, envelope: PipelineEnvelope<T>) -> StageResult<B::Output> {
         let mut state = self.state.lock();
 
-        // Track offsets — keep highest per partition
-        state
-            .offsets
-            .entry(envelope.metadata.partition)
-            .and_modify(|o| *o = (*o).max(envelope.metadata.offset))
-            .or_insert(envelope.metadata.offset);
+        // Merge in the offsets for tracking across all partitions.
+        for (partition, offset) in envelope.offsets {
+            state
+                .offsets
+                .entry(partition)
+                .and_modify(|o| *o = (*o).max(offset))
+                .or_insert(offset);
+        }
+
         state.last_metadata = Some(envelope.metadata);
         state.last_raw = Some(envelope.raw);
 
@@ -124,6 +125,7 @@ mod tests {
     use super::*;
     use crate::processing::stream::{NoopCollector, PipelineExt};
     use crate::types::Topic;
+    use futures::StreamExt;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -164,7 +166,8 @@ mod tests {
             offset,
             timestamp: chrono::Utc::now(),
         };
-        StageResult::Emit(PipelineEnvelope::new(value, md, kp))
+        let offsets = HashMap::from([(md.partition, md.offset)]);
+        StageResult::Emit(PipelineEnvelope::new(value, md, kp, offsets))
     }
 
     struct CollectStage {
@@ -186,6 +189,56 @@ mod tests {
     }
 
     // ── Tests ───────────────────────────────────────────────────
+
+    fn make_envelope_on(value: u32, partition: u16, offset: u64) -> StageResult<u32> {
+        let md = MessageMetadata {
+            partition: Partition::new(Topic::new("test"), partition),
+            offset,
+            timestamp: chrono::Utc::now(),
+        };
+        let offsets = HashMap::from([(md.partition, md.offset)]);
+        StageResult::Emit(PipelineEnvelope::new(
+            value,
+            md,
+            KafkaPayload::new(None, None, None),
+            offsets,
+        ))
+    }
+
+    /// A batch spanning several partitions must carry the highest offset
+    /// for each one. Previously only `last_metadata`'s partition survived
+    /// the flush, so the others never committed and were reprocessed.
+    #[tokio::test]
+    async fn test_flush_carries_offsets_for_every_partition() {
+        let batch = BatchStage::new(VecBuffer::new(), 4, u64::MAX);
+
+        // Interleave two partitions; highest offsets are p0=20, p1=11.
+        let messages = vec![
+            make_envelope_on(0, 0, 10),
+            make_envelope_on(1, 1, 11),
+            make_envelope_on(2, 0, 20),
+            make_envelope_on(3, 1, 5),
+        ];
+
+        let results: Vec<_> = futures::stream::iter(messages)
+            .apply(batch)
+            .collect::<Vec<_>>()
+            .await;
+
+        let emitted: Vec<_> = results
+            .iter()
+            .filter_map(|r| match r {
+                StageResult::Emit(e) => Some(e),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(emitted.len(), 1, "one batch of 4 should flush");
+
+        let offsets = &emitted[0].offsets;
+        assert_eq!(offsets.len(), 2, "both partitions must be present");
+        assert_eq!(offsets[&Partition::new(Topic::new("test"), 0)], 20);
+        assert_eq!(offsets[&Partition::new(Topic::new("test"), 1)], 11);
+    }
 
     #[tokio::test]
     async fn test_batch_by_row_count() {

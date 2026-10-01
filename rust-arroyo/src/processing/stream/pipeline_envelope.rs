@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use rdkafka::message::{BorrowedMessage, Message as RdkafkaMessage};
+use std::collections::HashMap;
 
 use crate::backends::kafka::types::KafkaPayload;
 use crate::types::{Partition, Topic};
@@ -15,31 +16,42 @@ pub struct MessageMetadata {
 
 /// A message envelope that carries context through a pull-based pipeline.
 ///
-/// Three concerns, three fields:
+/// Four concerns, four fields:
 ///   - `payload` — the current transformed data (changes at each stage)
-///   - `metadata` — partition/offset/timestamp for commit tracking
+///   - `metadata` — partition/offset/timestamp of the originating message
 ///   - `raw` — original Kafka bytes for DLQ
+///   - `offsets` — the offsets this envelope commits
 pub struct PipelineEnvelope<T> {
     pub payload: T,
     pub metadata: MessageMetadata,
     pub raw: KafkaPayload,
+    pub offsets: HashMap<Partition, u64>,
 }
 
 impl<T> PipelineEnvelope<T> {
-    pub fn new(payload: T, metadata: MessageMetadata, raw: KafkaPayload) -> Self {
+    /// Offsets are explicit, not derived from `metadata`, so a stage after
+    /// a batch cannot silently narrow the commit to one partition.
+    pub fn new(
+        payload: T,
+        metadata: MessageMetadata,
+        raw: KafkaPayload,
+        offsets: HashMap<Partition, u64>,
+    ) -> Self {
         Self {
             payload,
             metadata,
             raw,
+            offsets,
         }
     }
 
-    /// Transform the payload, preserving metadata and raw.
+    /// Transform the payload, preserving metadata, raw, and offsets.
     pub fn map_payload<U>(self, f: impl FnOnce(T) -> U) -> PipelineEnvelope<U> {
         PipelineEnvelope {
             payload: f(self.payload),
             metadata: self.metadata,
             raw: self.raw,
+            offsets: self.offsets,
         }
     }
 
@@ -52,6 +64,7 @@ impl<T> PipelineEnvelope<T> {
             payload: f(self.payload)?,
             metadata: self.metadata,
             raw: self.raw,
+            offsets: self.offsets,
         })
     }
 }
@@ -82,6 +95,7 @@ impl PipelineEnvelope<KafkaPayload> {
         Self {
             raw: kafka_payload.clone(),
             payload: kafka_payload,
+            offsets: HashMap::from([(metadata.partition, metadata.offset)]),
             metadata,
         }
     }
