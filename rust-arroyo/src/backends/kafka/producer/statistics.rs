@@ -21,77 +21,55 @@ const BROKER_STATES: &[&str] = &[
 
 pub(super) fn record(stats: &Statistics, producer_name: &str) {
     for (broker_id, broker_stats) in &stats.brokers {
-        record_broker_state(broker_id, &broker_stats.state, producer_name);
+        record_broker_state(&broker_stats.state);
 
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_outbuf_requests",
             broker_stats.outbuf_cnt as f64,
-            broker_id,
-            producer_name,
         );
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_outbuf_messages",
             broker_stats.outbuf_msg_cnt as f64,
-            broker_id,
-            producer_name,
         );
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_waitresp_requests",
             broker_stats.waitresp_cnt as f64,
-            broker_id,
-            producer_name,
         );
 
         if let Some(connects) = broker_stats.connects {
-            record_broker_gauge(
+            record_gauge(
                 "arroyo.producer.librdkafka.broker_connects",
                 connects as f64,
-                broker_id,
-                producer_name,
             );
         }
 
         if let Some(disconnects) = broker_stats.disconnects {
-            record_broker_gauge(
+            record_gauge(
                 "arroyo.producer.librdkafka.broker_disconnects",
                 disconnects as f64,
-                broker_id,
-                producer_name,
             );
         }
 
         if broker_stats.txidle >= 0 {
-            record_broker_gauge(
+            record_gauge(
                 "arroyo.producer.librdkafka.broker_tx_idle",
                 (broker_stats.txidle / 1000) as f64,
-                broker_id,
-                producer_name,
             );
         }
 
         if broker_stats.rxidle >= 0 {
-            record_broker_gauge(
+            record_gauge(
                 "arroyo.producer.librdkafka.broker_rx_idle",
                 (broker_stats.rxidle / 1000) as f64,
-                broker_id,
-                producer_name,
             );
         }
 
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_request_timeouts",
             broker_stats.req_timeouts as f64,
-            broker_id,
-            producer_name,
         );
 
         if let Some(int_latency) = &broker_stats.int_latency {
-            record_broker_gauge(
-                "arroyo.producer.librdkafka.avg_int_latency",
-                int_latency.avg as f64 / 1000.0,
-                broker_id,
-                producer_name,
-            );
             record_broker_gauge(
                 "arroyo.producer.librdkafka.p99_int_latency",
                 int_latency.p99 as f64 / 1000.0,
@@ -102,12 +80,6 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
 
         if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
             record_broker_gauge(
-                "arroyo.producer.librdkafka.avg_outbuf_latency",
-                outbuf_latency.avg as f64 / 1000.0,
-                broker_id,
-                producer_name,
-            );
-            record_broker_gauge(
                 "arroyo.producer.librdkafka.p99_outbuf_latency",
                 outbuf_latency.p99 as f64 / 1000.0,
                 broker_id,
@@ -116,12 +88,6 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
         }
 
         if let Some(rtt) = &broker_stats.rtt {
-            record_broker_gauge(
-                "arroyo.producer.librdkafka.avg_rtt",
-                rtt.avg as f64 / 1000.0,
-                broker_id,
-                producer_name,
-            );
             record_broker_gauge(
                 "arroyo.producer.librdkafka.p99_rtt",
                 rtt.p99 as f64 / 1000.0,
@@ -142,17 +108,13 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
             broker_id,
             producer_name,
         );
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_tx",
             broker_stats.tx as f64,
-            broker_id,
-            producer_name,
         );
-        record_broker_gauge(
+        record_gauge(
             "arroyo.producer.librdkafka.broker_txbytes",
             broker_stats.txbytes as f64,
-            broker_id,
-            producer_name,
         );
     }
 
@@ -181,11 +143,11 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
         stats.replyq as f64,
         producer_name,
     );
-    record_producer_gauge(
-        "arroyo.producer.librdkafka.txmsgs",
-        stats.txmsgs as f64,
-        producer_name,
-    );
+    record_gauge("arroyo.producer.librdkafka.txmsgs", stats.txmsgs as f64);
+}
+
+fn record_gauge(name: &'static str, value: f64) {
+    metrics::gauge!(name).set(value);
 }
 
 fn record_producer_gauge(name: &'static str, value: f64, producer_name: &str) {
@@ -201,7 +163,7 @@ fn record_broker_gauge(name: &'static str, value: f64, broker_id: &str, producer
     .set(value);
 }
 
-fn record_broker_state(broker_id: &str, state: &str, producer_name: &str) {
+fn record_broker_state(state: &str) {
     // Emitting every state on each callback resets the previous state's gauge instead of leaving
     // stale gauges behind.
     let state = if BROKER_STATES.contains(&state) {
@@ -214,8 +176,6 @@ fn record_broker_state(broker_id: &str, state: &str, producer_name: &str) {
     for candidate in BROKER_STATES {
         metrics::gauge!(
             "arroyo.producer.librdkafka.broker_state",
-            "broker_id" => broker_id.to_owned(),
-            "producer_name" => producer_name.to_owned(),
             "state" => *candidate
         )
         .set(f64::from(*candidate == state));
@@ -287,6 +247,7 @@ mod tests {
             .iter()
             .filter(|(key, _)| {
                 key.name() == name
+                    && key.labels().count() == labels.len()
                     && labels.iter().all(|(name, value)| {
                         key.labels()
                             .any(|label| label.key() == *name && label.value() == *value)
@@ -367,12 +328,12 @@ mod tests {
             ("arroyo.producer.librdkafka.message_count_max", 21.0),
             ("arroyo.producer.librdkafka.message_size", 22.0),
             ("arroyo.producer.librdkafka.message_size_max", 23.0),
-            ("arroyo.producer.librdkafka.txmsgs", 24.0),
         ] {
             assert_eq!(gauge_value(&gauges, name, &producer_labels), expected);
         }
 
         for (name, expected) in [
+            ("arroyo.producer.librdkafka.txmsgs", 24.0),
             ("arroyo.producer.librdkafka.broker_outbuf_requests", 7.0),
             ("arroyo.producer.librdkafka.broker_outbuf_messages", 8.0),
             ("arroyo.producer.librdkafka.broker_waitresp_requests", 9.0),
@@ -383,13 +344,15 @@ mod tests {
             ("arroyo.producer.librdkafka.broker_request_timeouts", 14.0),
             ("arroyo.producer.librdkafka.broker_tx", 15.0),
             ("arroyo.producer.librdkafka.broker_txbytes", 16.0),
+        ] {
+            assert_eq!(gauge_value(&gauges, name, &[]), expected);
+        }
+
+        for (name, expected) in [
             ("arroyo.producer.librdkafka.broker_txerrs", 17.0),
             ("arroyo.producer.librdkafka.broker_txretries", 18.0),
-            ("arroyo.producer.librdkafka.avg_int_latency", 0.75),
             ("arroyo.producer.librdkafka.p99_int_latency", 1.5),
-            ("arroyo.producer.librdkafka.avg_outbuf_latency", 1.25),
             ("arroyo.producer.librdkafka.p99_outbuf_latency", 3.75),
-            ("arroyo.producer.librdkafka.avg_rtt", 2.75),
             ("arroyo.producer.librdkafka.p99_rtt", 6.5),
         ] {
             assert_eq!(gauge_value(&gauges, name, &broker_labels), expected);
@@ -399,11 +362,7 @@ mod tests {
             gauge_value(
                 &gauges,
                 "arroyo.producer.librdkafka.broker_state",
-                &[
-                    ("broker_id", "1"),
-                    ("producer_name", "unknown"),
-                    ("state", "UP"),
-                ],
+                &[("state", "UP")],
             ),
             1.0
         );
@@ -415,7 +374,14 @@ mod tests {
                 .sum::<f64>(),
             1.0
         );
-        assert_eq!(gauges.len(), 38);
+        for name in [
+            "arroyo.producer.librdkafka.avg_int_latency",
+            "arroyo.producer.librdkafka.avg_outbuf_latency",
+            "arroyo.producer.librdkafka.avg_rtt",
+        ] {
+            assert!(gauges.iter().all(|(key, _)| key.name() != name));
+        }
+        assert_eq!(gauges.len(), 35);
     }
 
     #[test]
