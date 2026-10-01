@@ -21,16 +21,16 @@ pub enum StageResult<T> {
     /// Produced output — pass downstream.
     Emit(PipelineEnvelope<T>),
 
-    /// Evaluated and intentionally dropped (filtered).
-    /// Carries metadata so the offset is still tracked.
+    /// Evaluated and intentionally dropped (filtered) — no output.
+    /// Carries metadata so collectors can account for the message.
     Drop { metadata: MessageMetadata },
 
-    /// Equivalent to no result emission — offset is not propagated.
-    /// Supports accumulating (batching).
+    /// No output for this input. The stage may have consumed it into
+    /// internal state (e.g. accumulating a batch).
     Skip,
 
-    /// Rejected message — agnostic about reason.
-    /// Carries metadata + raw for offset tracking and DLQ routing.
+    /// Rejected message — agnostic about reason. Carries metadata and the
+    /// original payload so handlers can route or record it.
     Reject {
         metadata: MessageMetadata,
         raw: KafkaPayload,
