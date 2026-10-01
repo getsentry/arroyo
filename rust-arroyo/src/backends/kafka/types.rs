@@ -30,6 +30,11 @@ impl Headers {
             .find(|header| header.key == key)
             .and_then(|header| header.value)
     }
+
+    /// Iterate in Kafka order, including duplicate keys and headers without values.
+    pub fn iter(&self) -> impl Iterator<Item = Header<'_, &'_ [u8]>> + '_ {
+        self.headers.iter()
+    }
 }
 
 impl Default for Headers {
@@ -197,5 +202,22 @@ mod tests {
         assert_eq!(headers.get("key1"), Some(b"value1").map(|v| v.as_ref()));
         assert_eq!(headers.get("key2"), Some(b"value2").map(|v| v.as_ref()));
         assert_eq!(headers.get("key10"), None);
+
+        let headers = headers.insert("key1", Some(b"again".to_vec()));
+        let headers = headers.insert("empty", None);
+        let entries: Vec<_> = headers
+            .iter()
+            .map(|header| (header.key, header.value))
+            .collect();
+        assert_eq!(
+            entries,
+            [
+                ("key1", Some(b"value1".as_slice())),
+                ("key2", Some(b"value2".as_slice())),
+                ("key3", Some(b"value3".as_slice())),
+                ("key1", Some(b"again".as_slice())),
+                ("empty", None),
+            ]
+        );
     }
 }
