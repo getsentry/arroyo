@@ -80,9 +80,9 @@ impl PipelineEnvelope<KafkaPayload> {
         };
 
         Self {
-            payload: kafka_payload.clone(),
-            metadata,
             raw: kafka_payload.clone(),
+            payload: kafka_payload,
+            metadata,
         }
     }
 }

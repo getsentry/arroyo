@@ -122,7 +122,7 @@ impl<T: Send + Sync + 'static, B: Buffer<T> + 'static> FlushableStage for BatchS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::processing::stream::{BoxError, OffsetCommitter, OffsetTracker, PipelineExt};
+    use crate::processing::stream::{NoopCollector, PipelineExt};
     use crate::types::Topic;
     use std::sync::Arc;
     use std::time::Duration;
@@ -156,14 +156,7 @@ mod tests {
         }
     }
 
-    struct MockCommitter;
-
-    impl OffsetCommitter for MockCommitter {
-        fn commit_offsets(&self, _positions: &HashMap<Partition, u64>) -> Result<(), BoxError> {
-            Ok(())
-        }
-    }
-
+    /// Collects flushed batches so tests can assert on their contents.
     fn make_envelope(value: u32, offset: u64) -> StageResult<u32> {
         let kp = KafkaPayload::new(None, None, None);
         let md = MessageMetadata {
@@ -203,13 +196,12 @@ mod tests {
         };
 
         let messages: Vec<_> = (0..7).map(|i| make_envelope(i, i as u64)).collect();
-        let committer = MockCommitter;
-        let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
+        let mut noop = NoopCollector;
 
         let result = futures::stream::iter(messages)
             .apply(batch)
             .apply(collector)
-            .commit(&mut tracker)
+            .run(&mut noop)
             .await;
 
         assert!(result.is_ok());
@@ -249,13 +241,12 @@ mod tests {
         };
 
         let messages: Vec<_> = (0..5).map(|i| make_envelope(i, i as u64)).collect();
-        let committer = MockCommitter;
-        let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
+        let mut noop = NoopCollector;
 
         let result = futures::stream::iter(messages)
             .apply(batch)
             .apply(collector)
-            .commit(&mut tracker)
+            .run(&mut noop)
             .await;
 
         assert!(result.is_ok());
@@ -274,13 +265,12 @@ mod tests {
         };
 
         let messages: Vec<_> = (0..6).map(|i| make_envelope(i, i as u64)).collect();
-        let committer = MockCommitter;
-        let mut tracker = OffsetTracker::new(Duration::from_millis(1), &committer);
+        let mut noop = NoopCollector;
 
         let result = futures::stream::iter(messages)
             .apply(batch)
             .apply(collector)
-            .commit(&mut tracker)
+            .run(&mut noop)
             .await;
 
         assert!(result.is_ok());

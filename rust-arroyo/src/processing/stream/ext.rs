@@ -5,7 +5,6 @@ use futures::stream::Stream;
 use futures::StreamExt;
 
 use super::collector::StreamCollector;
-use super::offset_tracker::OffsetTracker;
 use crate::processing::stream::batch::flush_timer::FlushTimer;
 use crate::{counter, timer};
 
@@ -225,48 +224,9 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
         }
     }
 
-    /// Terminal: drive the pipeline to completion.
-    /// Tracks offsets for Emit, Drop, and Reject items.
-    /// Returns the exit reason (Rebalance, Shutdown, or Complete).
-    /// Fail stops the pipeline with an error.
-    #[allow(async_fn_in_trait)]
-    async fn commit(self, tracker: &mut OffsetTracker<'_>) -> Result<PipelineExit, BoxError> {
-        let mut stream = Box::pin(self);
-
-        while let Some(item) = stream.next().await {
-            match item {
-                StageResult::Emit(envelope) => {
-                    tracker.track(envelope.metadata.partition, envelope.metadata.offset + 1);
-                    tracker.record_latency(envelope.metadata.timestamp);
-                }
-                StageResult::Drop { metadata } => {
-                    tracker.track(metadata.partition, metadata.offset + 1);
-                }
-                StageResult::Skip => {}
-                StageResult::Reject { metadata, .. } => {
-                    tracker.track(metadata.partition, metadata.offset + 1);
-                }
-                StageResult::Fail(err) => {
-                    let _ = tracker.flush();
-                    return Err(err);
-                }
-                StageResult::Exit(reason) => {
-                    tracker.flush()?;
-                    return Ok(reason);
-                }
-            }
-
-            tracker.maybe_commit()?;
-        }
-
-        // Stream ended naturally (no Exit item)
-        tracker.flush()?;
-        Ok(PipelineExit::Complete)
-    }
-
     /// Terminal: drive the pipeline to completion using a StreamCollector.
     ///
-    /// Like `commit()`, but delegates event handling to the collector.
+    /// The collector decides what happens on each pipeline event.
     /// Use `OffsetCollector` for production (offset tracking + commit),
     /// or `NoopCollector` / a custom collector for tests.
     #[allow(async_fn_in_trait)]

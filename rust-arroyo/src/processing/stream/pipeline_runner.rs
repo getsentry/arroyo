@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::offset_tracker::OffsetTracker;
+use super::collector::OffsetCollector;
 use super::pipeline::Pipeline;
 use super::source::PullSource;
 use super::stage::PipelineExit;
@@ -43,11 +43,11 @@ impl PipelineRunner {
     {
         loop {
             let pipeline = build();
-            let mut tracker = OffsetTracker::new(commit_interval, source.committer());
+            let mut collector = OffsetCollector::new(source.committer(), commit_interval);
 
             let result = pipeline
                 .stream(source.stream())
-                .commit(&mut tracker)
+                .run(&mut collector)
                 .await?;
 
             match result {

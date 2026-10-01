@@ -29,15 +29,17 @@ impl<T> StreamCollector<T> for OffsetCollector<'_> {
         let _ = self.tracker.maybe_commit();
     }
 
-    fn on_drop(&mut self, metadata: &MessageMetadata) {
-        self.tracker.track(metadata.partition, metadata.offset + 1);
-        let _ = self.tracker.maybe_commit();
-    }
+    /// Dropped messages do not advance offsets.
+    ///
+    /// Batching is the blocker: a Drop at offset 5 would commit before a
+    /// batch spanning offsets 0-4 flushes, rewinding the committed offset.
+    /// The next Emit (batch flush) implicitly covers dropped offsets with a
+    /// higher commit. This matches the push model, where only messages that
+    /// reach `CommitOffsets` advance the offset.
+    fn on_drop(&mut self, _metadata: &MessageMetadata) {}
 
-    fn on_reject(&mut self, metadata: &MessageMetadata) {
-        self.tracker.track(metadata.partition, metadata.offset + 1);
-        let _ = self.tracker.maybe_commit();
-    }
+    /// Rejected messages do not advance offsets — see `on_drop`.
+    fn on_reject(&mut self, _metadata: &MessageMetadata) {}
 
     fn on_complete(&mut self) -> Result<(), BoxError> {
         self.tracker.flush()
