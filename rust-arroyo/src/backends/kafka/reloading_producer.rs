@@ -33,7 +33,7 @@ use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector};
 use super::producer::{KafkaProducer, ProducerContext};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError};
-use crate::types::{Topic, TopicOrPartition};
+use crate::types::{Partition, Topic, TopicOrPartition};
 
 /// Knobs for how reloads are carried out.
 #[derive(Debug, Clone)]
@@ -416,20 +416,43 @@ where
     /// The fast path hands the record straight to the running client and
     /// copies nothing. Only while a reload drains the old client does this
     /// copy, to park the message in the buffer until the new client is in.
+    ///
+    /// # Timestamps are not preserved across a reload
+    ///
+    /// A record carrying an explicit `timestamp` loses it if it lands in the
+    /// buffer: [`KafkaPayload`] has nowhere to put one. The broker then stamps
+    /// it on replay. Only callers that set timestamps are affected, and only
+    /// for the messages produced during a swap.
     pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
     where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        // The read guard is the whole of the coordination with a reload; see
-        // the `Producer` impl below for why that is enough.
+        // The read guard is the whole of the coordination with a reload: the
+        // swap takes the write lock to start buffering and again to install
+        // and replay, so this either enqueues on a client that is still live
+        // or lands in the buffer, never in between.
         let current = self.inner.current.read();
 
         let Some(buffer) = &current.buffer else {
             return current.producer.produce_record(record);
         };
 
-        let destination = TopicOrPartition::Topic(Topic::new(record.topic));
+        // Keep an explicit partition: dropping it would send the message to a
+        // partition chosen by the key on replay, not the one asked for.
+        let topic = Topic::new(record.topic);
+        let destination = match record.partition {
+            Some(index) => TopicOrPartition::Partition(Partition::new(
+                topic,
+                index
+                    .try_into()
+                    .map_err(|_| ProducerError::ProducerFailure {
+                        error: format!("partition {index} is out of range"),
+                    })?,
+            )),
+            None => TopicOrPartition::Topic(topic),
+        };
+
         let payload = KafkaPayload::new(
             record.key.map(|key| key.to_bytes().to_vec()),
             record.headers.map(Headers::from),
@@ -968,17 +991,7 @@ where
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
-        // The read guard is the whole of the coordination with a reload: the
-        // swap takes the write lock to start buffering and again to install and
-        // replay, so this either enqueues on a client that is still live or
-        // lands in the buffer, never in between.
-        let current = self.inner.current.read();
-
-        let Some(buffer) = &current.buffer else {
-            return current.producer.produce(destination, payload);
-        };
-
-        self.inner.buffer_or_reject(buffer, *destination, payload)
+        self.produce_record(payload.to_base_record(destination))
     }
 }
 
@@ -1881,32 +1894,6 @@ mod tests {
         }
     }
 
-    /// `produce_record` on the fast path must reach the live client.
-    #[test]
-    fn test_produce_record_reaches_the_client() {
-        let cluster = MockCluster::new(1).unwrap();
-        let delivered = Arc::new(AtomicU64::new(0));
-        let producer = ReloadingKafkaProducer::new_with_context(
-            &blob(&cluster.bootstrap_servers(), "all"),
-            selector(),
-            settings(),
-            CountingContext {
-                delivered: Arc::clone(&delivered),
-            },
-        )
-        .unwrap();
-
-        producer
-            .produce_record(
-                BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
-                    .key(b"key".as_slice())
-                    .payload(b"payload".as_slice()),
-            )
-            .unwrap();
-
-        await_delivered(&delivered, 1);
-    }
-
     /// A custom context must keep receiving delivery callbacks after a swap.
     ///
     /// The new client is built by the worker, not the caller, so it is the one
@@ -1986,5 +1973,83 @@ mod tests {
             payload.headers().unwrap().get("header"),
             Some(b"value".as_slice())
         );
+    }
+
+    /// An explicit partition has to survive the buffer.
+    ///
+    /// Dropping it would let the key pick a partition on replay, quietly
+    /// sending the message somewhere other than where the caller asked.
+    #[test]
+    fn test_produce_record_buffers_keep_the_partition() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+
+        start_buffering(&producer);
+
+        producer
+            .produce_record(
+                BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                    .key(b"key".as_slice())
+                    .payload(b"payload".as_slice())
+                    .partition(7),
+            )
+            .unwrap();
+
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        let buffered = buffer.lock();
+
+        let (destination, _) = buffered.first().unwrap();
+        assert_eq!(
+            *destination,
+            TopicOrPartition::Partition(Partition::new(Topic::new("ingest-events"), 7))
+        );
+    }
+
+    /// Producing a `KafkaPayload` to a partition must route the same way, now
+    /// that `produce` goes through `produce_record`.
+    #[test]
+    fn test_produce_to_a_partition_keeps_the_partition() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+        let destination =
+            TopicOrPartition::Partition(Partition::new(Topic::new("ingest-events"), 3));
+
+        start_buffering(&producer);
+
+        producer
+            .produce(
+                &destination,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"payload".to_vec())),
+            )
+            .unwrap();
+
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        let buffered = buffer.lock();
+
+        assert_eq!(buffered.first().unwrap().0, destination);
+    }
+
+    /// `BaseRecord` carries an `i32` partition while `Partition` holds a
+    /// `u16`, so a value that does not fit has to be reported rather than
+    /// wrapped into a different partition.
+    #[test]
+    fn test_out_of_range_partition_is_rejected() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+
+        start_buffering(&producer);
+
+        let result = producer.produce_record(
+            BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                .payload(b"payload".as_slice())
+                .partition(i32::MAX),
+        );
+
+        assert!(result.is_err());
+        // A wrapping cast would have buffered this for some unrelated partition.
+        let current = producer.inner.current.read();
+        assert!(current.buffer.as_ref().unwrap().lock().is_empty());
     }
 }
