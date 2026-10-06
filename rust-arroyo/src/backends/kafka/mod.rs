@@ -26,6 +26,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod async_consumer;
 pub mod config;
 pub mod config_blob;
 mod errors;
@@ -193,43 +194,55 @@ pub struct CustomContext<C: AssignmentCallbacks> {
 
 impl<C: AssignmentCallbacks + Send + Sync> ClientContext for CustomContext<C> {
     fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
-        Hub::run(self.hub.clone(), || match level {
-            RDKafkaLogLevel::Emerg
-            | RDKafkaLogLevel::Alert
-            | RDKafkaLogLevel::Critical
-            | RDKafkaLogLevel::Error => {
-                tracing::error!("librdkafka: {fac} {log_message}");
-            }
-            RDKafkaLogLevel::Warning => {
-                tracing::warn!("librdkafka: {fac} {log_message}");
-            }
-            RDKafkaLogLevel::Notice | RDKafkaLogLevel::Info => {
-                tracing::info!("librdkafka: {fac} {log_message}");
-            }
-            RDKafkaLogLevel::Debug => {
-                tracing::debug!("librdkafka: {fac} {log_message}");
-            }
-        })
+        log_librdkafka(&self.hub, level, fac, log_message);
     }
 
     fn error(&self, error: KafkaError, reason: &str) {
-        Hub::run(self.hub.clone(), || {
-            let error: &dyn std::error::Error = &error;
-            tracing::error!(error, "librdkafka: {error}: {reason}");
-        })
+        log_librdkafka_error(&self.hub, error, reason);
     }
 
     fn stats(&self, stats: Statistics) {
-        metrics::gauge!("arroyo.consumer.librdkafka.total_queue_size").set(stats.replyq as f64);
-        for (topic_name, topic) in stats.topics.iter() {
-            for (partition_num, partition) in topic.partitions.iter() {
-                metrics::gauge!(
-                    "arroyo.consumer.librdkafka.fetch_queue_count",
-                    "topic" => topic_name.clone(),
-                    "partition" => partition_num.to_string()
-                )
-                .set(partition.fetchq_cnt as f64);
-            }
+        record_consumer_stats(stats);
+    }
+}
+
+fn log_librdkafka(hub: &Arc<Hub>, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
+    Hub::run(hub.clone(), || match level {
+        RDKafkaLogLevel::Emerg
+        | RDKafkaLogLevel::Alert
+        | RDKafkaLogLevel::Critical
+        | RDKafkaLogLevel::Error => {
+            tracing::error!("librdkafka: {fac} {log_message}");
+        }
+        RDKafkaLogLevel::Warning => {
+            tracing::warn!("librdkafka: {fac} {log_message}");
+        }
+        RDKafkaLogLevel::Notice | RDKafkaLogLevel::Info => {
+            tracing::info!("librdkafka: {fac} {log_message}");
+        }
+        RDKafkaLogLevel::Debug => {
+            tracing::debug!("librdkafka: {fac} {log_message}");
+        }
+    })
+}
+
+fn log_librdkafka_error(hub: &Arc<Hub>, error: KafkaError, reason: &str) {
+    Hub::run(hub.clone(), || {
+        let error: &dyn std::error::Error = &error;
+        tracing::error!(error, "librdkafka: {error}: {reason}");
+    })
+}
+
+fn record_consumer_stats(stats: Statistics) {
+    metrics::gauge!("arroyo.consumer.librdkafka.total_queue_size").set(stats.replyq as f64);
+    for (topic_name, topic) in stats.topics.iter() {
+        for (partition_num, partition) in topic.partitions.iter() {
+            metrics::gauge!(
+                "arroyo.consumer.librdkafka.fetch_queue_count",
+                "topic" => topic_name.clone(),
+                "partition" => partition_num.to_string()
+            )
+            .set(partition.fetchq_cnt as f64);
         }
     }
 }
