@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::base_consumer::PartitionQueue;
-use rdkafka::consumer::{BaseConsumer, Consumer, ConsumerContext, Rebalance};
+use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaError;
 use rdkafka::message::Message;
 use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
@@ -43,9 +43,9 @@ pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
 /// A Kafka consumer that gives each assigned partition its own [`AsyncPartitionQueue`]. Its
 /// own thread polls the consumer and serves rebalances through [`AsyncAssignmentCallbacks`].
 ///
-/// Offsets are committed by librdkafka's auto-commit, which this consumer always enables:
-/// offsets passed to [`AsyncKafkaConsumer::store_offsets`] are committed periodically, when
-/// their partitions are revoked, and on shutdown.
+/// Offsets passed to [`AsyncKafkaConsumer::store_offsets`] are committed periodically and on
+/// partition revocation by librdkafka's auto-commit, which this consumer always enables.
+/// Shutdown revokes the remaining queues and commits their stored offsets synchronously.
 ///
 /// Dropping it blocks until revocation and the final commit finish: drop it in
 /// `spawn_blocking`, never from a thread that `on_revoke` waits on.
@@ -282,19 +282,14 @@ fn run_poll_thread(consumer: &BaseConsumer<AsyncConsumerContext>, shutdown: &Ato
     while !shutdown.load(Ordering::Relaxed) {
         poll_once(consumer);
     }
-    // The revocation this triggers is served by a later poll.
-    consumer.unsubscribe();
-    loop {
-        match consumer.assignment() {
-            Ok(assignment) if assignment.count() > 0 => poll_once(consumer),
-            Ok(_) => break,
-            Err(error) => {
-                tracing::error!(%error, "Failed to read Kafka consumer assignment during shutdown");
-                let context = consumer.context();
-                let remaining = context.queues.lock().drain().collect();
-                context.revoke_queues(remaining);
-                break;
-            }
+    let context = consumer.context();
+    let remaining = context.queues.lock().drain().collect();
+    context.revoke_queues(remaining);
+    match consumer.commit_consumer_state(CommitMode::Sync) {
+        Ok(()) | Err(KafkaError::ConsumerCommit(RDKafkaErrorCode::NoOffset)) => {}
+        Err(error) => {
+            tracing::error!(%error, "Failed to commit Kafka offsets during shutdown");
+            context.callbacks.on_error(error);
         }
     }
 }
