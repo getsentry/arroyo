@@ -32,8 +32,10 @@ const POLL_TIMEOUT: Duration = Duration::from_millis(100);
 pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
     fn on_assign(&self, queues: Vec<AsyncPartitionQueue>);
 
-    /// Store these partitions' offsets before returning: they are committed and their
-    /// queues closed right after.
+    /// Finish processing these partitions before returning; their queues are closed
+    /// immediately afterward. With `enable.auto.offset.store=false`, store their final
+    /// offsets with [`AsyncKafkaConsumer::store_offsets`] before returning.
+    /// Shutdown always commits stored offsets synchronously after this callback returns.
     fn on_revoke(&self, partitions: Vec<Partition>);
 
     /// Consumer errors other than broker transport failures, which are logged either way.
@@ -42,11 +44,6 @@ pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
 
 /// A Kafka consumer that gives each assigned partition its own [`AsyncPartitionQueue`]. Its
 /// own thread polls the consumer and serves rebalances through [`AsyncAssignmentCallbacks`].
-///
-/// Offsets passed to [`AsyncKafkaConsumer::store_offsets`] are committed periodically and on
-/// partition revocation by librdkafka's auto-commit, which this consumer always enables.
-/// Shutdown revokes the remaining queues and commits their stored offsets synchronously.
-///
 /// Dropping it blocks until revocation and the final commit finish: drop it in
 /// `spawn_blocking`, never from a thread that `on_revoke` waits on.
 pub struct AsyncKafkaConsumer {
@@ -77,10 +74,7 @@ impl AsyncKafkaConsumer {
             queues: Mutex::default(),
         };
         let mut config: ClientConfig = config.into();
-        config
-            .set("enable.auto.offset.store", "false")
-            .set("enable.auto.commit", "true")
-            .set_log_level(RDKafkaLogLevel::Warning);
+        config.set_log_level(RDKafkaLogLevel::Warning);
         let consumer: BaseConsumer<AsyncConsumerContext> = config.create_with_context(context)?;
         let consumer = Arc::new(consumer);
         let _ = consumer.context().consumer.set(Arc::downgrade(&consumer));
@@ -109,6 +103,8 @@ impl AsyncKafkaConsumer {
         })
     }
 
+    /// Store processed offsets locally for a later commit. Requires
+    /// `enable.auto.offset.store=false` in the consumer configuration.
     pub fn store_offsets(&self, offsets: HashMap<Partition, u64>) -> Result<(), KafkaError> {
         let mut tpl = TopicPartitionList::with_capacity(offsets.len());
         for (partition, offset) in offsets {
@@ -119,6 +115,14 @@ impl AsyncKafkaConsumer {
             )?;
         }
         self.consumer.store_offsets(&tpl)
+    }
+
+    /// Synchronously commit the locally stored offsets for the current assignment to Kafka.
+    /// With `enable.auto.commit=false`, call this periodically to save progress and
+    /// before returning from [`AsyncAssignmentCallbacks::on_revoke`].
+    /// Use `spawn_blocking` when calling from an async task.
+    pub fn commit_consumer_state(&self) -> Result<(), KafkaError> {
+        self.consumer.commit_consumer_state(CommitMode::Sync)
     }
 }
 
@@ -366,7 +370,10 @@ mod tests {
                 InitialOffset::Earliest,
                 false,
                 30_000,
-                None,
+                Some(HashMap::from([
+                    ("enable.auto.commit".to_owned(), "true".to_owned()),
+                    ("enable.auto.offset.store".to_owned(), "false".to_owned()),
+                ])),
             );
             let (assigned_sender, assigned) = unbounded_channel();
             let (revoked_sender, revoked) = unbounded_channel();
