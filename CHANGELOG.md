@@ -1,5 +1,18 @@
 # Changelog and versioning
 
+## 2.45.0
+
+### New Features ✨
+
+#### Kafka
+
+- Add AsyncKafkaConsumer with per-partition async queues by @lvthanh03 in [#579](https://github.com/getsentry/arroyo/pull/579)
+- Add iterator for message headers by @lvthanh03 in [#577](https://github.com/getsentry/arroyo/pull/577)
+
+### Internal Changes 🔧
+
+- (metrics) Remove unused producer metrics and tags by @lvthanh03 in [#576](https://github.com/getsentry/arroyo/pull/576)
+
 ## 2.44.2
 
 ### New Features ✨
