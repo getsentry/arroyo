@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.46.0
+
+### New Features ✨
+
+- (healthcheck) Add a healthcheck command for consumer liveness probes by @oioki in [#580](https://github.com/getsentry/arroyo/pull/580)
+
 ## 2.45.0
 
 ### New Features ✨
