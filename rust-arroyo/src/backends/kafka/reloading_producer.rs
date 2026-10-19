@@ -25,13 +25,15 @@ use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex, RwLock};
 use rdkafka::error::KafkaError;
+use rdkafka::message::ToBytes;
+use rdkafka::producer::{BaseRecord, ProducerContext as RdkafkaProducerContext};
 
 use super::config::KafkaConfig;
 use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector};
-use super::producer::KafkaProducer;
-use super::types::KafkaPayload;
+use super::producer::{KafkaProducer, ProducerContext};
+use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError};
-use crate::types::TopicOrPartition;
+use crate::types::{Partition, Topic, TopicOrPartition};
 
 /// Knobs for how reloads are carried out.
 #[derive(Debug, Clone)]
@@ -85,8 +87,11 @@ pub enum ReloadOutcome {
     Unchanged,
 }
 
-struct Current {
-    producer: Arc<KafkaProducer>,
+struct Current<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+{
+    producer: Arc<KafkaProducer<C>>,
     config: KafkaConfig,
     /// Set while `producer` is draining for a swap. Produce calls append here
     /// instead of enqueueing on a client that is on its way out.
@@ -99,29 +104,62 @@ struct Current {
 /// A producer whose configuration can be replaced while it is running.
 ///
 /// Cheap to clone; clones share one underlying client and all see a reload.
-#[derive(Clone)]
-pub struct ReloadingKafkaProducer {
-    inner: Arc<Inner>,
+///
+/// `C` is the rdkafka context, which is what receives delivery callbacks and
+/// client statistics. Every client this producer builds, including the ones it
+/// swaps in later, gets a clone of the context handed to the constructor, so
+/// callbacks keep firing across a reload.
+pub struct ReloadingKafkaProducer<C = ProducerContext>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    inner: Arc<Inner<C>>,
     /// Its final `Drop` stops the worker, which holds only a weak reference.
-    _shutdown: Arc<ShutdownOnDrop>,
+    _shutdown: Arc<ShutdownOnDrop<C>>,
+}
+
+// Derived `Clone` would demand `C: Clone` on the handle itself, which is not
+// needed: the context lives behind the `Arc` and is never cloned by this.
+impl<C> Clone for ReloadingKafkaProducer<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            _shutdown: Arc::clone(&self._shutdown),
+        }
+    }
 }
 
 /// Stops the reload worker once every user-facing handle is dropped.
-struct ShutdownOnDrop {
-    inner: Arc<Inner>,
+struct ShutdownOnDrop<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    inner: Arc<Inner<C>>,
 }
 
-impl Drop for ShutdownOnDrop {
+impl<C> Drop for ShutdownOnDrop<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
     fn drop(&mut self) {
         self.inner.reload.lock().shutdown = true;
         self.inner.reload_wake.notify_all();
     }
 }
 
-struct Inner {
+struct Inner<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
     /// Read on every produce, taken for writing only to start buffering and
     /// to install.
-    current: RwLock<Current>,
+    current: RwLock<Current<C>>,
+    /// Cloned into every client this producer builds, so delivery callbacks
+    /// and statistics survive a swap.
+    context: C,
     /// Serializes reloads and holds the state a swap needs.
     reload: Mutex<ReloadState>,
     /// Signalled when `reload.desired` or `reload.shutdown` changes.
@@ -171,7 +209,8 @@ struct ReloadState {
 }
 
 impl ReloadingKafkaProducer {
-    /// Builds a producer from an initial config blob.
+    /// Builds a producer from an initial config blob, with Arroyo's own
+    /// metrics context.
     ///
     /// Pass the opaque config bytes through. `selector` chooses the topic and
     /// application config.
@@ -180,10 +219,34 @@ impl ReloadingKafkaProducer {
         selector: ProducerSelector,
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
-        let parsed = ConfigBlob::parse(blob).and_then(|blob| blob.producer_config(&selector));
+        let config = Self::resolve_initial(blob, &selector)?;
+        let context = ProducerContext::new(producer_name_of(&config));
+        Self::from_config_with_context(config, selector, settings, context)
+    }
 
-        let config = match parsed {
-            Ok(config) => config,
+    /// Builds a producer from an already-resolved config, with Arroyo's own
+    /// metrics context.
+    ///
+    /// For applications not yet on the central configmap that still want
+    /// reloading. Once a blob is pushed in, it takes over.
+    pub fn from_config(
+        config: KafkaConfig,
+        selector: ProducerSelector,
+        settings: ReloadConfig,
+    ) -> Result<Self, ReloadError> {
+        let context = ProducerContext::new(producer_name_of(&config));
+        Self::from_config_with_context(config, selector, settings, context)
+    }
+
+    /// Resolves the first config out of a blob, reporting a rejection.
+    fn resolve_initial(
+        blob: &[u8],
+        selector: &ProducerSelector,
+    ) -> Result<KafkaConfig, ReloadError> {
+        let parsed = ConfigBlob::parse(blob).and_then(|blob| blob.producer_config(selector));
+
+        match parsed {
+            Ok(config) => Ok(config),
             Err(error) => {
                 // Tagged `initial` because a blob that is bad at startup and one
                 // that goes bad later are different problems: the first fails a
@@ -196,24 +259,44 @@ impl ReloadingKafkaProducer {
                     "reason" => blob_error_reason(&error),
                 )
                 .increment(1);
-                return Err(error.into());
+                Err(error.into())
             }
-        };
+        }
+    }
+}
 
-        Self::from_config(config, selector, settings)
+impl<C> ReloadingKafkaProducer<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    /// Builds a producer from an initial config blob, with a custom context.
+    ///
+    /// The context is cloned into every client, including the ones installed
+    /// by later reloads, so delivery callbacks and statistics do not stop at a
+    /// swap.
+    pub fn new_with_context(
+        blob: &[u8],
+        selector: ProducerSelector,
+        settings: ReloadConfig,
+        context: C,
+    ) -> Result<Self, ReloadError> {
+        let config = ReloadingKafkaProducer::resolve_initial(blob, &selector)?;
+        Self::from_config_with_context(config, selector, settings, context)
     }
 
-    /// Builds a producer from an already-resolved config.
-    ///
-    /// For applications not yet on the central configmap that still want
-    /// reloading. Once a blob is pushed in, it takes over.
-    pub fn from_config(
+    /// Builds a producer from an already-resolved config, with a custom
+    /// context. See [`ReloadingKafkaProducer::new_with_context`].
+    pub fn from_config_with_context(
         config: KafkaConfig,
         selector: ProducerSelector,
         settings: ReloadConfig,
+        context: C,
     ) -> Result<Self, ReloadError> {
         let producer_name = producer_name_of(&config);
-        let producer = Arc::new(KafkaProducer::new(config.clone())?);
+        let producer = Arc::new(KafkaProducer::new_with_context(
+            config.clone(),
+            context.clone(),
+        )?);
         tracing::info!(
             topic = %selector.topic(),
             app = %selector.app(),
@@ -234,6 +317,7 @@ impl ReloadingKafkaProducer {
                 config,
                 buffer: None,
             }),
+            context,
             reload: Mutex::new(ReloadState {
                 desired: None,
                 desired_since: None,
@@ -319,6 +403,77 @@ impl ReloadingKafkaProducer {
         self.inner.generation.load(Ordering::SeqCst)
     }
 
+    /// The context handed to the constructor.
+    ///
+    /// This is the one the live client was built from a clone of, so reading
+    /// state off it is valid across a reload.
+    pub fn context(&self) -> &C {
+        &self.inner.context
+    }
+
+    /// Enqueues a record on whichever client is live.
+    ///
+    /// The fast path hands the record straight to the running client and
+    /// copies nothing. Only while a reload drains the old client does this
+    /// copy, to park the message in the buffer until the new client is in.
+    ///
+    /// # Timestamps are not preserved across a reload
+    ///
+    /// A record carrying an explicit `timestamp` loses it if it lands in the
+    /// buffer: [`KafkaPayload`] has nowhere to put one. The broker then stamps
+    /// it on replay. Only callers that set timestamps are affected, and only
+    /// for the messages produced during a swap.
+    pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
+    where
+        K: ToBytes + ?Sized,
+        P: ToBytes + ?Sized,
+    {
+        // The read guard is the whole of the coordination with a reload: the
+        // swap takes the write lock to start buffering and again to install
+        // and replay, so this either enqueues on a client that is still live
+        // or lands in the buffer, never in between.
+        let current = self.inner.current.read();
+
+        let Some(buffer) = &current.buffer else {
+            return current.producer.produce_record(record);
+        };
+
+        // Keep an explicit partition: dropping it would send the message to a
+        // partition chosen by the key on replay, not the one asked for.
+        let topic = Topic::new(record.topic);
+        let destination = match record.partition {
+            Some(index) => TopicOrPartition::Partition(Partition::new(
+                topic,
+                index
+                    .try_into()
+                    .map_err(|_| ProducerError::ProducerFailure {
+                        error: format!("partition {index} is out of range"),
+                    })?,
+            )),
+            None => TopicOrPartition::Topic(topic),
+        };
+
+        let payload = KafkaPayload::new(
+            record.key.map(|key| key.to_bytes().to_vec()),
+            record.headers.map(Headers::from),
+            record.payload.map(|payload| payload.to_bytes().to_vec()),
+        );
+
+        self.inner.buffer_or_reject(buffer, destination, payload)
+    }
+
+    /// Checks a topic against the broker using whichever client is live.
+    ///
+    /// Only meaningful at startup: a later reload can point the producer at a
+    /// cluster where the topic is missing, and nothing re-checks it.
+    pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        self.inner
+            .current
+            .read()
+            .producer
+            .validate_topic(topic, timeout)
+    }
+
     /// Messages accepted but not yet delivered, including any held while a
     /// reload drains the old client.
     pub fn in_flight_count(&self) -> i32 {
@@ -335,7 +490,37 @@ impl ReloadingKafkaProducer {
     }
 }
 
-impl Inner {
+impl<C> Inner<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    /// Parks a message in the reload buffer, or rejects it when the buffer is
+    /// full. Called with the read guard on `current` still held.
+    fn buffer_or_reject(
+        &self,
+        buffer: &Mutex<Vec<(TopicOrPartition, KafkaPayload)>>,
+        destination: TopicOrPartition,
+        payload: KafkaPayload,
+    ) -> Result<(), ProducerError> {
+        let mut buffer = buffer.lock();
+
+        if buffer.len() >= self.settings.max_buffered_messages {
+            metrics::counter!(
+                "arroyo.producer.config_reload_buffer_full",
+                "topic" => self.selector.topic().to_owned(),
+                "producer_name" => self.producer_name.clone(),
+            )
+            .increment(1);
+            return Err(ProducerError::ProducerFailure {
+                error: "reload buffer is full".to_owned(),
+            });
+        }
+
+        buffer.push((destination, payload));
+
+        Ok(())
+    }
+
     /// Records whether a rollout is pending. Call under `reload` after each
     /// change to `desired` so the gauge cannot drift.
     fn record_pending(&self, reload: &ReloadState) {
@@ -432,7 +617,10 @@ impl Inner {
     /// host stops wanting it.
     fn reload_to(self: &Arc<Self>, config: &KafkaConfig) {
         // Build once; rebuilding would spawn rdkafka threads on every retry.
-        let candidate = match KafkaProducer::new(config.clone()) {
+        // The context is cloned so the new client reports through the same
+        // callbacks as the one it replaces.
+        let candidate = match KafkaProducer::new_with_context(config.clone(), self.context.clone())
+        {
             Ok(producer) => Arc::new(producer),
             Err(error) => {
                 metrics::counter!(
@@ -509,7 +697,7 @@ impl Inner {
     ///
     /// Client construction does no I/O; this prevents swapping in an
     /// unreachable producer.
-    fn probe(&self, candidate: &KafkaProducer) -> Result<(), KafkaError> {
+    fn probe(&self, candidate: &KafkaProducer<C>) -> Result<(), KafkaError> {
         #[cfg(test)]
         self.probe_attempts.fetch_add(1, Ordering::Relaxed);
 
@@ -541,7 +729,7 @@ impl Inner {
     }
 
     /// Drains the old client and installs an already-probed one in its place.
-    fn swap(self: &Arc<Self>, new_producer: Arc<KafkaProducer>, config: &KafkaConfig) {
+    fn swap(self: &Arc<Self>, new_producer: Arc<KafkaProducer<C>>, config: &KafkaConfig) {
         // Spread swaps across instances.
         if !self.settings.jitter.is_zero() {
             let jitter = rand::random::<f64>() * self.settings.jitter.as_secs_f64();
@@ -623,9 +811,9 @@ impl Inner {
     /// that stays.
     fn install(
         self: &Arc<Self>,
-        new_producer: Arc<KafkaProducer>,
+        new_producer: Arc<KafkaProducer<C>>,
         config: &KafkaConfig,
-    ) -> Option<Arc<KafkaProducer>> {
+    ) -> Option<Arc<KafkaProducer<C>>> {
         // Hold `reload` across the superseded check and the install; otherwise
         // a push between them could install an unwanted client. Lock order is
         // `reload` then `current`, matching `set_desired`; never reverse it.
@@ -720,7 +908,7 @@ impl Inner {
     fn replay(
         &self,
         buffer: Vec<(TopicOrPartition, KafkaPayload)>,
-        producer: &KafkaProducer,
+        producer: &KafkaProducer<C>,
     ) -> usize {
         let buffered = buffer.len();
 
@@ -753,7 +941,7 @@ impl Inner {
     }
 
     /// Flushes a client that no longer accepts messages.
-    fn drain(&self, producer: &KafkaProducer, timeout: Duration) {
+    fn drain(&self, producer: &KafkaProducer<C>, timeout: Duration) {
         #[cfg(test)]
         self.drains.fetch_add(1, Ordering::SeqCst);
 
@@ -794,39 +982,16 @@ impl Inner {
     }
 }
 
-impl ArroyoProducer<KafkaPayload> for ReloadingKafkaProducer {
+impl<C> ArroyoProducer<KafkaPayload> for ReloadingKafkaProducer<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
     fn produce(
         &self,
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
-        // The read guard is the whole of the coordination with a reload: the
-        // swap takes the write lock to start buffering and again to install and
-        // replay, so this either enqueues on a client that is still live or
-        // lands in the buffer, never in between.
-        let current = self.inner.current.read();
-
-        let Some(buffer) = &current.buffer else {
-            return current.producer.produce(destination, payload);
-        };
-
-        let mut buffer = buffer.lock();
-
-        if buffer.len() >= self.inner.settings.max_buffered_messages {
-            metrics::counter!(
-                "arroyo.producer.config_reload_buffer_full",
-                "topic" => self.inner.selector.topic().to_owned(),
-                "producer_name" => self.inner.producer_name.clone(),
-            )
-            .increment(1);
-            return Err(ProducerError::ProducerFailure {
-                error: "reload buffer is full".to_owned(),
-            });
-        }
-
-        buffer.push((*destination, payload));
-
-        Ok(())
+        self.produce_record(payload.to_base_record(destination))
     }
 }
 
@@ -884,7 +1049,9 @@ fn config_eq(left: &KafkaConfig, right: &KafkaConfig) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdkafka::message::{Header, OwnedHeaders};
     use rdkafka::mocking::MockCluster;
+    use rdkafka::ClientContext;
     use std::sync::mpsc;
 
     fn blob(servers: &str, acks: &str) -> Vec<u8> {
@@ -930,7 +1097,10 @@ mod tests {
     }
 
     #[track_caller]
-    fn await_generation(producer: &ReloadingKafkaProducer, generation: u64) {
+    fn await_generation<C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone>(
+        producer: &ReloadingKafkaProducer<C>,
+        generation: u64,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(15);
         while producer.generation() < generation {
             assert!(
@@ -944,7 +1114,10 @@ mod tests {
 
     /// Waits for post-install drain and drop work to finish.
     #[track_caller]
-    fn await_rollout(producer: &ReloadingKafkaProducer, rollouts: u64) {
+    fn await_rollout<C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone>(
+        producer: &ReloadingKafkaProducer<C>,
+        rollouts: u64,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(15);
         while producer.inner.rollouts_finished.load(Ordering::SeqCst) < rollouts {
             assert!(Instant::now() < deadline, "timed out waiting for a rollout");
@@ -953,7 +1126,9 @@ mod tests {
     }
 
     #[track_caller]
-    fn wait_until_probing(producer: &ReloadingKafkaProducer) {
+    fn wait_until_probing<C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone>(
+        producer: &ReloadingKafkaProducer<C>,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while producer.inner.probe_gate.lock().is_some() {
             assert!(Instant::now() < deadline, "worker never reached the probe");
@@ -962,7 +1137,10 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_stays_at_generation(producer: &ReloadingKafkaProducer, generation: u64) {
+    fn assert_stays_at_generation<C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone>(
+        producer: &ReloadingKafkaProducer<C>,
+        generation: u64,
+    ) {
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(producer.generation(), generation);
     }
@@ -1546,7 +1724,9 @@ mod tests {
         await_generation(&producer, 1);
     }
 
-    fn start_buffering(producer: &ReloadingKafkaProducer) {
+    fn start_buffering<C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone>(
+        producer: &ReloadingKafkaProducer<C>,
+    ) {
         producer.inner.current.write().buffer = Some(Mutex::new(Vec::new()));
     }
 
@@ -1677,5 +1857,199 @@ mod tests {
                 KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
             )
             .unwrap();
+    }
+
+    /// Counts delivery callbacks, to prove a custom context stays wired up.
+    #[derive(Clone)]
+    struct CountingContext {
+        delivered: Arc<AtomicU64>,
+    }
+
+    impl ClientContext for CountingContext {}
+
+    impl RdkafkaProducerContext for CountingContext {
+        type DeliveryOpaque = ();
+
+        fn delivery(
+            &self,
+            result: &rdkafka::producer::DeliveryResult<'_>,
+            _: Self::DeliveryOpaque,
+        ) {
+            if result.is_ok() {
+                self.delivered.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    #[track_caller]
+    fn await_delivered(delivered: &AtomicU64, count: u64) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while delivered.load(Ordering::SeqCst) < count {
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for {count} deliveries, saw {}",
+                delivered.load(Ordering::SeqCst)
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// A custom context must keep receiving delivery callbacks after a swap.
+    ///
+    /// The new client is built by the worker, not the caller, so it is the one
+    /// place the context could silently be dropped. Relay's produce metrics
+    /// all hang off these callbacks.
+    #[test]
+    fn test_custom_context_survives_a_reload() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let delivered = Arc::new(AtomicU64::new(0));
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&servers, "all"),
+            selector(),
+            settings(),
+            CountingContext {
+                delivered: Arc::clone(&delivered),
+            },
+        )
+        .unwrap();
+
+        let record = || {
+            BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                .key(b"key".as_slice())
+                .payload(b"payload".as_slice())
+        };
+
+        producer.produce_record(record()).unwrap();
+        await_delivered(&delivered, 1);
+
+        producer.push_config(&blob(&servers, "1")).unwrap();
+        await_generation(&producer, 1);
+
+        // Same context, new client underneath.
+        producer.produce_record(record()).unwrap();
+        await_delivered(&delivered, 2);
+
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 2);
+    }
+
+    /// While a reload buffers, `produce_record` must park the message rather
+    /// than hand it to the client on its way out.
+    #[test]
+    fn test_produce_record_buffers_during_a_reload() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+
+        start_buffering(&producer);
+
+        producer
+            .produce_record(
+                BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                    .key(b"key".as_slice())
+                    .payload(b"payload".as_slice())
+                    .headers(OwnedHeaders::new().insert(Header {
+                        key: "header",
+                        value: Some(b"value".as_slice()),
+                    })),
+            )
+            .unwrap();
+
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        let buffered = buffer.lock();
+        assert_eq!(buffered.len(), 1);
+        assert_eq!(
+            current.producer.in_flight_count(),
+            0,
+            "the record reached the draining client instead of the buffer"
+        );
+
+        // The copy into the buffer has to keep the whole record, since this is
+        // what gets replayed onto the new client.
+        let (_, payload) = buffered.first().unwrap();
+        assert_eq!(payload.key().unwrap().as_slice(), b"key");
+        assert_eq!(payload.payload().unwrap().as_slice(), b"payload");
+        assert_eq!(
+            payload.headers().unwrap().get("header"),
+            Some(b"value".as_slice())
+        );
+    }
+
+    /// An explicit partition has to survive the buffer.
+    ///
+    /// Dropping it would let the key pick a partition on replay, quietly
+    /// sending the message somewhere other than where the caller asked.
+    #[test]
+    fn test_produce_record_buffers_keep_the_partition() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+
+        start_buffering(&producer);
+
+        producer
+            .produce_record(
+                BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                    .key(b"key".as_slice())
+                    .payload(b"payload".as_slice())
+                    .partition(7),
+            )
+            .unwrap();
+
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        let buffered = buffer.lock();
+
+        let (destination, _) = buffered.first().unwrap();
+        assert_eq!(
+            *destination,
+            TopicOrPartition::Partition(Partition::new(Topic::new("ingest-events"), 7))
+        );
+    }
+
+    /// Producing a `KafkaPayload` to a partition must route the same way, now
+    /// that `produce` goes through `produce_record`.
+    #[test]
+    fn test_produce_to_a_partition_keeps_the_partition() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+        let destination =
+            TopicOrPartition::Partition(Partition::new(Topic::new("ingest-events"), 3));
+
+        start_buffering(&producer);
+
+        producer
+            .produce(
+                &destination,
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"payload".to_vec())),
+            )
+            .unwrap();
+
+        let current = producer.inner.current.read();
+        let buffer = current.buffer.as_ref().expect("buffer went away");
+        let buffered = buffer.lock();
+
+        assert_eq!(buffered.first().unwrap().0, destination);
+    }
+
+    /// `BaseRecord` carries an `i32` partition while `Partition` holds a
+    /// `u16`, so a value that does not fit has to be reported rather than
+    /// wrapped into a different partition.
+    #[test]
+    fn test_out_of_range_partition_is_rejected() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+
+        start_buffering(&producer);
+
+        let result = producer.produce_record(
+            BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                .payload(b"payload".as_slice())
+                .partition(i32::MAX),
+        );
+
+        assert!(result.is_err());
+        // A wrapping cast would have buffered this for some unrelated partition.
+        let current = producer.inner.current.read();
+        assert!(current.buffer.as_ref().unwrap().lock().is_empty());
     }
 }

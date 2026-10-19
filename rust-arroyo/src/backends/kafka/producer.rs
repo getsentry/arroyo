@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 mod statistics;
 
+#[derive(Clone)]
 pub struct ProducerContext {
     producer_name: String,
 }
