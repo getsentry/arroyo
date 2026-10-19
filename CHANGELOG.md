@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.47.0
+
+### New Features ✨
+
+- (producer) Support custom contexts and BaseRecord in the reloading producer by @untitaker in [#578](https://github.com/getsentry/arroyo/pull/578)
+
 ## 2.46.0
 
 ### New Features ✨
