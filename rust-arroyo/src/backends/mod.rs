@@ -1,4 +1,5 @@
 use super::types::{BrokerMessage, Partition, TopicOrPartition};
+use rdkafka::error::KafkaError;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
@@ -42,6 +43,9 @@ pub enum ConsumerError {
 pub enum ProducerError {
     #[error("The producer errored")]
     ProducerErrored,
+
+    #[error(transparent)]
+    Kafka(#[from] KafkaError),
 
     #[error("Producer errored with code")]
     ProducerFailure { error: String },

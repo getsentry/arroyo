@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
-use crate::timer;
+use crate::metrics;
 use crate::types::Partition;
 
 use super::BoxError;
@@ -57,9 +57,11 @@ impl<'a> OffsetTracker<'a> {
     pub fn record_latency(&mut self, timestamp: DateTime<Utc>) {
         let now = coarsetime::Instant::recent();
         if now - self.last_record_time > coarsetime::Duration::from_secs(1) {
-            timer!(
-                "arroyo.consumer.latency",
-                (Utc::now() - timestamp).to_std().unwrap_or_default()
+            metrics::histogram!("arroyo.consumer.latency").record(
+                (Utc::now() - timestamp)
+                    .to_std()
+                    .unwrap_or_default()
+                    .as_millis() as f64,
             );
             self.last_record_time = now;
         }

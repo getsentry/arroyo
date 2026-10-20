@@ -1,6 +1,6 @@
 [package]
 name = "sentry_arroyo"
-version = "2.43.1"
+version = "2.47.0"
 authors = ["Sentry <oss@sentry.io>"]
 description = "A library for working with streaming data."
 repository = "https://github.com/getsentry/arroyo"
@@ -14,12 +14,14 @@ path = "rust-arroyo/src/lib.rs"
 
 [features]
 ssl = ["rdkafka/ssl"]
+gssapi = ["rdkafka/gssapi"]
 pull = []
 
 [dependencies]
 async-stream = "0.3"
 chrono = "0.4.26"
 coarsetime = "0.1.33"
+metrics = "0.24"
 once_cell = "1.18.0"
 rand = "0.8.5"
 rdkafka = { version = ">=0.37.0,<0.40", features = ["cmake-build", "tracing"] }
@@ -38,6 +40,10 @@ parking_lot = "0.12.1"
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
+[[test]]
+name = "metrics"
+path = "rust-arroyo/tests/metrics.rs"
+
 [[example]]
 name = "base_processor"
 path = "rust-arroyo/examples/base_processor.rs"
@@ -49,6 +55,10 @@ path = "rust-arroyo/examples/transform_and_produce.rs"
 [[example]]
 name = "base_consumer"
 path = "rust-arroyo/examples/base_consumer.rs"
+
+[[example]]
+name = "reloading_producer"
+path = "rust-arroyo/examples/reloading_producer.rs"
 
 [[example]]
 name = "transform_and_produce_pull"

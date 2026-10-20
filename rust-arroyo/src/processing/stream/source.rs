@@ -54,18 +54,16 @@ struct PullRebalanceContext {
 
 impl ClientContext for PullRebalanceContext {
     fn stats(&self, stats: rdkafka::Statistics) {
-        crate::gauge!(
-            "arroyo.consumer.librdkafka.total_queue_size",
-            stats.replyq as u64,
-        );
+        crate::metrics::gauge!("arroyo.consumer.librdkafka.total_queue_size")
+            .set(stats.replyq as f64);
         for (topic_name, topic) in stats.topics.iter() {
             for (partition_num, partition) in topic.partitions.iter() {
-                crate::gauge!(
+                crate::metrics::gauge!(
                     "arroyo.consumer.librdkafka.fetch_queue_count",
-                    partition.fetchq_cnt as u64,
-                    "topic" => topic_name,
+                    "topic" => topic_name.clone(),
                     "partition" => partition_num.to_string()
-                );
+                )
+                .set(partition.fetchq_cnt as f64);
             }
         }
     }

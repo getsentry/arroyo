@@ -93,6 +93,11 @@ impl KafkaConfig {
     pub fn get_config_value(&self, key: &str) -> Option<&String> {
         self.config_map.get(key)
     }
+
+    /// All configuration parameters, for comparing two configs.
+    pub fn config_map(&self) -> &HashMap<String, String> {
+        &self.config_map
+    }
 }
 
 impl From<KafkaConfig> for RdKafkaConfig {

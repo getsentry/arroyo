@@ -91,9 +91,13 @@ pub struct TestTopic {
 
 impl TestTopic {
     pub fn create(name: &str) -> Self {
+        Self::create_with_partitions(name, 1)
+    }
+
+    pub fn create_with_partitions(name: &str, partitions: i32) -> Self {
         let runtime = Runtime::new().unwrap();
         let name = format!("rust-arroyo-{}-{}", name, uuid::Uuid::new_v4());
-        runtime.block_on(create_topic(&name, 1));
+        runtime.block_on(create_topic(&name, partitions));
         // Wait for topic metadata to propagate to brokers
         std::thread::sleep(Duration::from_secs(1));
         Self {

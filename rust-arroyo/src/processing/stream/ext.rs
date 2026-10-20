@@ -5,8 +5,8 @@ use futures::stream::Stream;
 use futures::StreamExt;
 
 use super::collector::StreamCollector;
+use crate::metrics;
 use crate::processing::stream::batch::flush_timer::FlushTimer;
-use crate::{counter, timer};
 
 use super::handlers::next::NextHandler;
 use super::handlers::rejection::{RejectionHandler, RejectionMetadata};
@@ -19,22 +19,25 @@ async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> St
     let start = coarsetime::Instant::now();
     let result = stage.process(envelope).await;
 
-    timer!("arroyo.stage.duration", start.elapsed(), "stage" => stage.name());
+    metrics::histogram!("arroyo.stage.duration", "stage" => stage.name().to_owned())
+        .record(start.elapsed().as_millis() as f64);
     match &result {
         StageResult::Emit(_) => {
-            counter!("arroyo.stage.success", 1, "stage" => stage.name());
+            metrics::counter!("arroyo.stage.success", "stage" => stage.name().to_owned())
+                .increment(1);
         }
         StageResult::Drop { .. } => {
-            counter!("arroyo.stage.drop", 1, "stage" => stage.name());
+            metrics::counter!("arroyo.stage.drop", "stage" => stage.name().to_owned()).increment(1);
         }
         StageResult::Skip => {
-            counter!("arroyo.stage.skip", 1, "stage" => stage.name());
+            metrics::counter!("arroyo.stage.skip", "stage" => stage.name().to_owned()).increment(1);
         }
         StageResult::Reject { .. } => {
-            counter!("arroyo.stage.reject", 1, "stage" => stage.name());
+            metrics::counter!("arroyo.stage.reject", "stage" => stage.name().to_owned())
+                .increment(1);
         }
         StageResult::Fail(_) => {
-            counter!("arroyo.stage.fail", 1, "stage" => stage.name());
+            metrics::counter!("arroyo.stage.fail", "stage" => stage.name().to_owned()).increment(1);
         }
         StageResult::Exit(_) => {}
     }
@@ -116,7 +119,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                             Some(item) => item,
                             None => {
                                 if let Some(flushed) = stage.flush() {
-                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"force");
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "force").record(timer.batch_time().as_millis() as f64);
                                     yield flushed;
                                 }
                                 return;
@@ -129,7 +132,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                                 match &result {
                                     StageResult::Skip => timer.on_accumulate(),
                                     StageResult::Emit(_) => {
-                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"size");
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "size").record(timer.batch_time().as_millis() as f64);
                                     timer.on_flush();
                                 }
                                     _ => {}
@@ -138,7 +141,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                             }
                             StageResult::Exit(reason) => {
                                 if let Some(flushed) = stage.flush() {
-                                    timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"force");
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "force").record(timer.batch_time().as_millis() as f64);
                                     yield flushed;
                                 }
                                 yield StageResult::Exit(reason);
@@ -160,7 +163,7 @@ pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
                     _ = timer.interval.tick(), if timer.is_active() => {
                         if timer.should_flush() {
                             if let Some(flushed) = stage.flush() {
-                                timer!("arroyo.batch.accumulation_time", timer.batch_time(), "flush_reason" =>"time");
+                                metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "time").record(timer.batch_time().as_millis() as f64);
                                 yield flushed;
                             }
                             timer.on_flush();

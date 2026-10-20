@@ -1,5 +1,81 @@
 # Changelog and versioning
 
+## 2.47.0
+
+### New Features ✨
+
+- (producer) Support custom contexts and BaseRecord in the reloading producer by @untitaker in [#578](https://github.com/getsentry/arroyo/pull/578)
+
+## 2.46.0
+
+### New Features ✨
+
+- (healthcheck) Add a healthcheck command for consumer liveness probes by @oioki in [#580](https://github.com/getsentry/arroyo/pull/580)
+
+## 2.45.0
+
+### New Features ✨
+
+#### Kafka
+
+- Add AsyncKafkaConsumer with per-partition async queues by @lvthanh03 in [#579](https://github.com/getsentry/arroyo/pull/579)
+- Add iterator for message headers by @lvthanh03 in [#577](https://github.com/getsentry/arroyo/pull/577)
+
+### Internal Changes 🔧
+
+- (metrics) Remove unused producer metrics and tags by @lvthanh03 in [#576](https://github.com/getsentry/arroyo/pull/576)
+
+## 2.44.2
+
+### New Features ✨
+
+- Register 'gssapi' feature for rdkafka by @aldy505 in [#552](https://github.com/getsentry/arroyo/pull/552)
+
+### Internal Changes 🔧
+
+- Add KafkaProducer error handling and metrics to AsyncKafkaProducer by @lvthanh03 in [#575](https://github.com/getsentry/arroyo/pull/575)
+
+### Other
+
+- Add ReloadingKafkaProducer by @untitaker in [#573](https://github.com/getsentry/arroyo/pull/573)
+
+## 2.44.1
+
+### New Features ✨
+
+- (metrics) Add global default tags to Rust Arroyo metrics by @lvthanh03 in [#574](https://github.com/getsentry/arroyo/pull/574)
+
+## 2.44.0
+
+### New Features ✨
+
+#### Kafka
+
+- Expose topic validation on existing producers by @lvthanh03 in [#571](https://github.com/getsentry/arroyo/pull/571)
+- Add opt-in topic validation during producer creation by @lvthanh03 in [#569](https://github.com/getsentry/arroyo/pull/569)
+- Expand Rust producer statistics and expose in-flight counts by @lvthanh03 in [#568](https://github.com/getsentry/arroyo/pull/568)
+
+#### Producer
+
+- Support producing Kafka BaseRecord by @lvthanh03 in [#572](https://github.com/getsentry/arroyo/pull/572)
+- Support custom contexts for synchronous Kafka producers by @lvthanh03 in [#570](https://github.com/getsentry/arroyo/pull/570)
+
+#### Other
+
+- (metrics) DLQ produce failures no increment a counter and log instead of panic. by @tryangul in [#564](https://github.com/getsentry/arroyo/pull/564)
+
+### Bug Fixes 🐛
+
+#### Producer
+
+- Return original Kafka errors from synchronous producer by @lvthanh03 in [#565](https://github.com/getsentry/arroyo/pull/565)
+- Make Rust Kafka producer constructors fallible by @lvthanh03 in [#563](https://github.com/getsentry/arroyo/pull/563)
+
+### Internal Changes 🔧
+
+- (metrics) Standardize on metrics-rs (breaking change) by @lvthanh03 in [#567](https://github.com/getsentry/arroyo/pull/567)
+- Widens supported rdkafka range to >=0.37.0,<0.40 by @lvthanh03 in [#562](https://github.com/getsentry/arroyo/pull/562)
+
 ## 2.43.1
 
 ### New Features ✨
