@@ -29,7 +29,7 @@ use rdkafka::message::ToBytes;
 use rdkafka::producer::{BaseRecord, ProducerContext as RdkafkaProducerContext};
 
 use super::config::KafkaConfig;
-use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector};
+use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector, ResolvedClientConfig};
 use super::producer::{KafkaProducer, ProducerContext};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError};
@@ -92,7 +92,7 @@ where
     C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
 {
     producer: Arc<KafkaProducer<C>>,
-    config: KafkaConfig,
+    config: ResolvedClientConfig,
     /// Set while `producer` is draining for a swap. Produce calls append here
     /// instead of enqueueing on a client that is on its way out.
     ///
@@ -200,7 +200,7 @@ where
 struct ReloadState {
     /// Desired config. A push overwrites it and a revert clears it, which can
     /// cancel an in-flight rollout.
-    desired: Option<KafkaConfig>,
+    desired: Option<ResolvedClientConfig>,
     /// When `desired` was last set, to measure how long a config took to go
     /// live. Reset on overwrite, so it always belongs to the current `desired`.
     desired_since: Option<Instant>,
@@ -220,8 +220,8 @@ impl ReloadingKafkaProducer {
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
         let config = Self::resolve_initial(blob, &selector)?;
-        let context = ProducerContext::new(producer_name_of(&config));
-        Self::from_config_with_context(config, selector, settings, context)
+        let context = ProducerContext::new(producer_name_of(&config.config));
+        Self::from_resolved(config, selector, settings, context)
     }
 
     /// Builds a producer from an already-resolved config, with Arroyo's own
@@ -242,7 +242,7 @@ impl ReloadingKafkaProducer {
     fn resolve_initial(
         blob: &[u8],
         selector: &ProducerSelector,
-    ) -> Result<KafkaConfig, ReloadError> {
+    ) -> Result<ResolvedClientConfig, ReloadError> {
         let parsed = ConfigBlob::parse(blob).and_then(|blob| blob.producer_config(selector));
 
         match parsed {
@@ -281,24 +281,41 @@ where
         context: C,
     ) -> Result<Self, ReloadError> {
         let config = ReloadingKafkaProducer::resolve_initial(blob, &selector)?;
-        Self::from_config_with_context(config, selector, settings, context)
+        Self::from_resolved(config, selector, settings, context)
     }
 
     /// Builds a producer from an already-resolved config, with a custom
     /// context. See [`ReloadingKafkaProducer::new_with_context`].
+    ///
+    /// Produces to the selector's topic as-is, since there is no blob to map
+    /// it to a physical topic until one is pushed in.
     pub fn from_config_with_context(
         config: KafkaConfig,
         selector: ProducerSelector,
         settings: ReloadConfig,
         context: C,
     ) -> Result<Self, ReloadError> {
-        let producer_name = producer_name_of(&config);
+        let config = ResolvedClientConfig {
+            config,
+            physical_topic: Topic::new(selector.topic()),
+        };
+        Self::from_resolved(config, selector, settings, context)
+    }
+
+    fn from_resolved(
+        config: ResolvedClientConfig,
+        selector: ProducerSelector,
+        settings: ReloadConfig,
+        context: C,
+    ) -> Result<Self, ReloadError> {
+        let producer_name = producer_name_of(&config.config);
         let producer = Arc::new(KafkaProducer::new_with_context(
-            config.clone(),
+            config.config.clone(),
             context.clone(),
         )?);
         tracing::info!(
             topic = %selector.topic(),
+            physical_topic = %config.physical_topic,
             app = %selector.app(),
             producer_name = %producer_name,
             "loaded initial producer config"
@@ -423,6 +440,13 @@ where
     /// buffer: [`KafkaPayload`] has nowhere to put one. The broker then stamps
     /// it on replay. Only callers that set timestamps are affected, and only
     /// for the messages produced during a swap.
+    ///
+    /// # Logical and physical topics
+    ///
+    /// A record for the selector's logical topic goes to whichever physical
+    /// topic the live config maps it to. Records for any other topic are sent
+    /// as-is. An explicit partition is kept across the mapping, so it has to
+    /// exist on the physical topic too.
     pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
     where
         K: ToBytes + ?Sized,
@@ -435,9 +459,16 @@ where
         let current = self.inner.current.read();
 
         let Some(buffer) = &current.buffer else {
+            let mut record = record;
+            if record.topic == self.inner.selector.topic() {
+                record.topic = current.config.physical_topic.as_str();
+            }
             return current.producer.produce_record(record);
         };
 
+        // Buffer under the logical topic and map it on replay: the config the
+        // buffer is replayed under may point somewhere else.
+        //
         // Keep an explicit partition: dropping it would send the message to a
         // partition chosen by the key on replay, not the one asked for.
         let topic = Topic::new(record.topic);
@@ -464,14 +495,18 @@ where
 
     /// Checks a topic against the broker using whichever client is live.
     ///
+    /// The logical topic is checked as the physical topic it maps to.
+    ///
     /// Only meaningful at startup: a later reload can point the producer at a
     /// cluster where the topic is missing, and nothing re-checks it.
     pub fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
-        self.inner
-            .current
-            .read()
-            .producer
-            .validate_topic(topic, timeout)
+        let current = self.inner.current.read();
+        let topic = if topic.as_str() == self.inner.selector.topic() {
+            current.config.physical_topic
+        } else {
+            topic
+        };
+        current.producer.validate_topic(topic, timeout)
     }
 
     /// Messages accepted but not yet delivered, including any held while a
@@ -533,7 +568,7 @@ where
     }
 
     /// Records the config the host wants running and wakes the worker.
-    fn set_desired(self: &Arc<Self>, config: KafkaConfig) -> ReloadOutcome {
+    fn set_desired(self: &Arc<Self>, config: ResolvedClientConfig) -> ReloadOutcome {
         let mut reload = self.reload.lock();
 
         // Lock order is `reload` then `current`, matching `swap`.
@@ -615,37 +650,38 @@ where
 
     /// Probes a config and swaps to it, retrying until it is healthy or the
     /// host stops wanting it.
-    fn reload_to(self: &Arc<Self>, config: &KafkaConfig) {
+    fn reload_to(self: &Arc<Self>, config: &ResolvedClientConfig) {
         // Build once; rebuilding would spawn rdkafka threads on every retry.
         // The context is cloned so the new client reports through the same
         // callbacks as the one it replaces.
-        let candidate = match KafkaProducer::new_with_context(config.clone(), self.context.clone())
-        {
-            Ok(producer) => Arc::new(producer),
-            Err(error) => {
-                metrics::counter!(
-                    "arroyo.producer.config_reload_rejected",
-                    "topic" => self.selector.topic().to_owned(),
-                    "producer_name" => self.producer_name.clone(),
-                    "source" => "push",
-                    "reason" => "client_build",
-                )
-                .increment(1);
-                tracing::error!(
-                    topic = %self.selector.topic(),
-                    %error,
-                    "kafka rejected the new config, staying on the running one"
-                );
-                return;
-            }
-        };
+        let candidate =
+            match KafkaProducer::new_with_context(config.config.clone(), self.context.clone()) {
+                Ok(producer) => Arc::new(producer),
+                Err(error) => {
+                    metrics::counter!(
+                        "arroyo.producer.config_reload_rejected",
+                        "topic" => self.selector.topic().to_owned(),
+                        "producer_name" => self.producer_name.clone(),
+                        "source" => "push",
+                        "reason" => "client_build",
+                    )
+                    .increment(1);
+                    tracing::error!(
+                        topic = %self.selector.topic(),
+                        %error,
+                        "kafka rejected the new config, staying on the running one"
+                    );
+                    return;
+                }
+            };
 
         let mut attempts = 0u64;
 
         loop {
             attempts += 1;
 
-            match self.probe(&candidate) {
+            // Probe the topic the new config produces to, which may have moved.
+            match self.probe(&candidate, config.physical_topic) {
                 Ok(()) => {
                     metrics::histogram!(
                         "arroyo.producer.config_reload_probe_attempts",
@@ -697,7 +733,7 @@ where
     ///
     /// Client construction does no I/O; this prevents swapping in an
     /// unreachable producer.
-    fn probe(&self, candidate: &KafkaProducer<C>) -> Result<(), KafkaError> {
+    fn probe(&self, candidate: &KafkaProducer<C>, topic: Topic) -> Result<(), KafkaError> {
         #[cfg(test)]
         self.probe_attempts.fetch_add(1, Ordering::Relaxed);
 
@@ -713,10 +749,7 @@ where
 
         let started = Instant::now();
         // Topic metadata probes the broker without producing a message.
-        let result = candidate.validate_topic(
-            crate::types::Topic::new(self.selector.topic()),
-            self.settings.probe_timeout,
-        );
+        let result = candidate.validate_topic(topic, self.settings.probe_timeout);
 
         metrics::histogram!(
             "arroyo.producer.config_reload_probe_ms",
@@ -729,7 +762,7 @@ where
     }
 
     /// Drains the old client and installs an already-probed one in its place.
-    fn swap(self: &Arc<Self>, new_producer: Arc<KafkaProducer<C>>, config: &KafkaConfig) {
+    fn swap(self: &Arc<Self>, new_producer: Arc<KafkaProducer<C>>, config: &ResolvedClientConfig) {
         // Spread swaps across instances.
         if !self.settings.jitter.is_zero() {
             let jitter = rand::random::<f64>() * self.settings.jitter.as_secs_f64();
@@ -812,7 +845,7 @@ where
     fn install(
         self: &Arc<Self>,
         new_producer: Arc<KafkaProducer<C>>,
-        config: &KafkaConfig,
+        config: &ResolvedClientConfig,
     ) -> Option<Arc<KafkaProducer<C>>> {
         // Hold `reload` across the superseded check and the install; otherwise
         // a push between them could install an unwanted client. Lock order is
@@ -838,8 +871,10 @@ where
                 std::mem::replace(&mut current.producer, new_producer)
             });
 
+            // Replayed under whichever config stays, so the buffer follows the
+            // topic mapping of the client it actually goes out on.
             let buffered = match buffer {
-                Some(buffer) => self.replay(buffer.into_inner(), &current.producer),
+                Some(buffer) => self.replay(buffer.into_inner(), &current),
                 None => 0,
             };
 
@@ -879,6 +914,7 @@ where
 
         tracing::info!(
             topic = %self.selector.topic(),
+            physical_topic = %config.physical_topic,
             producer_name = %self.producer_name,
             generation,
             latency_ms = waited_for.map(|waited| waited.as_millis() as u64),
@@ -903,13 +939,10 @@ where
         );
     }
 
-    /// Hands buffered messages to `producer`, in the order they were produced.
+    /// Hands buffered messages to the live client, in the order they were
+    /// produced, mapping the logical topic onto the live physical topic.
     /// Returns how many there were.
-    fn replay(
-        &self,
-        buffer: Vec<(TopicOrPartition, KafkaPayload)>,
-        producer: &KafkaProducer<C>,
-    ) -> usize {
+    fn replay(&self, buffer: Vec<(TopicOrPartition, KafkaPayload)>, current: &Current<C>) -> usize {
         let buffered = buffer.len();
 
         metrics::histogram!(
@@ -920,9 +953,15 @@ where
         .record(buffered as f64);
 
         for (destination, payload) in buffer {
+            let destination = to_physical(
+                destination,
+                self.selector.topic(),
+                current.config.physical_topic,
+            );
+
             // The produce call that buffered this already returned Ok, so
             // there is nobody left to report the error to.
-            if let Err(error) = producer.produce(&destination, payload) {
+            if let Err(error) = current.producer.produce(&destination, payload) {
                 metrics::counter!(
                     "arroyo.producer.config_reload_replay_failed",
                     "topic" => self.selector.topic().to_owned(),
@@ -991,6 +1030,7 @@ where
         destination: &TopicOrPartition,
         payload: KafkaPayload,
     ) -> Result<(), ProducerError> {
+        // `produce_record` maps the logical topic onto the physical one.
         self.produce_record(payload.to_base_record(destination))
     }
 }
@@ -1028,11 +1068,10 @@ fn blob_error_reason(error: &ConfigBlobError) -> &'static str {
         ConfigBlobError::UnknownTopic { .. } => "unknown_topic",
         ConfigBlobError::UnknownCluster { .. } => "unknown_cluster",
         ConfigBlobError::MissingEnvVar { .. } => "missing_env_var",
-        ConfigBlobError::UnexpectedLogicalTopic { .. } => "unexpected_logical_topic",
     }
 }
 
-fn superseded(reload: &ReloadState, config: &KafkaConfig) -> bool {
+fn superseded(reload: &ReloadState, config: &ResolvedClientConfig) -> bool {
     reload.shutdown
         || !reload
             .desired
@@ -1040,10 +1079,26 @@ fn superseded(reload: &ReloadState, config: &KafkaConfig) -> bool {
             .is_some_and(|desired| config_eq(desired, config))
 }
 
-/// Compares only the parameter map. `offset_reset_config` is consumer-only and
-/// never set by the producer paths, so it cannot differ here.
-fn config_eq(left: &KafkaConfig, right: &KafkaConfig) -> bool {
-    left.config_map() == right.config_map()
+/// Compares the parameter map and the physical topic, so a blob that only
+/// moves the topic still counts as a change. `offset_reset_config` is
+/// consumer-only and never set by the producer paths, so it cannot differ here.
+fn config_eq(left: &ResolvedClientConfig, right: &ResolvedClientConfig) -> bool {
+    left.physical_topic == right.physical_topic
+        && left.config.config_map() == right.config.config_map()
+}
+
+/// Points a destination on the logical topic at its physical topic. Any other
+/// topic passes through: the mapping covers only the topic this producer serves.
+fn to_physical(destination: TopicOrPartition, logical: &str, physical: Topic) -> TopicOrPartition {
+    match destination {
+        TopicOrPartition::Topic(topic) if topic.as_str() == logical => {
+            TopicOrPartition::Topic(physical)
+        }
+        TopicOrPartition::Partition(partition) if partition.topic.as_str() == logical => {
+            TopicOrPartition::Partition(Partition::new(physical, partition.index))
+        }
+        destination => destination,
+    }
 }
 
 #[cfg(test)]
@@ -1051,7 +1106,7 @@ mod tests {
     use super::*;
     use rdkafka::message::{Header, OwnedHeaders};
     use rdkafka::mocking::MockCluster;
-    use rdkafka::ClientContext;
+    use rdkafka::{ClientContext, Message};
     use std::sync::mpsc;
 
     fn blob(servers: &str, acks: &str) -> Vec<u8> {
@@ -1060,7 +1115,7 @@ mod tests {
                 "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
                 "topics": {{
                     "ingest-events": {{
-                        "cluster": "events",
+                        "physical_topic": {{"cluster": "events"}},
                         "producer_config": {{"acks": "{acks}"}}
                     }}
                 }}
@@ -1076,7 +1131,7 @@ mod tests {
                 "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
                 "topics": {{
                     "ingest-events": {{
-                        "cluster": "events",
+                        "physical_topic": {{"cluster": "events"}},
                         "producer_config": {{"acks": "{acks}", "linger.ms": "1000"}}
                     }}
                 }}
@@ -1251,6 +1306,7 @@ mod tests {
                 .current
                 .read()
                 .config
+                .config
                 .get_config_value("acks"),
             Some(&"1".to_string())
         );
@@ -1295,6 +1351,7 @@ mod tests {
                 .current
                 .read()
                 .config
+                .config
                 .get_config_value("acks"),
             Some(&"3".to_string())
         );
@@ -1326,6 +1383,7 @@ mod tests {
                 .inner
                 .current
                 .read()
+                .config
                 .config
                 .get_config_value("acks"),
             Some(&"1".to_string())
@@ -1546,6 +1604,7 @@ mod tests {
                 .current
                 .read()
                 .config
+                .config
                 .get_config_value("acks"),
             Some(&"all".to_string())
         );
@@ -1634,7 +1693,10 @@ mod tests {
         );
 
         let current = producer.inner.current.read();
-        assert_eq!(current.config.get_config_value("acks"), Some(&"all".into()));
+        assert_eq!(
+            current.config.config.get_config_value("acks"),
+            Some(&"all".into())
+        );
         assert!(
             current.buffer.is_none(),
             "buffering was left on after the rollout was abandoned"
@@ -1859,10 +1921,12 @@ mod tests {
             .unwrap();
     }
 
-    /// Counts delivery callbacks, to prove a custom context stays wired up.
-    #[derive(Clone)]
+    /// Counts delivery callbacks, to prove a custom context stays wired up,
+    /// and records the topic each message landed on.
+    #[derive(Clone, Default)]
     struct CountingContext {
         delivered: Arc<AtomicU64>,
+        topics: Arc<Mutex<Vec<String>>>,
     }
 
     impl ClientContext for CountingContext {}
@@ -1875,7 +1939,9 @@ mod tests {
             result: &rdkafka::producer::DeliveryResult<'_>,
             _: Self::DeliveryOpaque,
         ) {
-            if result.is_ok() {
+            if let Ok(message) = result {
+                // Pushed before the count, so a waiter on the count sees it.
+                self.topics.lock().push(message.topic().to_owned());
                 self.delivered.fetch_add(1, Ordering::SeqCst);
             }
         }
@@ -1910,6 +1976,7 @@ mod tests {
             settings(),
             CountingContext {
                 delivered: Arc::clone(&delivered),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -2051,5 +2118,76 @@ mod tests {
         // A wrapping cast would have buffered this for some unrelated partition.
         let current = producer.inner.current.read();
         assert!(current.buffer.as_ref().unwrap().lock().is_empty());
+    }
+
+    /// A blob that only moves the logical topic to another physical topic
+    /// must still reload, and produce calls must follow it.
+    #[test]
+    fn test_topic_only_change_reloads() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let context = CountingContext::default();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&servers, "all"),
+            selector(),
+            settings(),
+            context.clone(),
+        )
+        .unwrap();
+        let record = || {
+            BaseRecord::<'_, [u8], [u8]>::to("ingest-events")
+                .key(b"key".as_slice())
+                .payload(b"payload".as_slice())
+        };
+
+        producer.produce_record(record()).unwrap();
+        await_delivered(&context.delivered, 1);
+
+        let moved = format!(
+            r#"{{
+                "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
+                "topics": {{
+                    "ingest-events": {{
+                        "physical_topic": {{"cluster": "events", "topic_name_override": "ingest-events-v2"}},
+                        "producer_config": {{"acks": "all"}}
+                    }}
+                }}
+            }}"#
+        );
+        let outcome = producer.push_config(moved.as_bytes()).unwrap();
+
+        assert_eq!(outcome, ReloadOutcome::Accepted);
+        await_generation(&producer, 1);
+
+        // Same logical topic from the caller, new physical topic on the wire.
+        producer.produce_record(record()).unwrap();
+        await_delivered(&context.delivered, 2);
+        assert_eq!(
+            *context.topics.lock(),
+            vec!["ingest-events", "ingest-events-v2"]
+        );
+    }
+
+    /// Only the logical topic is mapped, and an explicit partition is kept.
+    #[test]
+    fn test_to_physical_maps_only_the_logical_topic() {
+        let physical = Topic::new("ingest-events-v2");
+        let map = |destination| to_physical(destination, "ingest-events", physical);
+
+        assert_eq!(
+            map(TopicOrPartition::Topic(Topic::new("ingest-events"))),
+            TopicOrPartition::Topic(physical)
+        );
+        assert_eq!(
+            map(TopicOrPartition::Partition(Partition::new(
+                Topic::new("ingest-events"),
+                3
+            ))),
+            TopicOrPartition::Partition(Partition::new(physical, 3))
+        );
+        assert_eq!(
+            map(TopicOrPartition::Topic(Topic::new("other"))),
+            TopicOrPartition::Topic(Topic::new("other"))
+        );
     }
 }

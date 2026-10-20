@@ -11,6 +11,8 @@ use thiserror::Error;
 
 use super::config::KafkaConfig;
 
+use crate::types::Topic;
+
 /// Failure to resolve a config blob. Rejection leaves the current config intact.
 #[non_exhaustive]
 #[derive(Error, Debug)]
@@ -26,13 +28,6 @@ pub enum ConfigBlobError {
 
     #[error("environment variable {variable:?} for config key {key:?} is not set")]
     MissingEnvVar { key: String, variable: String },
-
-    #[error("topic {topic:?} has logical_topic {actual:?}, application expected {expected:?}")]
-    UnexpectedLogicalTopic {
-        topic: String,
-        actual: String,
-        expected: String,
-    },
 }
 
 /// The whole configmap, covering every cluster and topic in a region.
@@ -41,7 +36,7 @@ pub struct ConfigBlob {
     #[serde(default)]
     clusters: HashMap<String, ClusterEntry>,
     #[serde(default)]
-    topics: HashMap<String, TopicEntry>,
+    topics: HashMap<String, LogicalTopicEntry>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -58,19 +53,48 @@ struct ClusterEntry {
     producer_env_config: HashMap<String, String>,
 }
 
+/// Represents a logical topic, which maps to 1 physical topic.
+/// Physical topics are abstracted entirely away from clients, so clients
+/// only have to reason about producing to/consuming from logical topics.
+/// TODO: Update the relationship of logical to physical topics to be 1:n.
 #[derive(Debug, Clone, Default, Deserialize)]
-struct TopicEntry {
-    /// Which cluster this physical topic lives on.
-    #[serde(default)]
-    cluster: Option<String>,
-    /// Informational, and optionally asserted by the application.
-    #[serde(default)]
-    logical_topic: Option<String>,
+struct LogicalTopicEntry {
     #[serde(default)]
     producer_config: HashMap<String, String>,
     /// Per-application overrides, keyed by application name such as `relay`.
     #[serde(default)]
     producer_config_overrides: HashMap<String, HashMap<String, String>>,
+    /// The physical topic which this logical topic maps to.
+    #[serde(default)]
+    physical_topic: PhysicalTopicEntry,
+    /// Deprecated: where blobs written before `physical_topic` put the
+    /// cluster. Read only when `physical_topic.cluster` is unset.
+    #[serde(default)]
+    cluster: Option<String>,
+}
+
+/// Represents an actual Kafka topic on a broker (aka a physical topic).
+/// Logical topics (which clients work in terms of) map to one physical topic, but will
+/// be updated to support 1:n logical-to-physical topic mappings in the future.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct PhysicalTopicEntry {
+    /// Which cluster this physical topic lives on.
+    #[serde(default)]
+    cluster: Option<String>,
+    /// Optional topic name override. By default the logical topic name will be used.
+    #[serde(default)]
+    topic_name_override: Option<String>,
+}
+
+/// The same as `KafkaConfig`, but includes the physical topic name that the client
+/// who uses this config should produce to/consume from.
+///
+/// The physical topic is kept out of `config` on purpose: everything in
+/// `config` is handed to librdkafka, which rejects keys it does not know.
+#[derive(Debug, Clone)]
+pub struct ResolvedClientConfig {
+    pub config: KafkaConfig,
+    pub physical_topic: Topic,
 }
 
 /// Where to read environment variables from when resolving `env_config`.
@@ -100,25 +124,17 @@ impl EnvSource for HashMap<String, String> {
 pub struct ProducerSelector {
     topic: String,
     app: String,
-    expected_logical_topic: Option<String>,
 }
 
 impl ProducerSelector {
-    /// Selects the producer config for a physical topic, as seen by `app`.
+    /// Selects the producer config for a logical topic, as seen by `app`.
     ///
     /// `app` decides which `producer_config_overrides` entry applies.
     pub fn new(topic: impl Into<String>, app: impl Into<String>) -> Self {
         Self {
             topic: topic.into(),
             app: app.into(),
-            expected_logical_topic: None,
         }
-    }
-
-    /// Rejects a topic entry with an unexpected `logical_topic`.
-    pub fn expect_logical_topic(mut self, logical_topic: impl Into<String>) -> Self {
-        self.expected_logical_topic = Some(logical_topic.into());
-        self
     }
 
     pub fn topic(&self) -> &str {
@@ -136,12 +152,12 @@ impl ConfigBlob {
         Ok(serde_json::from_slice(blob)?)
     }
 
-    /// Resolves the producer config for one topic, reading secrets from the
+    /// Resolves the producer config for one logical topic, reading secrets from the
     /// process environment.
     pub fn producer_config(
         &self,
         selector: &ProducerSelector,
-    ) -> Result<KafkaConfig, ConfigBlobError> {
+    ) -> Result<ResolvedClientConfig, ConfigBlobError> {
         self.producer_config_with_env(selector, &ProcessEnv)
     }
 
@@ -150,7 +166,7 @@ impl ConfigBlob {
         &self,
         selector: &ProducerSelector,
         env: &impl EnvSource,
-    ) -> Result<KafkaConfig, ConfigBlobError> {
+    ) -> Result<ResolvedClientConfig, ConfigBlobError> {
         let topic_name = &selector.topic;
         let topic = self
             .topics
@@ -158,23 +174,12 @@ impl ConfigBlob {
             .ok_or_else(|| ConfigBlobError::UnknownTopic {
                 topic: topic_name.clone(),
             })?;
-
-        if let Some(expected) = &selector.expected_logical_topic {
-            let actual = topic.logical_topic.as_deref().unwrap_or("");
-            if actual != expected {
-                return Err(ConfigBlobError::UnexpectedLogicalTopic {
-                    topic: topic_name.clone(),
-                    actual: actual.to_owned(),
-                    expected: expected.clone(),
-                });
-            }
-        }
-
-        let mut params = HashMap::new();
+        let physical_topic = &topic.physical_topic;
 
         // Later sources win: cluster-wide settings first, then producer
         // settings, then the topic's own, then the per-app override.
-        if let Some(cluster_name) = &topic.cluster {
+        let mut params = HashMap::new();
+        if let Some(cluster_name) = physical_topic.cluster.as_ref().or(topic.cluster.as_ref()) {
             let cluster =
                 self.clusters
                     .get(cluster_name)
@@ -188,7 +193,6 @@ impl ConfigBlob {
             params.extend(cluster.producer_config.clone());
             resolve_env_into(&mut params, &cluster.producer_env_config, env)?;
         }
-
         params.extend(topic.producer_config.clone());
         if let Some(overrides) = topic.producer_config_overrides.get(&selector.app) {
             params.extend(overrides.clone());
@@ -196,13 +200,15 @@ impl ConfigBlob {
 
         // `bootstrap.servers` is just another key in the blob, so hand the
         // whole map over as overrides rather than splitting it out.
-        Ok(KafkaConfig::new_producer_config(Vec::new(), Some(params)))
-    }
-
-    /// The logical topic recorded for a physical topic, if any. Useful as a
-    /// metric tag.
-    pub fn logical_topic(&self, topic: &str) -> Option<&str> {
-        self.topics.get(topic)?.logical_topic.as_deref()
+        Ok(ResolvedClientConfig {
+            config: KafkaConfig::new_producer_config(Vec::new(), Some(params)),
+            physical_topic: Topic::new(
+                physical_topic
+                    .topic_name_override
+                    .as_deref()
+                    .unwrap_or(topic_name),
+            ),
+        })
     }
 }
 
@@ -238,12 +244,15 @@ mod tests {
         },
         "topics": {
             "ingest-events": {
-                "cluster": "events",
-                "logical_topic": "ingest-events",
+                "physical_topic": {"cluster": "events"},
                 "producer_config": {"compression.type": "lz4"},
                 "producer_config_overrides": {"relay": {"acks": "1"}}
             },
-            "orphan-topic": {"cluster": "does-not-exist"}
+            "ingest-spans": {
+                "physical_topic": {"cluster": "events", "topic_name_override": "ingest-spans-v2"}
+            },
+            "legacy-topic": {"cluster": "events"},
+            "orphan-topic": {"physical_topic": {"cluster": "does-not-exist"}}
         }
     }"#;
 
@@ -252,9 +261,39 @@ mod tests {
     }
 
     fn resolve(topic: &str, app: &str) -> Result<KafkaConfig, ConfigBlobError> {
+        resolve_full(topic, app).map(|resolved| resolved.config)
+    }
+
+    fn resolve_full(topic: &str, app: &str) -> Result<ResolvedClientConfig, ConfigBlobError> {
         ConfigBlob::parse(BLOB)
             .unwrap()
             .producer_config_with_env(&ProducerSelector::new(topic, app), &env())
+    }
+
+    #[test]
+    fn test_physical_topic_defaults_to_logical_name() {
+        let resolved = resolve_full("ingest-events", "relay").unwrap();
+        assert_eq!(resolved.physical_topic, Topic::new("ingest-events"));
+    }
+
+    #[test]
+    fn test_physical_topic_override_stays_out_of_kafka_config() {
+        let resolved = resolve_full("ingest-spans", "relay").unwrap();
+        assert_eq!(resolved.physical_topic, Topic::new("ingest-spans-v2"));
+        assert!(!resolved
+            .config
+            .config_map()
+            .values()
+            .any(|value| value == "ingest-spans-v2"));
+    }
+
+    #[test]
+    fn test_legacy_top_level_cluster_is_still_read() {
+        let config = resolve("legacy-topic", "relay").unwrap();
+        assert_eq!(
+            config.get_config_value("bootstrap.servers"),
+            Some(&"broker-1:9092".to_string())
+        );
     }
 
     #[test]
@@ -322,29 +361,6 @@ mod tests {
             ConfigBlob::parse(b"not json"),
             Err(ConfigBlobError::Malformed(..))
         ));
-    }
-
-    #[test]
-    fn test_unexpected_logical_topic_is_rejected() {
-        let selector =
-            ProducerSelector::new("ingest-events", "relay").expect_logical_topic("ingest-spans");
-        let result = ConfigBlob::parse(BLOB)
-            .unwrap()
-            .producer_config_with_env(&selector, &env());
-        assert!(matches!(
-            result,
-            Err(ConfigBlobError::UnexpectedLogicalTopic { .. })
-        ));
-    }
-
-    #[test]
-    fn test_matching_logical_topic_is_accepted() {
-        let selector =
-            ProducerSelector::new("ingest-events", "relay").expect_logical_topic("ingest-events");
-        assert!(ConfigBlob::parse(BLOB)
-            .unwrap()
-            .producer_config_with_env(&selector, &env())
-            .is_ok());
     }
 
     #[test]

@@ -26,8 +26,7 @@ fn config_blob(acks: &str) -> Vec<u8> {
             }},
             "topics": {{
                 "ingest-events": {{
-                    "cluster": "events",
-                    "logical_topic": "ingest-events",
+                    "physical_topic": {{"cluster": "events"}},
                     "producer_config": {{"acks": "{acks}"}},
                     "producer_config_overrides": {{"relay": {{"linger.ms": "5"}}}}
                 }}
@@ -41,11 +40,10 @@ fn config_blob(acks: &str) -> Vec<u8> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    // `app` picks which producer_config_overrides entry applies. Asserting the
-    // logical topic makes Arroyo reject a blob that repoints this topic at
-    // something Relay does not expect.
-    let selector =
-        ProducerSelector::new("ingest-events", "relay").expect_logical_topic("ingest-events");
+    // `app` picks which producer_config_overrides entry applies. Relay only
+    // names the logical topic; the blob decides which cluster and physical
+    // topic it lands on.
+    let selector = ProducerSelector::new("ingest-events", "relay");
 
     let settings = ReloadConfig {
         // How long the reload worker flushes the old client. Off the produce
