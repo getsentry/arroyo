@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.48.0
+
+### New Features ✨
+
+- (runtime) Implement pull based arroyo by @tryangul in [#560](https://github.com/getsentry/arroyo/pull/560)
+
 ## 2.47.1
 
 ### New Features ✨
