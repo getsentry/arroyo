@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## 2.47.1
+
+### New Features ✨
+
+- (ReloadingProducer) Add concept of logical to physical topic by @bmckerry in [#581](https://github.com/getsentry/arroyo/pull/581)
+
 ## 2.47.0
 
 ### New Features ✨
