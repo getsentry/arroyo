@@ -1,0 +1,270 @@
+use std::sync::Arc;
+use std::time::Duration;
+
+use futures::stream::Stream;
+use futures::StreamExt;
+
+use super::collector::StreamCollector;
+use crate::metrics;
+use crate::processing::stream::batch::flush_timer::FlushTimer;
+
+use super::handlers::next::NextHandler;
+use super::handlers::rejection::{RejectionHandler, RejectionMetadata};
+use super::pipeline_envelope::PipelineEnvelope;
+use super::stage::{FlushableStage, PipelineExit, Stage, StageResult};
+use super::BoxError;
+
+/// Run a stage on an envelope and record metrics.
+async fn run_stage<S: Stage>(stage: &S, envelope: PipelineEnvelope<S::In>) -> StageResult<S::Out> {
+    let start = coarsetime::Instant::now();
+    let result = stage.process(envelope).await;
+
+    metrics::histogram!("arroyo.stage.duration", "stage" => stage.name().to_owned())
+        .record(start.elapsed().as_millis() as f64);
+    match &result {
+        StageResult::Emit(_) => {
+            metrics::counter!("arroyo.stage.success", "stage" => stage.name().to_owned())
+                .increment(1);
+        }
+        StageResult::Drop { .. } => {
+            metrics::counter!("arroyo.stage.drop", "stage" => stage.name().to_owned()).increment(1);
+        }
+        StageResult::Skip => {
+            metrics::counter!("arroyo.stage.skip", "stage" => stage.name().to_owned()).increment(1);
+        }
+        StageResult::Reject { .. } => {
+            metrics::counter!("arroyo.stage.reject", "stage" => stage.name().to_owned())
+                .increment(1);
+        }
+        StageResult::Fail(_) => {
+            metrics::counter!("arroyo.stage.fail", "stage" => stage.name().to_owned()).increment(1);
+        }
+        StageResult::Exit(_) => {}
+    }
+
+    result
+}
+
+/// Extension trait that adds pipeline combinators to any
+/// Stream<Item = StageResult<T>>.
+///
+/// Combinators: `.apply()`, `.apply_concurrent()`, `.on_next()`,
+/// `.on_reject()`, `.run()`.
+///
+/// See `PipelineRunner` for the recommended way to run a pipeline
+/// with rebalance handling.
+pub trait PipelineExt<T: Send>: Stream<Item = StageResult<T>> + Sized {
+    /// Apply a processing stage sequentially to each Emit envelope.
+    fn apply<S>(self, stage: S) -> impl Stream<Item = StageResult<S::Out>>
+    where
+        S: Stage<In = T>,
+    {
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                yield item.map_emit(|e| run_stage(&stage, e)).await;
+            }
+        }
+    }
+
+    /// Apply a processing stage concurrently to up to `concurrency` Emit
+    /// envelopes at once. Results are yielded in input order.
+    /// Non-Emit items pass through.
+    fn apply_concurrent<S>(
+        self,
+        stage: S,
+        concurrency: usize,
+    ) -> impl Stream<Item = StageResult<S::Out>>
+    where
+        S: Stage<In = T>,
+    {
+        assert!(concurrency > 0, "concurrency must be at least 1");
+        let stage = Arc::new(stage);
+        self.map(move |item| {
+            let stage = Arc::clone(&stage);
+            async move { item.map_emit(|e| run_stage(&*stage, e)).await }
+        })
+        .buffered(concurrency)
+    }
+
+    /// Apply a flushable stage with time-based flush triggers.
+    ///
+    /// Two optional timers:
+    /// - `idle_timeout`: flush if no upstream item arrives within this duration.
+    /// - `max_cadence`: flush at this interval since the batch started accumulating.
+    ///
+    /// At least one of `idle_timeout` or `max_cadence` must be `Some`.
+    fn apply_with_timer<S>(
+        self,
+        stage: S,
+        idle_timeout: Option<Duration>,
+        max_cadence: Option<Duration>,
+    ) -> impl Stream<Item = StageResult<S::Out>>
+    where
+        S: FlushableStage<In = T>,
+    {
+        assert!(
+            idle_timeout.is_some() || max_cadence.is_some(),
+            "apply_with_timer requires at least one of idle_timeout or max_cadence"
+        );
+
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            let mut timer = FlushTimer::new(idle_timeout, max_cadence);
+
+            loop {
+                tokio::select! {
+                    item = upstream.next() => {
+                        let item = match item {
+                            Some(item) => item,
+                            None => {
+                                if let Some(flushed) = stage.flush() {
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "force").record(timer.batch_time().as_millis() as f64);
+                                    yield flushed;
+                                }
+                                return;
+                            }
+                        };
+
+                        match item {
+                            StageResult::Emit(e) => {
+                                let result = run_stage(&stage, e).await;
+                                match &result {
+                                    StageResult::Skip => timer.on_accumulate(),
+                                    StageResult::Emit(_) => {
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "size").record(timer.batch_time().as_millis() as f64);
+                                    timer.on_flush();
+                                }
+                                    _ => {}
+                                }
+                                yield result;
+                            }
+                            StageResult::Exit(reason) => {
+                                if let Some(flushed) = stage.flush() {
+                                    metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "force").record(timer.batch_time().as_millis() as f64);
+                                    yield flushed;
+                                }
+                                yield StageResult::Exit(reason);
+                                return;
+                            }
+                            StageResult::Fail(err) => {
+                                yield StageResult::Fail(err);
+                                return;
+                            }
+                            StageResult::Drop { metadata } => {
+                                yield StageResult::Drop { metadata };
+                            }
+                            StageResult::Skip => yield StageResult::Skip,
+                            StageResult::Reject { metadata, raw, reason } => {
+                                yield StageResult::Reject { metadata, raw, reason };
+                            }
+                        }
+                    }
+                    _ = timer.interval.tick(), if timer.is_active() => {
+                        if timer.should_flush() {
+                            if let Some(flushed) = stage.flush() {
+                                metrics::histogram!("arroyo.batch.accumulation_time", "flush_reason" => "time").record(timer.batch_time().as_millis() as f64);
+                                yield flushed;
+                            }
+                            timer.on_flush();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Call the next handler for each Emit envelope.
+    /// If the handler fails, the item becomes Fail.
+    /// All other variants pass through untouched.
+    fn on_next<H>(self, handler: H) -> impl Stream<Item = StageResult<T>>
+    where
+        H: NextHandler<T>,
+    {
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                let envelope = match item {
+                    StageResult::Emit(e) => e,
+                    other => {
+                        yield other;
+                        continue;
+                    }
+                };
+                match handler.handle(&envelope).await {
+                    Ok(()) => yield StageResult::Emit(envelope),
+                    Err(produce_err) => yield StageResult::Fail(produce_err),
+                }
+            }
+        }
+    }
+
+    /// Call the rejection handler for each Reject item.
+    /// All other variants pass through untouched.
+    /// If the handler itself fails, the item becomes Fail.
+    fn on_reject<H>(self, handler: H) -> impl Stream<Item = StageResult<T>>
+    where
+        H: RejectionHandler,
+    {
+        async_stream::stream! {
+            let mut upstream = Box::pin(self);
+            while let Some(item) = upstream.next().await {
+                match item {
+                    StageResult::Reject { metadata, raw, reason } => {
+                        let rejected = RejectionMetadata {
+                            metadata: metadata.clone(),
+                            raw: raw.clone(),
+                            reason,
+                        };
+                        match handler.handle(&rejected).await {
+                            Ok(()) => yield StageResult::Reject { metadata, raw, reason },
+                            Err(handler_err) => yield StageResult::Fail(handler_err),
+                        }
+                    }
+                    other => yield other,
+                }
+            }
+        }
+    }
+
+    /// Terminal: drive the pipeline to completion using a StreamCollector.
+    ///
+    /// The collector decides what happens on each pipeline event.
+    /// Use `OffsetCollector` for production (offset tracking + commit),
+    /// or `NoopCollector` / a custom collector for tests.
+    #[allow(async_fn_in_trait)]
+    async fn run<C: StreamCollector<T>>(self, collector: &mut C) -> Result<PipelineExit, BoxError> {
+        let mut stream = Box::pin(self);
+
+        while let Some(item) = stream.next().await {
+            match item {
+                StageResult::Emit(envelope) => {
+                    collector.on_emit(&envelope);
+                }
+                StageResult::Drop { metadata } => {
+                    collector.on_drop(&metadata);
+                }
+                StageResult::Skip => {}
+                StageResult::Reject { metadata, .. } => {
+                    collector.on_reject(&metadata);
+                }
+                StageResult::Fail(err) => {
+                    let _ = collector.on_fail(&err);
+                    return Err(err);
+                }
+                StageResult::Exit(reason) => {
+                    collector.on_exit(reason)?;
+                    return Ok(reason);
+                }
+            }
+
+            collector.after_each()?;
+        }
+
+        collector.on_complete()?;
+        Ok(PipelineExit::Complete)
+    }
+}
+
+// Blanket impl: any Stream of StageResult<T> gets these methods.
+impl<T: Send, S> PipelineExt<T> for S where S: Stream<Item = StageResult<T>> {}
