@@ -170,7 +170,10 @@ where
             }
         }
 
-        while !self.handles.is_empty() {
+        // Stop forwarding completed tasks while a message is waiting to be
+        // retried. Otherwise a second rejection would overwrite
+        // `message_carried_over` and drop the earlier message.
+        while !self.handles.is_empty() && self.message_carried_over.is_none() {
             if let Some(front) = self.handles.front() {
                 if !front.is_finished() {
                     break;
@@ -282,6 +285,7 @@ mod tests {
 
     use super::*;
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
     fn identity_task_runner<T: Send + 'static>() -> impl TaskRunner<T, T, &'static str> {
@@ -399,5 +403,81 @@ mod tests {
                 assert!(counts.polled);
             }
         }
+    }
+
+    struct BlockingSink {
+        blocked: Arc<AtomicBool>,
+        received: Arc<Mutex<Vec<u64>>>,
+    }
+
+    impl ProcessingStrategy<u64> for BlockingSink {
+        fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
+            Ok(None)
+        }
+        fn submit(&mut self, message: Message<u64>) -> Result<(), SubmitError<u64>> {
+            if self.blocked.load(Ordering::SeqCst) {
+                return Err(SubmitError::MessageRejected(MessageRejected { message }));
+            }
+            self.received.lock().unwrap().push(*message.payload());
+            Ok(())
+        }
+        fn terminate(&mut self) {}
+        fn join(
+            &mut self,
+            _timeout: Option<Duration>,
+        ) -> Result<Option<CommitRequest>, StrategyError> {
+            Ok(None)
+        }
+    }
+
+    fn submit_and_wait<N: ProcessingStrategy<u64>>(
+        strategy: &mut RunTaskInThreads<u64, u64, &'static str, N>,
+        values: impl IntoIterator<Item = u64>,
+    ) {
+        let partition = Partition::new(Topic::new("topic"), 0);
+        for value in values {
+            strategy
+                .submit(Message::new_broker_message(
+                    value,
+                    partition,
+                    value,
+                    chrono::Utc::now(),
+                ))
+                .unwrap();
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !strategy.handles.iter().all(|handle| handle.is_finished()) {
+            assert!(Instant::now() < deadline, "tasks did not finish in time");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    // https://github.com/getsentry/arroyo/issues/583
+    #[test]
+    fn test_backpressure_with_multiple_finished_tasks_does_not_drop_messages() {
+        let blocked = Arc::new(AtomicBool::new(true));
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let next_step = BlockingSink {
+            blocked: blocked.clone(),
+            received: received.clone(),
+        };
+        let concurrency = ConcurrencyConfig::new(3);
+        let mut strategy =
+            RunTaskInThreads::new(next_step, identity_task_runner(), &concurrency, None);
+
+        submit_and_wait(&mut strategy, [1, 2, 3]);
+
+        // Several completed tasks get rejected by the next step in the same poll.
+        strategy.poll().unwrap();
+        // Retrying the carried-over message fails again while other tasks are done.
+        strategy.poll().unwrap();
+        strategy.poll().unwrap();
+        assert!(received.lock().unwrap().is_empty());
+
+        blocked.store(false, Ordering::SeqCst);
+        strategy.join(Some(Duration::from_secs(1))).unwrap();
+
+        assert_eq!(*received.lock().unwrap(), vec![1, 2, 3]);
     }
 }
