@@ -15,6 +15,7 @@ path = "rust-arroyo/src/lib.rs"
 [features]
 ssl = ["rdkafka/ssl"]
 gssapi = ["rdkafka/gssapi"]
+zstd = ["rdkafka/zstd"]
 pull = []
 
 [dependencies]
