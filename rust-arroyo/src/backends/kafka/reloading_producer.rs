@@ -1068,6 +1068,7 @@ fn blob_error_reason(error: &ConfigBlobError) -> &'static str {
         ConfigBlobError::UnknownTopic { .. } => "unknown_topic",
         ConfigBlobError::UnknownCluster { .. } => "unknown_cluster",
         ConfigBlobError::MissingEnvVar { .. } => "missing_env_var",
+        ConfigBlobError::InvalidPhysicalTopic { .. } => "invalid_physical_topic",
     }
 }
 
@@ -1115,7 +1116,7 @@ mod tests {
                 "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
                 "topics": {{
                     "ingest-events": {{
-                        "physical_topic": {{"cluster": "events"}},
+                        "physical_topics": [{{"cluster": "events"}}],
                         "producer_config": {{"acks": "{acks}"}}
                     }}
                 }}
@@ -1131,7 +1132,7 @@ mod tests {
                 "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
                 "topics": {{
                     "ingest-events": {{
-                        "physical_topic": {{"cluster": "events"}},
+                        "physical_topics": [{{"cluster": "events"}}],
                         "producer_config": {{"acks": "{acks}", "linger.ms": "1000"}}
                     }}
                 }}
@@ -2148,7 +2149,7 @@ mod tests {
                 "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
                 "topics": {{
                     "ingest-events": {{
-                        "physical_topic": {{"cluster": "events", "topic_name_override": "ingest-events-v2"}},
+                        "physical_topics": [{{"cluster": "events", "topic_name_override": "ingest-events-v2"}}],
                         "producer_config": {{"acks": "all"}}
                     }}
                 }}
