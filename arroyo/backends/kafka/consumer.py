@@ -270,20 +270,30 @@ class KafkaConsumer(Consumer[KafkaPayload]):
             tags = {"status": "error"}
             if self.__group_id:
                 tags["group_id"] = self.__group_id
-            self.__metrics.increment(
-                name="arroyo.consumer.commit_status",
-                value=1,
-                tags=tags,
-            )
+            try:
+                self.__metrics.increment(
+                    name="arroyo.consumer.commit_status",
+                    value=1,
+                    tags=tags,
+                )
+            except Exception as e:
+                logger.debug(
+                    "Failed to record commit status metric: %s", e, exc_info=False
+                )
         else:
             tags = {"status": "success"}
             if self.__group_id:
                 tags["group_id"] = self.__group_id
-            self.__metrics.increment(
-                name="arroyo.consumer.commit_status",
-                value=1,
-                tags=tags,
-            )
+            try:
+                self.__metrics.increment(
+                    name="arroyo.consumer.commit_status",
+                    value=1,
+                    tags=tags,
+                )
+            except Exception as e:
+                logger.debug(
+                    "Failed to record commit status metric: %s", e, exc_info=False
+                )
 
     def __resolve_partition_offset_earliest(
         self, partition: ConfluentTopicPartition
