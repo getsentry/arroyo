@@ -26,7 +26,7 @@ fn config_blob(acks: &str) -> Vec<u8> {
             }},
             "topics": {{
                 "ingest-events": {{
-                    "physical_topic": {{"cluster": "events"}},
+                    "physical_topics": [{{"cluster": "events"}}],
                     "producer_config": {{"acks": "{acks}"}},
                     "producer_config_overrides": {{"relay": {{"linger.ms": "5"}}}}
                 }}

@@ -28,6 +28,9 @@ pub enum ConfigBlobError {
 
     #[error("environment variable {variable:?} for config key {key:?} is not set")]
     MissingEnvVar { key: String, variable: String },
+
+    #[error("expected 1 physical topic backend, instead found {num_topics:?} backends")]
+    InvalidPhysicalTopic { num_topics: usize },
 }
 
 /// The whole configmap, covering every cluster and topic in a region.
@@ -65,12 +68,17 @@ struct LogicalTopicEntry {
     #[serde(default)]
     producer_config_overrides: HashMap<String, HashMap<String, String>>,
     /// The physical topic which this logical topic maps to.
+    /// Since we only support a 1:1 relation for logical to physical topics,
+    /// this cannot have more than one entry and is only a Vec to be forwards-compatible
+    /// with when support for N physical topics is added.
     #[serde(default)]
-    physical_topic: PhysicalTopicEntry,
-    /// Deprecated: where blobs written before `physical_topic` put the
-    /// cluster. Read only when `physical_topic.cluster` is unset.
+    physical_topics: Vec<PhysicalTopicEntry>,
+    /// Optional override for the physical topic backend used by producers.
+    /// Can be used to cut over producers to a new physical topic backend,
+    /// while still having consumers connect to the old physical topic backend.
+    /// This helps preserve message ordering.
     #[serde(default)]
-    cluster: Option<String>,
+    producer_physical_topic_override: Option<Vec<PhysicalTopicEntry>>,
 }
 
 /// Represents an actual Kafka topic on a broker (aka a physical topic).
@@ -80,17 +88,26 @@ struct LogicalTopicEntry {
 struct PhysicalTopicEntry {
     /// Which cluster this physical topic lives on.
     #[serde(default)]
-    cluster: Option<String>,
+    cluster: String,
     /// Optional topic name override. By default the logical topic name will be used.
     #[serde(default)]
     topic_name_override: Option<String>,
 }
 
+/// Helper function for extracting the physical topic from a Vec of physical topics.
+fn get_physical_topic(
+    topics: &[PhysicalTopicEntry],
+) -> Result<&PhysicalTopicEntry, ConfigBlobError> {
+    match topics.len() {
+        1 => Ok(&topics[0]),
+        _ => Err(ConfigBlobError::InvalidPhysicalTopic {
+            num_topics: topics.len(),
+        }),
+    }
+}
+
 /// The same as `KafkaConfig`, but includes the physical topic name that the client
 /// who uses this config should produce to/consume from.
-///
-/// The physical topic is kept out of `config` on purpose: everything in
-/// `config` is handed to librdkafka, which rejects keys it does not know.
 #[derive(Debug, Clone)]
 pub struct ResolvedClientConfig {
     pub config: KafkaConfig,
@@ -174,33 +191,39 @@ impl ConfigBlob {
             .ok_or_else(|| ConfigBlobError::UnknownTopic {
                 topic: topic_name.clone(),
             })?;
-        let physical_topic = &topic.physical_topic;
+        // Uses the producer backend override if one exists,
+        // otherwise the standard physical topic backends
+        let physical_topic = get_physical_topic(
+            topic
+                .producer_physical_topic_override
+                .as_ref()
+                .unwrap_or(&topic.physical_topics),
+        )?;
 
         // Later sources win: cluster-wide settings first, then producer
         // settings, then the topic's own, then the per-app override.
         let mut params = HashMap::new();
-        if let Some(cluster_name) = physical_topic.cluster.as_ref().or(topic.cluster.as_ref()) {
-            let cluster =
-                self.clusters
-                    .get(cluster_name)
-                    .ok_or_else(|| ConfigBlobError::UnknownCluster {
-                        topic: topic_name.clone(),
-                        cluster: cluster_name.clone(),
-                    })?;
+        let cluster_name = &physical_topic.cluster;
+        let cluster =
+            self.clusters
+                .get(cluster_name)
+                .ok_or_else(|| ConfigBlobError::UnknownCluster {
+                    topic: topic_name.clone(),
+                    cluster: cluster_name.clone(),
+                })?;
 
-            params.extend(cluster.config.clone());
-            resolve_env_into(&mut params, &cluster.env_config, env)?;
-            params.extend(cluster.producer_config.clone());
-            resolve_env_into(&mut params, &cluster.producer_env_config, env)?;
-        }
+        params.extend(cluster.config.clone());
+        resolve_env_into(&mut params, &cluster.env_config, env)?;
+        params.extend(cluster.producer_config.clone());
+        resolve_env_into(&mut params, &cluster.producer_env_config, env)?;
         params.extend(topic.producer_config.clone());
         if let Some(overrides) = topic.producer_config_overrides.get(&selector.app) {
             params.extend(overrides.clone());
         }
 
-        // `bootstrap.servers` is just another key in the blob, so hand the
-        // whole map over as overrides rather than splitting it out.
         Ok(ResolvedClientConfig {
+            // `bootstrap.servers` is just another key in the blob, so hand the
+            // whole map over as overrides rather than splitting it out.
             config: KafkaConfig::new_producer_config(Vec::new(), Some(params)),
             physical_topic: Topic::new(
                 physical_topic
@@ -240,19 +263,26 @@ mod tests {
                 "config": {"bootstrap.servers": "broker-1:9092"},
                 "env_config": {"sasl.username": "KAFKA_USERNAME"},
                 "producer_config": {"acks": "all"}
+            },
+            "events-2": {
+                "config": {"bootstrap.servers": "broker-2:9092"},
+                "env_config": {"sasl.username": "KAFKA_USERNAME"},
+                "producer_config": {"acks": "all"}
             }
         },
         "topics": {
             "ingest-events": {
-                "physical_topic": {"cluster": "events"},
+                "physical_topics": [{"cluster": "events"}],
                 "producer_config": {"compression.type": "lz4"},
                 "producer_config_overrides": {"relay": {"acks": "1"}}
             },
             "ingest-spans": {
-                "physical_topic": {"cluster": "events", "topic_name_override": "ingest-spans-v2"}
+                "physical_topics": [{"cluster": "events", "topic_name_override": "ingest-spans-v2"}]
             },
-            "legacy-topic": {"cluster": "events"},
-            "orphan-topic": {"physical_topic": {"cluster": "does-not-exist"}}
+            "ingest-multiple": {
+                "physical_topics": [{"cluster": "events"}, {"cluster": "events-2"}]
+            },
+            "orphan-topic": {"physical_topics": [{"cluster": "does-not-exist"}]}
         }
     }"#;
 
@@ -285,15 +315,6 @@ mod tests {
             .config_map()
             .values()
             .any(|value| value == "ingest-spans-v2"));
-    }
-
-    #[test]
-    fn test_legacy_top_level_cluster_is_still_read() {
-        let config = resolve("legacy-topic", "relay").unwrap();
-        assert_eq!(
-            config.get_config_value("bootstrap.servers"),
-            Some(&"broker-1:9092".to_string())
-        );
     }
 
     #[test]
@@ -367,7 +388,8 @@ mod tests {
     fn test_unknown_fields_are_tolerated() {
         // Consumer keys and future additions must not break producers.
         let blob = br#"{
-            "topics": {"t": {"consumer_config": {"max.poll.interval.ms": "1"}, "future": 1}},
+            "clusters": {"foo": {}},
+            "topics": {"t": {"physical_topics": [{"cluster": "foo"}], "consumer_config": {"max.poll.interval.ms": "1"}, "future": 1}},
             "unrelated": {}
         }"#;
         assert!(ConfigBlob::parse(blob)
