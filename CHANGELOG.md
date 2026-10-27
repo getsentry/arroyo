@@ -1,5 +1,12 @@
 # Changelog and versioning
 
+## 2.48.1
+
+### Bug Fixes 🐛
+
+- (config_blob) Make physical topics forward-compatible by @bmckerry in [#587](https://github.com/getsentry/arroyo/pull/587)
+- (rust) Do not drop messages in RunTaskInThreads under backpressure by @sentry-junior in [#584](https://github.com/getsentry/arroyo/pull/584)
+
 ## 2.48.0
 
 ### New Features ✨
