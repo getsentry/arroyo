@@ -1196,6 +1196,22 @@ where
     }
 }
 
+/// The same interface as [`super::producer::AsyncKafkaProducer`], so hosts can
+/// switch over without changing how they produce. The future resolves once the
+/// broker acknowledged the message, see
+/// [`ReloadingKafkaProducer::produce_record_with_delivery`].
+//
+// Named by path: importing it would make `.produce()` ambiguous wherever this
+// module's imports are glob-imported, such as the tests below.
+impl<C> crate::backends::AsyncProducer<KafkaPayload> for ReloadingKafkaProducer<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
+{
+    fn produce(&self, destination: &TopicOrPartition, payload: KafkaPayload) -> ProducerFuture {
+        self.produce_record_with_delivery(payload.to_base_record(destination))
+    }
+}
+
 /// Something went wrong while loading or applying a config.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
@@ -2393,6 +2409,29 @@ mod tests {
 
         futures::executor::block_on(producer.produce_record_with_delivery(delivery_record()))
             .unwrap();
+
+        assert_eq!(context.delivered.load(Ordering::SeqCst), 1);
+    }
+
+    /// Hosts moving off `AsyncKafkaProducer` produce through the same trait.
+    #[test]
+    fn test_async_producer_waits_for_delivery() {
+        let cluster = MockCluster::new(1).unwrap();
+        let context = CountingContext::default();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&cluster.bootstrap_servers(), "all"),
+            selector(),
+            settings(),
+            context.clone(),
+        )
+        .unwrap();
+
+        let delivery = crate::backends::AsyncProducer::produce(
+            &producer,
+            &TopicOrPartition::Topic(Topic::new("ingest-events")),
+            KafkaPayload::new(None, None, Some(b"payload".to_vec())),
+        );
+        futures::executor::block_on(delivery).unwrap();
 
         assert_eq!(context.delivered.load(Ordering::SeqCst), 1);
     }
