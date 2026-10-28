@@ -329,10 +329,16 @@ where
         )
         .increment(1);
 
-        // Report generation 0 up front, so producers that never reload still
-        // show up rather than leaving the gauge empty.
+        // Report the gauges up front, so producers that never reload still
+        // show up rather than leaving them empty.
         metrics::gauge!(
             "arroyo.producer.config_reload_generation",
+            "topic" => selector.topic().to_owned(),
+            "producer_name" => producer_name.clone(),
+        )
+        .set(0.0);
+        metrics::gauge!(
+            "arroyo.producer.config_reload_pending",
             "topic" => selector.topic().to_owned(),
             "producer_name" => producer_name.clone(),
         )

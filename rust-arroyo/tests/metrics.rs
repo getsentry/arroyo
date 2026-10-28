@@ -181,13 +181,18 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
         RELOADING_PRODUCER_MODULE,
     );
     // Reported from the start, not only after the first reload.
-    assert_metric(
-        &recorded,
-        "gauge",
+    for gauge in [
         "arroyo.producer.config_reload_generation",
-        &producer_tags,
-        RELOADING_PRODUCER_MODULE,
-    );
+        "arroyo.producer.config_reload_pending",
+    ] {
+        assert_metric(
+            &recorded,
+            "gauge",
+            gauge,
+            &producer_tags,
+            RELOADING_PRODUCER_MODULE,
+        );
+    }
     assert_metric(
         &recorded,
         "counter",
