@@ -126,7 +126,7 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
 
     // Building a producer does not connect to the broker, so none has to run.
     let blob = br#"{
-        "clusters": {"events": {"config": {"bootstrap.servers": "127.0.0.1:1"}}},
+        "clusters": {"events": {"config": {"bootstrap.servers": "127.0.0.1:1", "client.id": "my-producer"}}},
         "topics": {"ingest-events": {"physical_topics": [{"cluster": "events"}]}}
     }"#;
     let producer = ReloadingKafkaProducer::new(
@@ -171,7 +171,7 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
         ("application", "my-service"),
         ("partition_id", "scope-default"),
         ("topic", "ingest-events"),
-        ("producer_name", "unknown"),
+        ("producer_name", "my-producer"),
     ];
     assert_metric(
         &recorded,
