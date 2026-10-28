@@ -59,7 +59,7 @@ impl RdkafkaProducerContext for ProducerContext {
 
 pub struct KafkaProducer<C = ProducerContext>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     producer: ThreadedProducer<C>,
 }
@@ -78,7 +78,7 @@ impl KafkaProducer {
 
 impl<C> KafkaProducer<C>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     /// Creates a producer with a custom context, replacing Arroyo's metrics callbacks.
     ///
@@ -91,14 +91,31 @@ where
         })
     }
 
-    pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
+    pub fn produce_record<K, P>(
+        &self,
+        record: BaseRecord<'_, K, P, C::DeliveryOpaque>,
+    ) -> Result<(), ProducerError>
     where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        self.producer
-            .send(record)
+        self.try_produce_record(record)
             .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))
+    }
+
+    /// Like [`KafkaProducer::produce_record`], but hands the record back on
+    /// error, so its delivery opaque can still be used.
+    // Mirrors rdkafka's own `send`, which returns the record the same way.
+    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    pub(crate) fn try_produce_record<'a, K, P>(
+        &self,
+        record: BaseRecord<'a, K, P, C::DeliveryOpaque>,
+    ) -> Result<(), (KafkaError, BaseRecord<'a, K, P, C::DeliveryOpaque>)>
+    where
+        K: ToBytes + ?Sized,
+        P: ToBytes + ?Sized,
+    {
+        self.producer.send(record)
     }
 
     /// Synchronously validates a physical topic
