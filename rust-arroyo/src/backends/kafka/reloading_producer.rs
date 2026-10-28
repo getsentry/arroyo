@@ -1210,6 +1210,13 @@ mod tests {
     }
 
     #[test]
+    fn test_producer_is_named_after_app_and_cluster() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+        assert_eq!(producer.inner.producer_name, "relay-events");
+    }
+
+    #[test]
     fn test_reload_replaces_the_client() {
         let cluster = MockCluster::new(1).unwrap();
         let producer = producer(&cluster.bootstrap_servers());
