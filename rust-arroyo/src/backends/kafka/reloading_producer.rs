@@ -21,16 +21,14 @@
 //!
 //! # Waiting for delivery
 //!
-//! [`ReloadingKafkaProducer::produce_record_with_delivery`] returns a future
-//! that resolves once the broker acknowledged the message, or with the reason
+//! Through [`AsyncProducer`](crate::backends::AsyncProducer), produce returns
+//! a future that resolves once the broker acknowledged the message, or with the reason
 //! it was not delivered. A message that was buffered during a swap resolves
 //! once it went out on the new client, and a message that was purged with the
 //! old client resolves with the purge error. Hosts that must not lose messages
 //! can rely on that instead of on the produce call returning `Ok`.
 
 use std::error::Error;
-use std::ffi::c_void;
-use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -41,7 +39,6 @@ use rdkafka::config::RDKafkaLogLevel;
 use rdkafka::error::KafkaError;
 use rdkafka::message::ToBytes;
 use rdkafka::producer::{BaseRecord, DeliveryResult, ProducerContext as RdkafkaProducerContext};
-use rdkafka::util::IntoOpaque;
 use tokio::sync::oneshot;
 
 use super::config::KafkaConfig;
@@ -108,30 +105,19 @@ type DeliverySender = oneshot::Sender<Result<(), ProducerError>>;
 
 /// Where to report a message's delivery, if anyone is waiting for it.
 ///
-/// Messages produced without waiting carry `None`, which costs no allocation.
-struct Delivery(Option<Box<DeliverySender>>);
+/// Boxed because rdkafka carries it through C as a pointer.
+type Delivery = Box<Option<DeliverySender>>;
 
-impl IntoOpaque for Delivery {
-    fn into_ptr(self) -> *mut c_void {
-        match self.0 {
-            Some(sender) => Box::into_raw(sender).cast(),
-            None => ptr::null_mut(),
-        }
-    }
-
-    unsafe fn from_ptr(ptr: *mut c_void) -> Self {
-        if ptr.is_null() {
-            Delivery(None)
-        } else {
-            // SAFETY: a non-null pointer only comes from `into_ptr` above, and
-            // rdkafka hands each opaque back exactly once.
-            Delivery(Some(unsafe { Box::from_raw(ptr.cast()) }))
-        }
+/// Reports an error to whoever waits for this message's delivery.
+fn fail_delivery(delivery: Option<DeliverySender>, error: ProducerError) {
+    if let Some(sender) = delivery {
+        // The receiver may be gone already; nobody is waiting then.
+        let _ = sender.send(Err(error));
     }
 }
 
 /// Wraps the host's context so a delivery report can also resolve the future
-/// returned by [`ReloadingKafkaProducer::produce_record_with_delivery`].
+/// returned through [`AsyncProducer`](crate::backends::AsyncProducer).
 ///
 /// Everything else is passed through to the host's context unchanged.
 #[derive(Clone)]
@@ -173,7 +159,7 @@ where
     fn delivery(&self, delivery_result: &DeliveryResult<'_>, delivery: Delivery) {
         self.inner.delivery(delivery_result, ());
 
-        if let Some(sender) = delivery.0 {
+        if let Some(sender) = *delivery {
             let result = match delivery_result {
                 Ok(_) => Ok(()),
                 Err((error, _)) => Err(error.clone().into()),
@@ -561,7 +547,7 @@ where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        self.enqueue(record, Delivery(None))
+        self.enqueue(record, Box::new(None))
     }
 
     /// Enqueues a record like [`ReloadingKafkaProducer::produce_record`], and
@@ -571,13 +557,13 @@ where
     /// polled. The future resolves with an error if the record could not be
     /// enqueued, if delivery failed, or if the record was purged because a
     /// reload dropped the old client before it was delivered.
-    pub fn produce_record_with_delivery<K, P>(&self, record: BaseRecord<'_, K, P>) -> ProducerFuture
+    fn produce_record_with_delivery<K, P>(&self, record: BaseRecord<'_, K, P>) -> ProducerFuture
     where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
         let (sender, receiver) = oneshot::channel();
-        let enqueued = self.enqueue(record, Delivery(Some(Box::new(sender))));
+        let enqueued = self.enqueue(record, Box::new(Some(sender)));
 
         Box::pin(async move {
             enqueued?;
@@ -1119,10 +1105,10 @@ where
                 message.delivery,
             );
 
-            // The produce call that buffered this already returned Ok. A
-            // caller waiting for delivery still finds out: the failed record
-            // is dropped here along with its sender.
-            if let Err(error) = current.producer.produce_record(record) {
+            // The produce call that buffered this already returned Ok, so
+            // only a caller waiting for delivery can still be told.
+            if let Err((error, record)) = current.producer.try_produce_record(record) {
+                let error = ProducerError::from(error);
                 metrics::counter!(
                     "arroyo.producer.config_reload_replay_failed",
                     "topic" => self.selector.topic().to_owned(),
@@ -1134,6 +1120,7 @@ where
                     %error,
                     "could not replay a buffered message onto the new client"
                 );
+                fail_delivery(*record.delivery_opaque, error);
             }
         }
 
@@ -1197,9 +1184,12 @@ where
 }
 
 /// The same interface as [`super::producer::AsyncKafkaProducer`], so hosts can
-/// switch over without changing how they produce. The future resolves once the
-/// broker acknowledged the message, see
-/// [`ReloadingKafkaProducer::produce_record_with_delivery`].
+/// switch over without changing how they produce.
+///
+/// The message is enqueued right away, not when the future is first polled.
+/// The future resolves once the broker acknowledged the message, or with an
+/// error if it could not be enqueued, if delivery failed, or if it was purged
+/// because a reload dropped the old client before it was delivered.
 //
 // Named by path: importing it would make `.produce()` ambiguous wherever this
 // module's imports are glob-imported, such as the tests below.
@@ -2499,6 +2489,49 @@ mod tests {
 
         futures::executor::block_on(delivery).unwrap();
         assert_eq!(producer.generation(), 1);
+    }
+
+    /// A buffered message the new client refuses must resolve the future with
+    /// the actual error, not a generic one.
+    #[test]
+    fn test_delivery_future_reports_a_failed_replay() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = producer(&servers);
+
+        let (release, gate) = mpsc::channel();
+        *producer.inner.swap_gate.lock() = Some(gate);
+
+        let small = String::from_utf8(blob(&servers, "1")).unwrap().replace(
+            r#""acks": "1""#,
+            r#""acks": "1", "message.max.bytes": "1000""#,
+        );
+        producer.push_config(small.as_bytes()).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while producer.inner.swap_gate.lock().is_some() {
+            assert!(Instant::now() < deadline, "worker never reached the swap");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        // Fits the old client, so it is buffered, but not the new one.
+        let large = vec![0u8; 5000];
+        let delivery = producer.produce_record_with_delivery(
+            BaseRecord::<'_, [u8], [u8]>::to("ingest-events").payload(large.as_slice()),
+        );
+
+        release.send(()).unwrap();
+
+        let result = futures::executor::block_on(delivery);
+        assert!(
+            matches!(
+                result,
+                Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                    rdkafka::types::RDKafkaErrorCode::MessageSizeTooLarge
+                )))
+            ),
+            "{result:?}"
+        );
     }
 
     /// A message still queued on the old client when a timed-out drain drops
