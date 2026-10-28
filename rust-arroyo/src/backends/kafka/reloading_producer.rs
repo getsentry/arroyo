@@ -33,6 +33,7 @@ use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector, Resolved
 use super::producer::{KafkaProducer, ProducerContext};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError};
+use crate::metrics;
 use crate::types::{Partition, Topic, TopicOrPartition};
 
 /// Knobs for how reloads are carried out.
@@ -327,6 +328,21 @@ where
             "producer_name" => producer_name.clone(),
         )
         .increment(1);
+
+        // Report the gauges up front, so producers that never reload still
+        // show up rather than leaving them empty.
+        metrics::gauge!(
+            "arroyo.producer.config_reload_generation",
+            "topic" => selector.topic().to_owned(),
+            "producer_name" => producer_name.clone(),
+        )
+        .set(0.0);
+        metrics::gauge!(
+            "arroyo.producer.config_reload_pending",
+            "topic" => selector.topic().to_owned(),
+            "producer_name" => producer_name.clone(),
+        )
+        .set(0.0);
 
         let inner = Arc::new(Inner {
             current: RwLock::new(Current {
