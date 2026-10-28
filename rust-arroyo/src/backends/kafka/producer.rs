@@ -59,7 +59,7 @@ impl RdkafkaProducerContext for ProducerContext {
 
 pub struct KafkaProducer<C = ProducerContext>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     producer: ThreadedProducer<C>,
 }
@@ -78,7 +78,7 @@ impl KafkaProducer {
 
 impl<C> KafkaProducer<C>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     /// Creates a producer with a custom context, replacing Arroyo's metrics callbacks.
     ///
@@ -91,7 +91,10 @@ where
         })
     }
 
-    pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
+    pub fn produce_record<K, P>(
+        &self,
+        record: BaseRecord<'_, K, P, C::DeliveryOpaque>,
+    ) -> Result<(), ProducerError>
     where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
