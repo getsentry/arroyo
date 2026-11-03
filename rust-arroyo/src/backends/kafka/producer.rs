@@ -62,16 +62,12 @@ where
     C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
 {
     producer: ThreadedProducer<C>,
+    producer_name: String,
 }
 
 impl KafkaProducer {
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
-        // Extract client.id from config for metrics, default to "unknown"
-        let producer_name = config
-            .get_config_value("client.id")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-        let context = ProducerContext::new(producer_name);
+        let context = ProducerContext::new(producer_name_of(&config));
         Self::new_with_context(config, context)
     }
 }
@@ -84,10 +80,15 @@ where
     ///
     /// Delivery callbacks run once per accepted message. Immediate enqueue errors
     /// return without a callback; producing does not wait for delivery.
+    ///
+    /// The context only replaces the delivery and statistics metrics.
+    /// Immediate enqueue errors are still recorded by the producer itself.
     pub fn new_with_context(config: KafkaConfig, context: C) -> Result<Self, KafkaError> {
+        let producer_name = producer_name_of(&config);
         let config_obj: ClientConfig = config.into();
         Ok(Self {
             producer: config_obj.create_with_context(context)?,
+            producer_name,
         })
     }
 
@@ -96,9 +97,17 @@ where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
+        let topic = record.topic;
         self.producer
             .send(record)
-            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))
+            .map_err(|(kafka_error, _record)| {
+                record_produce_status(
+                    &self.producer_name,
+                    topic,
+                    Some(get_error_name(&kafka_error)),
+                );
+                ProducerError::from(kafka_error)
+            })
     }
 
     /// Synchronously validates a physical topic
@@ -156,11 +165,7 @@ pub struct AsyncKafkaProducer {
 impl AsyncKafkaProducer {
     /// Creates a producer
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
-        // Extract client.id from config for metrics, default to "unknown"
-        let producer_name = config
-            .get_config_value("client.id")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
+        let producer_name = producer_name_of(&config);
         let context = ProducerContext::new(producer_name.clone());
         let config_obj: ClientConfig = config.into();
         Ok(Self {
@@ -198,6 +203,17 @@ fn validate_topic_metadata<C: ClientContext>(
     }
 
     Ok(())
+}
+
+/// Producer name in metric tags when `client.id` is not set.
+pub(super) const UNNAMED_PRODUCER: &str = "unknown";
+
+/// Returns the producer name used in metric tags.
+pub(super) fn producer_name_of(config: &KafkaConfig) -> String {
+    config
+        .get_config_value("client.id")
+        .cloned()
+        .unwrap_or_else(|| UNNAMED_PRODUCER.to_owned())
 }
 
 fn record_produce_status(producer_name: &str, topic: &str, error: Option<String>) {
@@ -264,7 +280,12 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
 mod tests {
     use std::collections::HashMap;
     use std::sync::mpsc::{self, Receiver, Sender};
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
+
+    use metrics::{
+        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
+    };
 
     use rdkafka::client::ClientContext;
     use rdkafka::error::{KafkaError, RDKafkaErrorCode};
@@ -661,6 +682,120 @@ mod tests {
                 )),
                 "test".to_owned(),
                 8,
+            )]
+        );
+    }
+
+    /// Records every counter increment with its key.
+    #[derive(Clone, Default)]
+    struct CapturingRecorder(Arc<Mutex<Vec<(Key, f64)>>>);
+
+    struct CapturingMetric(Key, Arc<Mutex<Vec<(Key, f64)>>>);
+
+    impl CapturingMetric {
+        fn push(&self, value: f64) {
+            self.1.lock().unwrap().push((self.0.clone(), value));
+        }
+    }
+
+    impl CounterFn for CapturingMetric {
+        fn increment(&self, value: u64) {
+            self.push(value as f64);
+        }
+
+        fn absolute(&self, value: u64) {
+            self.push(value as f64);
+        }
+    }
+
+    impl Recorder for CapturingRecorder {
+        fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+        fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+        fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+
+        fn register_counter(&self, key: &Key, _: &Metadata<'_>) -> Counter {
+            Counter::from_arc(Arc::new(CapturingMetric(key.clone(), self.0.clone())))
+        }
+
+        fn register_gauge(&self, _: &Key, _: &Metadata<'_>) -> Gauge {
+            Gauge::noop()
+        }
+
+        fn register_histogram(&self, _: &Key, _: &Metadata<'_>) -> Histogram {
+            Histogram::noop()
+        }
+    }
+
+    impl CapturingRecorder {
+        /// Returns `(labels, value)` for every value recorded under `name`.
+        fn values(&self, name: &str) -> Vec<(Vec<(String, String)>, f64)> {
+            self.0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.name() == name)
+                .map(|(key, value)| {
+                    let mut labels: Vec<_> = key
+                        .labels()
+                        .map(|label| (label.key().to_owned(), label.value().to_owned()))
+                        .collect();
+                    labels.sort_unstable();
+                    (labels, *value)
+                })
+                .collect()
+        }
+    }
+
+    fn labels(labels: &[(&str, &str)]) -> Vec<(String, String)> {
+        let mut labels: Vec<_> = labels
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect();
+        labels.sort_unstable();
+        labels
+    }
+
+    #[test]
+    fn test_custom_context_records_enqueue_errors() {
+        let config = KafkaConfig::new_producer_config(
+            Vec::new(),
+            Some(HashMap::from([
+                ("queue.buffering.max.messages".to_string(), "1".to_string()),
+                ("message.timeout.ms".to_string(), "5000".to_string()),
+                ("client.id".to_string(), "my-producer".to_string()),
+            ])),
+        );
+        let (producer, _reports) = callback_producer(config);
+        let destination = TopicOrPartition::Topic(Topic::new("test"));
+
+        let recorder = CapturingRecorder::default();
+        metrics::with_local_recorder(&recorder, || {
+            producer
+                .produce(
+                    &destination,
+                    KafkaPayload::new(None, None, Some(b"accepted".to_vec())),
+                )
+                .unwrap();
+            producer
+                .produce(
+                    &destination,
+                    KafkaPayload::new(None, None, Some(b"no".to_vec())),
+                )
+                .unwrap_err();
+        });
+
+        // The context replaces the delivery callback, so only the enqueue error
+        // is counted.
+        assert_eq!(
+            recorder.values("arroyo.producer.produce_status"),
+            vec![(
+                labels(&[
+                    ("status", "error"),
+                    ("code", "MessageProduction(QueueFull (Local: Queue full))"),
+                    ("topic", "test"),
+                    ("producer_name", "my-producer"),
+                ]),
+                1.0
             )]
         );
     }
