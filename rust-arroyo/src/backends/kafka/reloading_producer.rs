@@ -30,7 +30,7 @@ use rdkafka::producer::{BaseRecord, ProducerContext as RdkafkaProducerContext};
 
 use super::config::KafkaConfig;
 use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector, ResolvedClientConfig};
-use super::producer::{producer_name_of, KafkaProducer, ProducerContext, UNNAMED_PRODUCER};
+use super::producer::{producer_name_of, KafkaProducer, NoopProducerContext, UNNAMED_PRODUCER};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError};
 use crate::metrics;
@@ -110,7 +110,7 @@ where
 /// client statistics. Every client this producer builds, including the ones it
 /// swaps in later, gets a clone of the context handed to the constructor, so
 /// callbacks keep firing across a reload.
-pub struct ReloadingKafkaProducer<C = ProducerContext>
+pub struct ReloadingKafkaProducer<C = NoopProducerContext>
 where
     C: RdkafkaProducerContext<DeliveryOpaque = ()> + Clone + 'static,
 {
@@ -210,8 +210,8 @@ struct ReloadState {
 }
 
 impl ReloadingKafkaProducer {
-    /// Builds a producer from an initial config blob, with Arroyo's own
-    /// metrics context.
+    /// Builds a producer from an initial config blob, without a custom
+    /// context.
     ///
     /// Pass the opaque config bytes through. `selector` chooses the topic and
     /// application config.
@@ -221,12 +221,11 @@ impl ReloadingKafkaProducer {
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
         let config = Self::resolve_initial(blob, &selector)?;
-        let context = ProducerContext::new(producer_name_of(&config.config));
-        Self::from_resolved(config, selector, settings, context)
+        Self::from_resolved(config, selector, settings, NoopProducerContext)
     }
 
-    /// Builds a producer from an already-resolved config, with Arroyo's own
-    /// metrics context.
+    /// Builds a producer from an already-resolved config, without a custom
+    /// context.
     ///
     /// For applications not yet on the central configmap that still want
     /// reloading. Once a blob is pushed in, it takes over.
@@ -235,8 +234,7 @@ impl ReloadingKafkaProducer {
         selector: ProducerSelector,
         settings: ReloadConfig,
     ) -> Result<Self, ReloadError> {
-        let context = ProducerContext::new(producer_name_of(&config));
-        Self::from_config_with_context(config, selector, settings, context)
+        Self::from_config_with_context(config, selector, settings, NoopProducerContext)
     }
 
     /// Resolves the first config out of a blob, reporting a rejection.
