@@ -31,7 +31,9 @@ mod statistics;
 pub struct NoopProducerContext;
 
 impl ClientContext for NoopProducerContext {
-    // Overridden because rdkafka's default logs every statistics payload.
+    // Overridden because rdkafka's default parses the payload and logs it.
+    fn stats_raw(&self, _statistics: &[u8]) {}
+
     fn stats(&self, _statistics: Statistics) {}
 }
 
@@ -53,6 +55,17 @@ impl<C: ClientContext> ClientContext for MetricsContext<C> {
 
     fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
         self.inner.log(level, fac, log_message);
+    }
+
+    // librdkafka calls this, not `stats`. Overridden so the raw payload
+    // reaches the inner context, whichever of the two it implements.
+    fn stats_raw(&self, statistics: &[u8]) {
+        // A payload that does not parse is logged by rdkafka's default
+        // `stats_raw` if the inner context uses it.
+        if let Ok(parsed) = serde_json::from_slice::<Statistics>(statistics) {
+            statistics::record(&parsed, &self.producer_name);
+        }
+        self.inner.stats_raw(statistics);
     }
 
     fn stats(&self, statistics: Statistics) {

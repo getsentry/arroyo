@@ -6,7 +6,7 @@ use std::time::Duration;
 use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
 use rdkafka::mocking::MockCluster;
 use rdkafka::producer::{DeliveryResult, ProducerContext};
-use rdkafka::{ClientContext, Statistics};
+use rdkafka::ClientContext;
 use sentry_arroyo::backends::kafka::config::KafkaConfig;
 use sentry_arroyo::backends::kafka::config_blob::ProducerSelector;
 use sentry_arroyo::backends::kafka::producer::KafkaProducer;
@@ -31,7 +31,8 @@ const STATISTICS_MODULE: &str = "sentry_arroyo::backends::kafka::producer::stati
 struct NotifyingContext(Sender<&'static str>);
 
 impl ClientContext for NotifyingContext {
-    fn stats(&self, _: Statistics) {
+    // Overrides `stats_raw`, which librdkafka calls, rather than `stats`.
+    fn stats_raw(&self, _: &[u8]) {
         let _ = self.0.send("stats");
     }
 }
