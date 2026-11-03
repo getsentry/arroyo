@@ -1,5 +1,20 @@
 # Changelog and versioning
 
+## 2.49.0
+
+### New Features ✨
+
+- (config_blob) Default client.id to {app}-{cluster} by @untitaker in [#589](https://github.com/getsentry/arroyo/pull/589)
+- Add optional zstd feature using rdkafka's zstd by @elramen in [#586](https://github.com/getsentry/arroyo/pull/586)
+
+### Bug Fixes 🐛
+
+- (ReloadingProducer) Apply scope tags and report generation from the start by @untitaker in [#590](https://github.com/getsentry/arroyo/pull/590)
+
+### Internal Changes 🔧
+
+- (deps) Bump black from 26.3.1 to 26.10.1 by @dependabot in [#588](https://github.com/getsentry/arroyo/pull/588)
+
 ## 2.48.1
 
 ### Bug Fixes 🐛

@@ -221,6 +221,12 @@ impl ConfigBlob {
             params.extend(overrides.clone());
         }
 
+        // Without a `client.id`, librdkafka falls back to `rdkafka` and every
+        // producer looks the same on the broker and in Arroyo's metrics.
+        params
+            .entry("client.id".to_owned())
+            .or_insert_with(|| format!("{}-{}", selector.app, cluster_name));
+
         Ok(ResolvedClientConfig {
             // `bootstrap.servers` is just another key in the blob, so hand the
             // whole map over as overrides rather than splitting it out.
@@ -396,5 +402,44 @@ mod tests {
             .unwrap()
             .producer_config_with_env(&ProducerSelector::new("t", "relay"), &env())
             .is_ok());
+    }
+
+    #[test]
+    fn test_client_id_defaults_to_app_and_cluster() {
+        let config = resolve("ingest-events", "relay").unwrap();
+        assert_eq!(
+            config.get_config_value("client.id"),
+            Some(&"relay-events".to_string())
+        );
+
+        let config = resolve("ingest-events", "snuba").unwrap();
+        assert_eq!(
+            config.get_config_value("client.id"),
+            Some(&"snuba-events".to_string())
+        );
+    }
+
+    #[test]
+    fn test_explicit_client_id_wins() {
+        let blob = br#"{
+            "clusters": {"events": {"config": {"client.id": "from-cluster"}}},
+            "topics": {
+                "t": {
+                    "physical_topics": [{"cluster": "events"}],
+                    "producer_config_overrides": {"relay": {"client.id": "from-override"}}
+                }
+            }
+        }"#;
+        let blob = ConfigBlob::parse(blob).unwrap();
+        let client_id = |app: &str| {
+            blob.producer_config_with_env(&ProducerSelector::new("t", app), &env())
+                .unwrap()
+                .config
+                .get_config_value("client.id")
+                .cloned()
+        };
+
+        assert_eq!(client_id("relay"), Some("from-override".to_string()));
+        assert_eq!(client_id("snuba"), Some("from-cluster".to_string()));
     }
 }

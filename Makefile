@@ -5,7 +5,7 @@ setup-git:
 	pre-commit install --install-hooks
 
 install:
-	pip install -e .[avro,json,msgpack]
+	pip install -e .
 	pip install -r requirements-test.txt
 
 lint:
@@ -18,6 +18,6 @@ benchmarks:
 	pytest -vv --benchmark-enable --benchmark-only
 
 docs:
-	pip install -e .[avro,json,msgpack]
+	pip install -e .
 	pip install -U -r ./docs-requirements.txt
 	sphinx-build -W -b html docs/source docs/build

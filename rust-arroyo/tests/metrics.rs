@@ -4,6 +4,8 @@ use std::thread;
 use std::time::Duration;
 
 use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
+use sentry_arroyo::backends::kafka::config_blob::ProducerSelector;
+use sentry_arroyo::backends::kafka::reloading_producer::{ReloadConfig, ReloadingKafkaProducer};
 use sentry_arroyo::metrics::configure_scope;
 use sentry_arroyo::processing::dlq::BufferedMessages;
 use sentry_arroyo::processing::strategies::noop::Noop;
@@ -13,6 +15,7 @@ use sentry_arroyo::types::{BrokerMessage, Message, Partition, Topic};
 
 const REDUCE_MODULE: &str = "sentry_arroyo::processing::strategies::reduce";
 const DLQ_MODULE: &str = "sentry_arroyo::processing::dlq";
+const RELOADING_PRODUCER_MODULE: &str = "sentry_arroyo::backends::kafka::reloading_producer";
 
 struct RecordedMetric {
     kind: &'static str,
@@ -121,6 +124,19 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
     .join()
     .unwrap();
 
+    // Building a producer does not connect to the broker, so none has to run.
+    let blob = br#"{
+        "clusters": {"events": {"config": {"bootstrap.servers": "127.0.0.1:1", "client.id": "my-producer"}}},
+        "topics": {"ingest-events": {"physical_topics": [{"cluster": "events"}]}}
+    }"#;
+    let producer = ReloadingKafkaProducer::new(
+        blob,
+        ProducerSelector::new("ingest-events", "my-service"),
+        ReloadConfig::default(),
+    )
+    .unwrap();
+    drop(producer);
+
     // Application metrics are unaffected, even with the Arroyo prefix.
     metrics::counter!("arroyo.client_metric", "route" => "ingest").increment(1);
     let recorded: Vec<_> = receiver.try_iter().collect();
@@ -151,6 +167,32 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
         &histogram_tags,
         REDUCE_MODULE,
     );
+    let producer_tags = [
+        ("application", "my-service"),
+        ("partition_id", "scope-default"),
+        ("topic", "ingest-events"),
+        ("producer_name", "my-producer"),
+    ];
+    assert_metric(
+        &recorded,
+        "counter",
+        "arroyo.producer.config_reload_loaded",
+        &producer_tags,
+        RELOADING_PRODUCER_MODULE,
+    );
+    // Reported from the start, not only after the first reload.
+    for gauge in [
+        "arroyo.producer.config_reload_generation",
+        "arroyo.producer.config_reload_pending",
+    ] {
+        assert_metric(
+            &recorded,
+            "gauge",
+            gauge,
+            &producer_tags,
+            RELOADING_PRODUCER_MODULE,
+        );
+    }
     assert_metric(
         &recorded,
         "counter",
