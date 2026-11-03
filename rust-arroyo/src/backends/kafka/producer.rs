@@ -81,9 +81,8 @@ where
     /// Delivery callbacks run once per accepted message. Immediate enqueue errors
     /// return without a callback; producing does not wait for delivery.
     ///
-    /// The context only replaces the delivery and statistics metrics. The
-    /// message size and immediate enqueue errors are still recorded by the
-    /// producer itself.
+    /// The context only replaces the delivery and statistics metrics.
+    /// Immediate enqueue errors are still recorded by the producer itself.
     pub fn new_with_context(config: KafkaConfig, context: C) -> Result<Self, KafkaError> {
         let producer_name = producer_name_of(&config);
         let config_obj: ClientConfig = config.into();
@@ -99,7 +98,6 @@ where
         P: ToBytes + ?Sized,
     {
         let topic = record.topic;
-        record_message_size(&self.producer_name, topic, record.payload);
         self.producer
             .send(record)
             .map_err(|(kafka_error, _record)| {
@@ -218,16 +216,6 @@ pub(super) fn producer_name_of(config: &KafkaConfig) -> String {
         .unwrap_or_else(|| UNNAMED_PRODUCER.to_owned())
 }
 
-fn record_message_size<P: ToBytes + ?Sized>(producer_name: &str, topic: &str, payload: Option<&P>) {
-    let size = payload.map_or(0, |payload| payload.to_bytes().len());
-    metrics::histogram!(
-        "arroyo.producer.message_size",
-        "topic" => topic.to_owned(),
-        "producer_name" => producer_name.to_owned()
-    )
-    .record(size as f64);
-}
-
 fn record_produce_status(producer_name: &str, topic: &str, error: Option<String>) {
     let counter = match error {
         Some(error) => metrics::counter!(
@@ -252,7 +240,6 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
         let record = payload.to_future_record(destination);
         let topic = record.topic.to_owned();
         let producer_name = self.producer_name.clone();
-        record_message_size(&producer_name, &topic, record.payload);
         // Enqueue immediately, without waiting for the returned future to be polled.
         let future = match self.producer.send_result(record) {
             Ok(future) => future,
@@ -297,8 +284,7 @@ mod tests {
     use std::time::Duration;
 
     use metrics::{
-        Counter, CounterFn, Gauge, Histogram, HistogramFn, Key, KeyName, Metadata, Recorder,
-        SharedString, Unit,
+        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
     };
 
     use rdkafka::client::ClientContext;
@@ -700,7 +686,7 @@ mod tests {
         );
     }
 
-    /// Records every counter increment and histogram value with its key.
+    /// Records every counter increment with its key.
     #[derive(Clone, Default)]
     struct CapturingRecorder(Arc<Mutex<Vec<(Key, f64)>>>);
 
@@ -722,12 +708,6 @@ mod tests {
         }
     }
 
-    impl HistogramFn for CapturingMetric {
-        fn record(&self, value: f64) {
-            self.push(value);
-        }
-    }
-
     impl Recorder for CapturingRecorder {
         fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
         fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
@@ -741,8 +721,8 @@ mod tests {
             Gauge::noop()
         }
 
-        fn register_histogram(&self, key: &Key, _: &Metadata<'_>) -> Histogram {
-            Histogram::from_arc(Arc::new(CapturingMetric(key.clone(), self.0.clone())))
+        fn register_histogram(&self, _: &Key, _: &Metadata<'_>) -> Histogram {
+            Histogram::noop()
         }
     }
 
@@ -776,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_context_records_message_size_and_enqueue_errors() {
+    fn test_custom_context_records_enqueue_errors() {
         let config = KafkaConfig::new_producer_config(
             Vec::new(),
             Some(HashMap::from([
@@ -804,13 +784,8 @@ mod tests {
                 .unwrap_err();
         });
 
-        let tags = labels(&[("topic", "test"), ("producer_name", "my-producer")]);
-        assert_eq!(
-            recorder.values("arroyo.producer.message_size"),
-            vec![(tags.clone(), 8.0), (tags, 2.0)]
-        );
         // The context replaces the delivery callback, so only the enqueue error
-        // is counted here.
+        // is counted.
         assert_eq!(
             recorder.values("arroyo.producer.produce_status"),
             vec![(
@@ -821,29 +796,6 @@ mod tests {
                     ("producer_name", "my-producer"),
                 ]),
                 1.0
-            )]
-        );
-    }
-
-    #[tokio::test]
-    async fn test_async_producer_records_message_size() {
-        let config = queue_full_configuration();
-        let producer = AsyncKafkaProducer::new(config).unwrap();
-        let destination = TopicOrPartition::Topic(Topic::new("test"));
-
-        let recorder = CapturingRecorder::default();
-        let _future = metrics::with_local_recorder(&recorder, || {
-            producer.produce(
-                &destination,
-                KafkaPayload::new(None, None, Some(b"payload".to_vec())),
-            )
-        });
-
-        assert_eq!(
-            recorder.values("arroyo.producer.message_size"),
-            vec![(
-                labels(&[("topic", "test"), ("producer_name", "unknown")]),
-                7.0
             )]
         );
     }
