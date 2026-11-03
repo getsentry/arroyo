@@ -113,13 +113,13 @@ MetricName = Literal[
     "arroyo.consumer.dlq_buffer.assigned_partitions",
     # Time: Internal producer queue latency from librdkafka statistics.
     # Tagged by broker_id.
-    "arroyo.producer.librdkafka.p99_int_latency",
+    "arroyo.producer.librdkafka.p99_int_latency_ms",
     # Time: Output buffer latency from librdkafka statistics.
     # Tagged by broker_id.
-    "arroyo.producer.librdkafka.p99_outbuf_latency",
+    "arroyo.producer.librdkafka.p99_outbuf_latency_ms",
     # Time: Round-trip time to brokers from librdkafka statistics.
     # Tagged by broker_id.
-    "arroyo.producer.librdkafka.p99_rtt",
+    "arroyo.producer.librdkafka.p99_rtt_ms",
     # Counter: Number of times the produce strategy succeeds or fails
     "arroyo.producer.produce_status",
     # Gauge: Producer message count metric from librdkafka statistics

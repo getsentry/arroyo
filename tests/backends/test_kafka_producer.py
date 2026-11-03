@@ -26,12 +26,12 @@ def test_producer_stats_callback_with_both_latencies(
 
     assert mock_metrics.gauge.call_count == 2
     mock_metrics.gauge.assert_any_call(
-        "arroyo.producer.librdkafka.p99_int_latency",
+        "arroyo.producer.librdkafka.p99_int_latency_ms",
         2.0,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.gauge.assert_any_call(
-        "arroyo.producer.librdkafka.p99_outbuf_latency",
+        "arroyo.producer.librdkafka.p99_outbuf_latency_ms",
         4.0,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )
@@ -84,17 +84,17 @@ def test_producer_stats_callback_with_all_metrics(mock_get_metrics: mock.Mock) -
 
     assert mock_metrics.gauge.call_count == 3
     mock_metrics.gauge.assert_any_call(
-        "arroyo.producer.librdkafka.p99_int_latency",
+        "arroyo.producer.librdkafka.p99_int_latency_ms",
         2.0,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.gauge.assert_any_call(
-        "arroyo.producer.librdkafka.p99_outbuf_latency",
+        "arroyo.producer.librdkafka.p99_outbuf_latency_ms",
         4.0,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )
     mock_metrics.gauge.assert_any_call(
-        "arroyo.producer.librdkafka.p99_rtt",
+        "arroyo.producer.librdkafka.p99_rtt_ms",
         1.5,
         tags={"broker_id": "1", "producer_name": "unknown"},
     )

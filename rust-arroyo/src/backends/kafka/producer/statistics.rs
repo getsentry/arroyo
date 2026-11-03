@@ -71,7 +71,7 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
 
         if let Some(int_latency) = &broker_stats.int_latency {
             record_broker_gauge(
-                "arroyo.producer.librdkafka.p99_int_latency",
+                "arroyo.producer.librdkafka.p99_int_latency_ms",
                 int_latency.p99 as f64 / 1000.0,
                 broker_id,
                 producer_name,
@@ -80,7 +80,7 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
 
         if let Some(outbuf_latency) = &broker_stats.outbuf_latency {
             record_broker_gauge(
-                "arroyo.producer.librdkafka.p99_outbuf_latency",
+                "arroyo.producer.librdkafka.p99_outbuf_latency_ms",
                 outbuf_latency.p99 as f64 / 1000.0,
                 broker_id,
                 producer_name,
@@ -89,7 +89,7 @@ pub(super) fn record(stats: &Statistics, producer_name: &str) {
 
         if let Some(rtt) = &broker_stats.rtt {
             record_broker_gauge(
-                "arroyo.producer.librdkafka.p99_rtt",
+                "arroyo.producer.librdkafka.p99_rtt_ms",
                 rtt.p99 as f64 / 1000.0,
                 broker_id,
                 producer_name,
@@ -351,9 +351,9 @@ mod tests {
         for (name, expected) in [
             ("arroyo.producer.librdkafka.broker_txerrs", 17.0),
             ("arroyo.producer.librdkafka.broker_txretries", 18.0),
-            ("arroyo.producer.librdkafka.p99_int_latency", 1.5),
-            ("arroyo.producer.librdkafka.p99_outbuf_latency", 3.75),
-            ("arroyo.producer.librdkafka.p99_rtt", 6.5),
+            ("arroyo.producer.librdkafka.p99_int_latency_ms", 1.5),
+            ("arroyo.producer.librdkafka.p99_outbuf_latency_ms", 3.75),
+            ("arroyo.producer.librdkafka.p99_rtt_ms", 6.5),
         ] {
             assert_eq!(gauge_value(&gauges, name, &broker_labels), expected);
         }
