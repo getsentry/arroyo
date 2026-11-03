@@ -142,15 +142,17 @@ where
     /// Also waits for `in_flight_count` to reach zero: from 0.38, rdkafka's
     /// `flush` returns once the broker has the messages, while the polling
     /// thread may not have handed their delivery reports to the context yet.
+    /// That wait is bounded by the same deadline, and running out of it is not
+    /// an error: the messages are delivered, and the reports are still served
+    /// by the polling thread or when the client is dropped.
     pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
         let deadline = Instant::now() + timeout;
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match self.producer.flush(remaining) {
-                Ok(()) if self.producer.in_flight_count() == 0 => return Ok(()),
-                Ok(()) if remaining.is_zero() => {
-                    return Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+                Ok(()) if self.producer.in_flight_count() == 0 || remaining.is_zero() => {
+                    return Ok(())
                 }
                 // Delivered, but the polling thread has not served every
                 // report yet. Give it a moment.
