@@ -131,19 +131,30 @@ where
         self.producer.in_flight_count()
     }
 
-    /// Blocks until the queue is delivered or the timeout expires. Messages
-    /// remain queued on timeout.
+    /// Blocks until the queue is delivered and every delivery report has been
+    /// handed to the context, or the timeout expires. Messages remain queued
+    /// on timeout.
     ///
     /// Retries against a wall-clock deadline because rdkafka before 0.38
     /// budgets `flush` by poll count, so early-returning polls can exhaust its
     /// timeout before the requested time passes.
+    ///
+    /// Also waits for `in_flight_count` to reach zero: from 0.38, rdkafka's
+    /// `flush` returns once the broker has the messages, while the polling
+    /// thread may not have handed their delivery reports to the context yet.
     pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
         let deadline = Instant::now() + timeout;
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match self.producer.flush(remaining) {
-                Ok(()) => return Ok(()),
+                Ok(()) if self.producer.in_flight_count() == 0 => return Ok(()),
+                Ok(()) if remaining.is_zero() => {
+                    return Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+                }
+                // Delivered, but the polling thread has not served every
+                // report yet. Give it a moment.
+                Ok(()) => std::thread::sleep(remaining.min(Duration::from_millis(1))),
                 Err(error) if remaining.is_zero() => return Err(error),
                 Err(_) => {}
             }
