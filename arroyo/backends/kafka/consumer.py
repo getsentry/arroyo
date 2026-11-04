@@ -23,6 +23,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from confluent_kafka import (
@@ -884,6 +885,28 @@ DeliveryCallback = Callable[[Optional[KafkaError], ConfluentMessage], None]
 METRICS_FREQUENCY_SEC = 1.0
 
 
+def _byte_len(value: Union[str, bytes, None]) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(value.encode("utf-8"))
+    return len(value)
+
+
+def _message_size(message: ConfluentMessage) -> int:
+    """
+    Uncompressed size of a message as handed to librdkafka: key, value, and
+    header keys and values. Excludes Kafka record framing.
+    """
+    size = _byte_len(message.key()) + _byte_len(message.value())
+    headers = cast(
+        Sequence[Tuple[str, Union[str, bytes, None]]], message.headers() or []
+    )
+    for key, value in headers:
+        size += _byte_len(key) + _byte_len(value)
+    return size
+
+
 class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ignore]
     """
     A thin wrapper for confluent_kafka.Producer that adds metrics reporting.
@@ -893,21 +916,27 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
         super().__init__(dict(configuration))
         self.producer_name = configuration.get("client.id") or None
         self.__metrics = get_metrics()
-        self.__produce_counters: MutableMapping[str, int] = defaultdict(int)
+        self.__produce_counters: MutableMapping[Tuple[str, Optional[str]], int] = (
+            defaultdict(int)
+        )
+        self.__produced_bytes: MutableMapping[str, int] = defaultdict(int)
         self.__callback_latency: list[float] = []
         self.__reset_metrics()
 
     def __metrics_delivery_callback(
         self,
         error: Optional[KafkaError],
-        _message: ConfluentMessage,
+        message: ConfluentMessage,
         time_of_produce: float,
     ) -> None:
+        topic = message.topic() if message is not None else None
         if error is not None:
             status = "error"
         else:
             status = "success"
-        self.__produce_counters[status] += 1
+            if topic is not None:
+                self.__produced_bytes[topic] += _message_size(message)
+        self.__produce_counters[(status, topic)] += 1
         self.__callback_latency.append(time.time() - time_of_produce)
         self.__throttled_record()
 
@@ -937,13 +966,24 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
         super().produce(*args, **kwargs, on_delivery=wrapped_callback)  # type: ignore[misc]
 
     def __flush_metrics(self) -> None:
-        for status, count in self.__produce_counters.items():
+        for (status, topic), count in self.__produce_counters.items():
             tags = {"status": status}
+            if topic is not None:
+                tags["topic"] = topic
             if self.producer_name:
                 tags["producer_name"] = self.producer_name
             self.__metrics.increment(
                 name="arroyo.producer.produce_status",
                 value=count,
+                tags=tags,
+            )
+        for topic, size in self.__produced_bytes.items():
+            tags = {"topic": topic}
+            if self.producer_name:
+                tags["producer_name"] = self.producer_name
+            self.__metrics.increment(
+                name="arroyo.producer.produced_bytes",
+                value=size,
                 tags=tags,
             )
         for latency in self.__callback_latency:
@@ -963,6 +1003,7 @@ class ConfluentProducer(ConfluentKafkaProducer):  # type: ignore[misc, unused-ig
 
     def __reset_metrics(self) -> None:
         self.__produce_counters.clear()
+        self.__produced_bytes.clear()
         self.__callback_latency.clear()
         self.__last_record_time = time.time()
 

@@ -122,6 +122,9 @@ MetricName = Literal[
     "arroyo.producer.librdkafka.p99_rtt_ms",
     # Counter: Number of times the produce strategy succeeds or fails
     "arroyo.producer.produce_status",
+    # Counter: Uncompressed bytes (key, value and headers) of messages the broker
+    # accepted. Tagged by topic and producer_name
+    "arroyo.producer.produced_bytes",
     # Gauge: Producer message count metric from librdkafka statistics
     # Tagged by producer_name
     "arroyo.producer.librdkafka.message_count",
