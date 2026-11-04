@@ -1131,6 +1131,11 @@ mod tests {
     }
 
     /// Builds a config whose queue does not drain by itself during tests.
+    ///
+    /// Statistics are off because `in_flight_count` also counts stats reports
+    /// waiting to be served, not just messages. The 1 s linger usually makes
+    /// the drain end right at the first 1 s stats report, and a report still
+    /// queued then would read as an undelivered message.
     fn lingering_blob(servers: &str, acks: &str) -> Vec<u8> {
         format!(
             r#"{{
@@ -1138,7 +1143,7 @@ mod tests {
                 "topics": {{
                     "ingest-events": {{
                         "physical_topics": [{{"cluster": "events"}}],
-                        "producer_config": {{"acks": "{acks}", "linger.ms": "1000"}}
+                        "producer_config": {{"acks": "{acks}", "linger.ms": "1000", "statistics.interval.ms": "0"}}
                     }}
                 }}
             }}"#
