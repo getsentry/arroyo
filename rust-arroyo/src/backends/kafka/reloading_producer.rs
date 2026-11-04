@@ -43,7 +43,7 @@ use tokio::sync::oneshot;
 
 use super::config::KafkaConfig;
 use super::config_blob::{ConfigBlob, ConfigBlobError, ProducerSelector, ResolvedClientConfig};
-use super::producer::{KafkaProducer, ProducerContext};
+use super::producer::{producer_name_of, KafkaProducer, ProducerContext, UNNAMED_PRODUCER};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError, ProducerFuture};
 use crate::metrics;
@@ -1230,17 +1230,6 @@ pub enum ReloadError {
 
     #[error("could not spawn the config reload worker")]
     WorkerSpawn(#[source] std::io::Error),
-}
-
-/// Default `client.id` before config is resolved.
-const UNNAMED_PRODUCER: &str = "unknown";
-
-/// Returns the producer name used in metric tags.
-fn producer_name_of(config: &KafkaConfig) -> String {
-    config
-        .get_config_value("client.id")
-        .cloned()
-        .unwrap_or_else(|| UNNAMED_PRODUCER.to_owned())
 }
 
 /// Metric tag for why a pushed blob was rejected. Low cardinality on purpose:
