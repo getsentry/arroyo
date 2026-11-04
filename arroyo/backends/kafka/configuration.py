@@ -176,19 +176,47 @@ def build_kafka_consumer_configuration(
     strict_offset_reset: Optional[bool] = None,
     enable_auto_commit: bool = True,
 ) -> KafkaBrokerConfig:
+    """
+    Build the librdkafka configuration for a ``KafkaConsumer``.
+
+    ``default_config`` and ``override_params`` are merged by
+    ``build_kafka_configuration``, then arroyo sets the consumer settings it
+    relies on (manual offset management, statistics, ...), overwriting any
+    value the caller gave for those keys.
+
+    The librdkafka prefetch limits ``queued.max.messages.kbytes`` and
+    ``queued.min.messages`` are resolved in this order:
+
+    1. the ``queued_max_messages_kbytes`` / ``queued_min_messages`` argument,
+    2. the value already set in ``default_config`` or ``override_params``
+       (``override_params`` wins over ``default_config``),
+    3. ``DEFAULT_QUEUED_MAX_MESSAGE_KBYTES`` / ``DEFAULT_QUEUED_MIN_MESSAGES``.
+
+    ``None`` counts as unset at every step. Step 2 reads the merged config, in
+    which ``override_params`` replaces the ``default_config`` value, so a
+    ``None`` in ``override_params`` selects arroyo's default even if
+    ``default_config`` sets the key.
+    """
 
     if auto_offset_reset is None:
         auto_offset_reset = "earliest"
 
+    broker_config = build_kafka_configuration(
+        default_config, bootstrap_servers, override_params
+    )
+
+    # Prefetch limits: arroyo's defaults are lower than librdkafka's to reduce
+    # memory usage when there's a large backlog. A caller may lower (or raise)
+    # them further, either through the arguments or in the broker config.
+    if queued_max_messages_kbytes is None:
+        queued_max_messages_kbytes = broker_config.get("queued.max.messages.kbytes")
     if queued_max_messages_kbytes is None:
         queued_max_messages_kbytes = DEFAULT_QUEUED_MAX_MESSAGE_KBYTES
 
     if queued_min_messages is None:
+        queued_min_messages = broker_config.get("queued.min.messages")
+    if queued_min_messages is None:
         queued_min_messages = DEFAULT_QUEUED_MIN_MESSAGES
-
-    broker_config = build_kafka_configuration(
-        default_config, bootstrap_servers, override_params
-    )
 
     # Default configuration with manual commit management
     config_update = {
@@ -200,7 +228,7 @@ def build_kafka_consumer_configuration(
         "arroyo.strict.offset.reset": strict_offset_reset,
         # this is an arroyo specific flag to enable auto-commit mode
         "arroyo.enable.auto.commit": enable_auto_commit,
-        # overridden to reduce memory usage when there's a large backlog
+        # resolved above, see the docstring for the precedence
         "queued.max.messages.kbytes": queued_max_messages_kbytes,
         "queued.min.messages": queued_min_messages,
         "enable.partition.eof": False,
