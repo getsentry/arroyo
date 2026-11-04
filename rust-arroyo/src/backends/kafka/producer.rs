@@ -337,10 +337,6 @@ mod tests {
 
     use super::{message_size, AsyncKafkaProducer, KafkaProducer, RdkafkaProducerContext};
     use crate::backends::kafka::types::Headers;
-    use metrics::{
-        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
-    };
-    use std::sync::{Arc, Mutex};
 
     fn assert_topic_validation(
         config: KafkaConfig,
