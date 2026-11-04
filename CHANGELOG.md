@@ -1,5 +1,24 @@
 # Changelog and versioning
 
+## 2.49.1
+
+### New Features ✨
+
+#### Producer
+
+- Emit uncompressed produced bytes per topic by @enochtangg in [#593](https://github.com/getsentry/arroyo/pull/593)
+- Record enqueue errors with custom contexts by @untitaker in [#596](https://github.com/getsentry/arroyo/pull/596)
+
+### Bug Fixes 🐛
+
+- (rust) Remove duplicate imports in producer tests by @mwarkentin and @claude in [#599](https://github.com/getsentry/arroyo/pull/599)
+
+### Internal Changes 🔧
+
+- (metrics) Rename librdkafka p99 latency metrics to *_ms by @untitaker in [#595](https://github.com/getsentry/arroyo/pull/595)
+- Run tests on Python 3.14 by @sentry-junior in [#594](https://github.com/getsentry/arroyo/pull/594)
+- Drop removed extras from make install by @m-jayanarasimha in [#592](https://github.com/getsentry/arroyo/pull/592)
+
 ## 2.49.0
 
 ### New Features ✨
