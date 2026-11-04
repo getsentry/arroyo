@@ -174,9 +174,10 @@ where
     /// Test-only queue depth when the old client was swapped out.
     #[cfg(test)]
     queue_depth_at_swap: std::sync::atomic::AtomicI32,
-    /// Test-only messages purged when the retired client was dropped.
+    /// Test-only messages counted as purged when the retired client was
+    /// dropped. `None` until a swap has counted them.
     #[cfg(test)]
-    purged_at_drop: AtomicU64,
+    purged_at_drop: Mutex<Option<u64>>,
     /// Test-only calls to `drain`.
     #[cfg(test)]
     drains: AtomicU64,
@@ -364,7 +365,7 @@ where
             #[cfg(test)]
             queue_depth_at_swap: std::sync::atomic::AtomicI32::new(0),
             #[cfg(test)]
-            purged_at_drop: AtomicU64::new(0),
+            purged_at_drop: Mutex::new(None),
             #[cfg(test)]
             drains: AtomicU64::new(0),
             #[cfg(test)]
@@ -793,6 +794,9 @@ where
             return;
         }
 
+        // Whether the old client emptied, which leaves nothing to purge.
+        let mut drained = false;
+
         // Start buffering, so the old client stops receiving messages and its
         // queue can actually reach zero. Produce calls append to the buffer
         // from here until `install` takes it away again.
@@ -806,7 +810,7 @@ where
             drop(current);
 
             // Nothing feeds this client now, so the flush can converge.
-            self.drain(&draining, self.settings.drain_timeout);
+            drained = self.drain(&draining, self.settings.drain_timeout);
         }
 
         // Test-only: park here, with the buffer live and the old client
@@ -830,13 +834,23 @@ where
         // just gone out on the new client, so delivering older same-key
         // messages now is the reorder this whole design exists to prevent.
         if self.settings.ignore_key_ordering {
-            self.drain(&old, self.settings.drain_timeout);
+            drained = self.drain(&old, self.settings.drain_timeout);
         }
 
-        let purged = old.in_flight_count().max(0) as u64;
+        // Nothing can reach the old client any more, so an emptied one stays
+        // empty. Only a timed-out drain leaves messages to purge, and then
+        // `in_flight_count` is an upper bound: it also counts stats reports,
+        // logs and delivery reports waiting to be served.
+        let purged = if drained {
+            0
+        } else {
+            old.in_flight_count().max(0) as u64
+        };
 
         #[cfg(test)]
-        self.purged_at_drop.store(purged, Ordering::SeqCst);
+        {
+            *self.purged_at_drop.lock() = Some(purged);
+        }
 
         if purged > 0 {
             metrics::counter!(
@@ -996,7 +1010,10 @@ where
     }
 
     /// Flushes a client that no longer accepts messages.
-    fn drain(&self, producer: &KafkaProducer<C>, timeout: Duration) {
+    ///
+    /// Returns whether it emptied: every message was delivered or failed, and
+    /// its delivery report was served.
+    fn drain(&self, producer: &KafkaProducer<C>, timeout: Duration) -> bool {
         #[cfg(test)]
         self.drains.fetch_add(1, Ordering::SeqCst);
 
@@ -1012,12 +1029,15 @@ where
         .record(elapsed.as_millis() as f64);
 
         match result {
-            Ok(()) => tracing::info!(
-                topic = %self.selector.topic(),
-                producer_name = %self.producer_name,
-                drain_ms = elapsed.as_millis() as u64,
-                "drained old producer for config reload"
-            ),
+            Ok(()) => {
+                tracing::info!(
+                    topic = %self.selector.topic(),
+                    producer_name = %self.producer_name,
+                    drain_ms = elapsed.as_millis() as u64,
+                    "drained old producer for config reload"
+                );
+                true
+            }
             Err(error) => {
                 metrics::counter!(
                     "arroyo.producer.config_reload_drain_timeout",
@@ -1032,6 +1052,7 @@ where
                     queued = producer.in_flight_count(),
                     "old producer did not drain in time, its queued messages will be dropped"
                 );
+                false
             }
         }
     }
@@ -1926,8 +1947,8 @@ mod tests {
         await_rollout(&producer, 1);
 
         assert_eq!(
-            producer.inner.purged_at_drop.load(Ordering::SeqCst),
-            0,
+            *producer.inner.purged_at_drop.lock(),
+            Some(0),
             "retired the old client without draining it, its queued messages were purged"
         );
 
@@ -1937,6 +1958,152 @@ mod tests {
                 KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"keyed".to_vec())),
             )
             .unwrap();
+    }
+
+    /// Stalls the next stats callback, holding up the polling thread of the
+    /// client it runs on so that later stats reports wait on its queue.
+    #[derive(Clone, Default)]
+    struct StallingContext {
+        /// Set by the test and taken by the next stats callback.
+        stall: Arc<Mutex<Option<Stall>>>,
+    }
+
+    struct Stall {
+        /// Told once the callback has stalled.
+        stalled: mpsc::Sender<()>,
+        /// The callback returns once the other end of this is dropped.
+        release: mpsc::Receiver<()>,
+    }
+
+    impl ClientContext for StallingContext {
+        fn stats(&self, _: rdkafka::Statistics) {
+            let stall = self.stall.lock().take();
+            if let Some(stall) = stall {
+                let _ = stall.stalled.send(());
+                let _ = stall.release.recv();
+            }
+        }
+    }
+
+    impl RdkafkaProducerContext for StallingContext {
+        type DeliveryOpaque = ();
+
+        fn delivery(&self, _: &rdkafka::producer::DeliveryResult<'_>, _: Self::DeliveryOpaque) {}
+    }
+
+    /// A drained client has nothing left to purge, even with stats reports
+    /// waiting on its queue. `in_flight_count` counts those reports too, so
+    /// used as the purge count it makes a swap that lands next to a stats
+    /// report log and count lost messages that do not exist.
+    ///
+    /// rdkafka before 0.38 keeps polling inside `flush` until `in_flight_count`
+    /// is 0, stats reports included, so there the report is served before the
+    /// count and this passes either way. From 0.38 on, `flush` returns as soon
+    /// as no messages are left.
+    #[test]
+    fn test_stats_waiting_on_a_drained_client_are_not_counted_as_purged() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let blob = |acks: &str| {
+            format!(
+                r#"{{
+                    "clusters": {{"events": {{"config": {{"bootstrap.servers": "{servers}"}}}}}},
+                    "topics": {{
+                        "ingest-events": {{
+                            "physical_topics": [{{"cluster": "events"}}],
+                            "producer_config": {{"acks": "{acks}", "statistics.interval.ms": "50"}}
+                        }}
+                    }}
+                }}"#
+            )
+            .into_bytes()
+        };
+        let context = StallingContext::default();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob("all"),
+            selector(),
+            settings(),
+            context.clone(),
+        )
+        .unwrap();
+
+        // The running client is the only one so far, so its polling thread is
+        // the one that stalls. Dropping `release` lets it go, including when
+        // an assert below fails.
+        let (stalled_tx, stalled) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        *context.stall.lock() = Some(Stall {
+            stalled: stalled_tx,
+            release: release_rx,
+        });
+        stalled
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the client never reported stats");
+
+        // No messages were produced, so whatever is counted now is the next
+        // stats report, queued behind the stalled one.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while producer.in_flight_count() == 0 {
+            assert!(Instant::now() < deadline, "no stats report queued up");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        producer.push_config(&blob("1")).unwrap();
+
+        // The worker counts the purge and then drops the old client, which
+        // waits for the stalled polling thread, so read the count before the
+        // rollout can finish.
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let purged = loop {
+            if let Some(purged) = *producer.inner.purged_at_drop.lock() {
+                break purged;
+            }
+            assert!(Instant::now() < deadline, "the swap never counted a purge");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+
+        drop(release);
+        await_rollout(&producer, 1);
+
+        assert_eq!(
+            purged, 0,
+            "counted stats reports on a drained client as purged messages"
+        );
+    }
+
+    /// A drain that times out leaves messages behind, and those still have to
+    /// be counted as purged.
+    #[test]
+    fn test_timed_out_drain_counts_the_messages_it_leaves() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+
+        // Nothing listens on the first broker, so its message cannot drain.
+        let producer = ReloadingKafkaProducer::new(
+            &blob("127.0.0.1:1", "all"),
+            selector(),
+            ReloadConfig {
+                drain_timeout: Duration::from_millis(100),
+                ..settings()
+            },
+        )
+        .unwrap();
+
+        producer
+            .produce(
+                &TopicOrPartition::Topic(Topic::new("ingest-events")),
+                KafkaPayload::new(Some(b"key".to_vec()), None, Some(b"stuck".to_vec())),
+            )
+            .unwrap();
+
+        producer.push_config(&blob(&servers, "1")).unwrap();
+        await_rollout(&producer, 1);
+
+        let purged = *producer.inner.purged_at_drop.lock();
+        assert!(
+            matches!(purged, Some(count) if count >= 1),
+            "a timed-out drain counted {purged:?} purged messages"
+        );
     }
 
     /// Counts delivery callbacks, to prove a custom context stays wired up,
