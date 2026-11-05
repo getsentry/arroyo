@@ -36,7 +36,7 @@ use std::time::{Duration, Instant};
 use parking_lot::{Condvar, Mutex, RwLock};
 use rdkafka::client::{ClientContext, OAuthToken};
 use rdkafka::config::RDKafkaLogLevel;
-use rdkafka::error::KafkaError;
+use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use rdkafka::message::ToBytes;
 use rdkafka::producer::{BaseRecord, DeliveryResult, ProducerContext as RdkafkaProducerContext};
 use tokio::sync::oneshot;
@@ -56,7 +56,9 @@ pub struct ReloadConfig {
     /// remains. Produce calls buffer during this time.
     pub drain_timeout: Duration,
     /// Maximum messages held while the old client drains. Produce calls fail
-    /// once this is reached. Keep it below `queue.buffering.max.messages`.
+    /// with `QueueFull` once this is reached, like a full rdkafka queue, so
+    /// callers can back off and retry. Keep it below
+    /// `queue.buffering.max.messages`.
     pub max_buffered_messages: usize,
     /// Upper bound on the random delay before a swap. Spreads swaps across a
     /// fleet so a config change does not stall every pod at once.
@@ -702,9 +704,9 @@ where
                 "producer_name" => self.producer_name.clone(),
             )
             .increment(1);
-            return Err(ProducerError::ProducerFailure {
-                error: "reload buffer is full".to_owned(),
-            });
+            // The same error as a full rdkafka queue: callers already back off
+            // and retry on it, and the buffer empties when the swap finishes.
+            return Err(KafkaError::MessageProduction(RDKafkaErrorCode::QueueFull).into());
         }
 
         buffer.push(message);
@@ -2026,7 +2028,8 @@ mod tests {
         );
     }
 
-    /// A full buffer must return an error instead of growing without bound.
+    /// A full buffer must return an error instead of growing without bound,
+    /// and it must be `QueueFull` so callers' existing back-off retries it.
     #[test]
     fn test_buffer_full_is_reported_to_the_caller() {
         let cluster = MockCluster::new(1).unwrap();
@@ -2053,7 +2056,16 @@ mod tests {
 
         assert!(produce().is_ok());
         assert!(produce().is_ok());
-        assert!(produce().is_err());
+        let result = produce();
+        assert!(
+            matches!(
+                result,
+                Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                    RDKafkaErrorCode::QueueFull
+                )))
+            ),
+            "{result:?}"
+        );
     }
     /// A swap must drain the client it retires exactly once, before the
     /// install.
