@@ -67,7 +67,7 @@ impl RdkafkaProducerContext for ProducerContext {
 
 pub struct KafkaProducer<C = ProducerContext>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     producer: ThreadedProducer<C>,
     producer_name: String,
@@ -82,7 +82,7 @@ impl KafkaProducer {
 
 impl<C> KafkaProducer<C>
 where
-    C: RdkafkaProducerContext<DeliveryOpaque = ()> + 'static,
+    C: RdkafkaProducerContext + 'static,
 {
     /// Creates a producer with a custom context, replacing Arroyo's metrics callbacks.
     ///
@@ -100,21 +100,38 @@ where
         })
     }
 
-    pub fn produce_record<K, P>(&self, record: BaseRecord<'_, K, P>) -> Result<(), ProducerError>
+    pub fn produce_record<K, P>(
+        &self,
+        record: BaseRecord<'_, K, P, C::DeliveryOpaque>,
+    ) -> Result<(), ProducerError>
     where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        let topic = record.topic;
+        self.try_produce_record(record)
+            .map_err(|(kafka_error, _record)| ProducerError::from(kafka_error))
+    }
+
+    /// Like [`KafkaProducer::produce_record`], but hands the record back on
+    /// error, so its delivery opaque can still be used.
+    // Mirrors rdkafka's own `send`, which returns the record the same way.
+    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    pub(crate) fn try_produce_record<'a, K, P>(
+        &self,
+        record: BaseRecord<'a, K, P, C::DeliveryOpaque>,
+    ) -> Result<(), (KafkaError, BaseRecord<'a, K, P, C::DeliveryOpaque>)>
+    where
+        K: ToBytes + ?Sized,
+        P: ToBytes + ?Sized,
+    {
         self.producer
             .send(record)
-            .map_err(|(kafka_error, _record)| {
+            .inspect_err(|(kafka_error, record)| {
                 record_produce_status(
                     &self.producer_name,
-                    topic,
-                    Some(get_error_name(&kafka_error)),
+                    record.topic,
+                    Some(get_error_name(kafka_error)),
                 );
-                ProducerError::from(kafka_error)
             })
     }
 
@@ -131,19 +148,32 @@ where
         self.producer.in_flight_count()
     }
 
-    /// Blocks until the queue is delivered or the timeout expires. Messages
-    /// remain queued on timeout.
+    /// Blocks until the queue is delivered and every delivery report has been
+    /// handed to the context, or the timeout expires. Messages remain queued
+    /// on timeout.
     ///
     /// Retries against a wall-clock deadline because rdkafka before 0.38
     /// budgets `flush` by poll count, so early-returning polls can exhaust its
     /// timeout before the requested time passes.
+    ///
+    /// Also waits for `in_flight_count` to reach zero: from 0.38, rdkafka's
+    /// `flush` returns once the broker has the messages, while the polling
+    /// thread may not have handed their delivery reports to the context yet.
+    /// That wait is bounded by the same deadline, and running out of it is not
+    /// an error: the messages are delivered, and the reports are still served
+    /// by the polling thread or when the client is dropped.
     pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
         let deadline = Instant::now() + timeout;
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match self.producer.flush(remaining) {
-                Ok(()) => return Ok(()),
+                Ok(()) if self.producer.in_flight_count() == 0 || remaining.is_zero() => {
+                    return Ok(())
+                }
+                // Delivered, but the polling thread has not served every
+                // report yet. Give it a moment.
+                Ok(()) => std::thread::sleep(remaining.min(Duration::from_millis(1))),
                 Err(error) if remaining.is_zero() => return Err(error),
                 Err(_) => {}
             }
