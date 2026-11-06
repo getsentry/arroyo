@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.49.2
+
+### New Features ✨
+
+- (ReloadingProducer) Add delivery futures by @untitaker and @lvthanh03 in [#591](https://github.com/getsentry/arroyo/pull/591)
+
+### Bug Fixes 🐛
+
+- (ReloadingProducer) Return QueueFull when the reload buffer is full by @lvthanh03 in [#600](https://github.com/getsentry/arroyo/pull/600)
+
 ## 2.49.1
 
 ### New Features ✨
