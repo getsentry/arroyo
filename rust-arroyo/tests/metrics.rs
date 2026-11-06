@@ -4,18 +4,46 @@ use std::thread;
 use std::time::Duration;
 
 use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
+use rdkafka::mocking::MockCluster;
+use rdkafka::producer::{DeliveryResult, ProducerContext};
+use rdkafka::ClientContext;
+use sentry_arroyo::backends::kafka::config::KafkaConfig;
 use sentry_arroyo::backends::kafka::config_blob::ProducerSelector;
+use sentry_arroyo::backends::kafka::producer::KafkaProducer;
 use sentry_arroyo::backends::kafka::reloading_producer::{ReloadConfig, ReloadingKafkaProducer};
+use sentry_arroyo::backends::kafka::types::KafkaPayload;
+use sentry_arroyo::backends::Producer;
 use sentry_arroyo::metrics::configure_scope;
 use sentry_arroyo::processing::dlq::BufferedMessages;
 use sentry_arroyo::processing::strategies::noop::Noop;
 use sentry_arroyo::processing::strategies::reduce::Reduce;
 use sentry_arroyo::processing::strategies::ProcessingStrategy;
+use sentry_arroyo::types::TopicOrPartition;
 use sentry_arroyo::types::{BrokerMessage, Message, Partition, Topic};
 
 const REDUCE_MODULE: &str = "sentry_arroyo::processing::strategies::reduce";
 const DLQ_MODULE: &str = "sentry_arroyo::processing::dlq";
 const RELOADING_PRODUCER_MODULE: &str = "sentry_arroyo::backends::kafka::reloading_producer";
+const PRODUCER_MODULE: &str = "sentry_arroyo::backends::kafka::producer";
+const STATISTICS_MODULE: &str = "sentry_arroyo::backends::kafka::producer::statistics";
+
+/// A custom context that only reports which of its callbacks ran.
+struct NotifyingContext(Sender<&'static str>);
+
+impl ClientContext for NotifyingContext {
+    // Overrides `stats_raw`, which librdkafka calls, rather than `stats`.
+    fn stats_raw(&self, _: &[u8]) {
+        let _ = self.0.send("stats");
+    }
+}
+
+impl ProducerContext for NotifyingContext {
+    type DeliveryOpaque = ();
+
+    fn delivery(&self, _: &DeliveryResult<'_>, (): ()) {
+        let _ = self.0.send("delivery");
+    }
+}
 
 struct RecordedMetric {
     kind: &'static str,
@@ -137,6 +165,34 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
     .unwrap();
     drop(producer);
 
+    // A custom context does not switch off Arroyo's metrics, and still gets
+    // its own callbacks.
+    let cluster = MockCluster::new(1).unwrap();
+    let config = KafkaConfig::new_producer_config(
+        vec![cluster.bootstrap_servers()],
+        Some(
+            [
+                ("client.id".to_owned(), "custom-producer".to_owned()),
+                ("statistics.interval.ms".to_owned(), "100".to_owned()),
+            ]
+            .into(),
+        ),
+    );
+    let (callbacks, called) = mpsc::channel();
+    let producer = KafkaProducer::new_with_context(config, NotifyingContext(callbacks)).unwrap();
+    producer
+        .produce(
+            &TopicOrPartition::Topic(Topic::new("custom-topic")),
+            KafkaPayload::new(None, None, Some(b"payload".to_vec())),
+        )
+        .unwrap();
+    producer.flush_for(Duration::from_secs(10)).unwrap();
+    let mut seen = Vec::new();
+    while !(seen.contains(&"delivery") && seen.contains(&"stats")) {
+        seen.push(called.recv_timeout(Duration::from_secs(10)).unwrap());
+    }
+    drop(producer);
+
     // Application metrics are unaffected, even with the Arroyo prefix.
     metrics::counter!("arroyo.client_metric", "route" => "ingest").increment(1);
     let recorded: Vec<_> = receiver.try_iter().collect();
@@ -193,6 +249,27 @@ fn startup_scope_tags_are_automatic_and_preserve_metadata() {
             RELOADING_PRODUCER_MODULE,
         );
     }
+    assert_metric(
+        &recorded,
+        "counter",
+        "arroyo.producer.produce_status",
+        &[
+            ("application", "my-service"),
+            ("partition_id", "scope-default"),
+            ("status", "success"),
+            ("topic", "custom-topic"),
+            ("producer_name", "custom-producer"),
+        ],
+        PRODUCER_MODULE,
+    );
+    assert!(recorded.iter().any(|metric| {
+        metric.key.name() == "arroyo.producer.librdkafka.message_count"
+            && metric.module_path.as_deref() == Some(STATISTICS_MODULE)
+            && metric
+                .key
+                .labels()
+                .any(|label| label.key() == "producer_name" && label.value() == "custom-producer")
+    }));
     assert_metric(
         &recorded,
         "counter",

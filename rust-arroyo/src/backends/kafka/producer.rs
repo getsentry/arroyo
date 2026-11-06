@@ -7,8 +7,9 @@ use crate::backends::{
 };
 use crate::metrics;
 use crate::types::{Topic, TopicOrPartition};
-use rdkafka::client::{Client, ClientContext};
+use rdkafka::client::{Client, ClientContext, OAuthToken};
 use rdkafka::config::ClientConfig;
+use rdkafka::config::RDKafkaLogLevel;
 use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use rdkafka::message::{Header, Headers as _, ToBytes};
 use rdkafka::producer::{
@@ -16,39 +17,81 @@ use rdkafka::producer::{
     ProducerContext as RdkafkaProducerContext, ThreadedProducer,
 };
 use rdkafka::{Message, Statistics};
+use std::error::Error;
 use std::time::{Duration, Instant};
 
 mod statistics;
 
-#[derive(Clone)]
-pub struct ProducerContext {
-    producer_name: String,
+/// Producer context that does nothing. The default for producers that do not
+/// need their own callbacks.
+///
+/// Arroyo's metrics do not depend on the context: every producer records them,
+/// whatever context it is built with.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopProducerContext;
+
+impl ClientContext for NoopProducerContext {
+    // Overridden because rdkafka's default parses the payload and logs it.
+    fn stats_raw(&self, _statistics: &[u8]) {}
+
+    fn stats(&self, _statistics: Statistics) {}
 }
 
-impl ProducerContext {
-    pub fn new(producer_name: String) -> Self {
-        Self { producer_name }
-    }
-
-    fn get_producer_name(&self) -> &str {
-        &self.producer_name
-    }
-}
-
-impl ClientContext for ProducerContext {
-    fn stats(&self, stats: Statistics) {
-        statistics::record(&stats, self.get_producer_name());
-    }
-}
-
-impl RdkafkaProducerContext for ProducerContext {
+impl RdkafkaProducerContext for NoopProducerContext {
     type DeliveryOpaque = ();
 
-    fn delivery(
+    fn delivery(&self, _: &DeliveryResult<'_>, _: Self::DeliveryOpaque) {}
+}
+
+/// Wraps the caller's context to record Arroyo's metrics before handing each
+/// callback on, so a custom context cannot switch the metrics off.
+struct MetricsContext<C> {
+    producer_name: String,
+    inner: C,
+}
+
+impl<C: ClientContext> ClientContext for MetricsContext<C> {
+    const ENABLE_REFRESH_OAUTH_TOKEN: bool = C::ENABLE_REFRESH_OAUTH_TOKEN;
+
+    fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
+        self.inner.log(level, fac, log_message);
+    }
+
+    // librdkafka calls this, not `stats`. Overridden so the raw payload
+    // reaches the inner context, whichever of the two it implements.
+    fn stats_raw(&self, statistics: &[u8]) {
+        // A payload that does not parse is logged by rdkafka's default
+        // `stats_raw` if the inner context uses it.
+        if let Ok(parsed) = serde_json::from_slice::<Statistics>(statistics) {
+            statistics::record(&parsed, &self.producer_name);
+        }
+        self.inner.stats_raw(statistics);
+    }
+
+    fn stats(&self, statistics: Statistics) {
+        statistics::record(&statistics, &self.producer_name);
+        self.inner.stats(statistics);
+    }
+
+    fn error(&self, error: KafkaError, reason: &str) {
+        self.inner.error(error, reason);
+    }
+
+    fn generate_oauth_token(
         &self,
-        delivery_result: &DeliveryResult<'_>,
-        _delivery_opaque: Self::DeliveryOpaque,
-    ) {
+        oauthbearer_config: Option<&str>,
+    ) -> Result<OAuthToken, Box<dyn Error>> {
+        self.inner.generate_oauth_token(oauthbearer_config)
+    }
+}
+
+impl<C> RdkafkaProducerContext for MetricsContext<C>
+where
+    C: RdkafkaProducerContext<DeliveryOpaque = ()>,
+{
+    type DeliveryOpaque = ();
+
+    fn delivery(&self, delivery_result: &DeliveryResult<'_>, delivery_opaque: ()) {
         let (message, error) = match delivery_result {
             Ok(message) => (message, None),
             Err((error, message)) => (message, Some(get_error_name(error))),
@@ -59,24 +102,24 @@ impl RdkafkaProducerContext for ProducerContext {
                 .into_iter()
                 .flat_map(|headers| headers.iter());
             let size = message_size(message.key(), message.payload(), headers);
-            record_produced_bytes(self.get_producer_name(), message.topic(), size);
+            record_produced_bytes(&self.producer_name, message.topic(), size);
         }
-        record_produce_status(self.get_producer_name(), message.topic(), error);
+        record_produce_status(&self.producer_name, message.topic(), error);
+        self.inner.delivery(delivery_result, delivery_opaque);
     }
 }
 
-pub struct KafkaProducer<C = ProducerContext>
+pub struct KafkaProducer<C = NoopProducerContext>
 where
     C: RdkafkaProducerContext + 'static,
 {
-    producer: ThreadedProducer<C>,
+    producer: ThreadedProducer<MetricsContext<C>>,
     producer_name: String,
 }
 
 impl KafkaProducer {
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
-        let context = ProducerContext::new(producer_name_of(&config));
-        Self::new_with_context(config, context)
+        Self::new_with_context(config, NoopProducerContext)
     }
 }
 
@@ -84,15 +127,19 @@ impl<C> KafkaProducer<C>
 where
     C: RdkafkaProducerContext + 'static,
 {
-    /// Creates a producer with a custom context, replacing Arroyo's metrics callbacks.
+    /// Creates a producer with a custom context for the caller's own callbacks.
     ///
     /// Delivery callbacks run once per accepted message. Immediate enqueue errors
     /// return without a callback; producing does not wait for delivery.
     ///
-    /// The context only replaces the delivery and statistics metrics.
-    /// Immediate enqueue errors are still recorded by the producer itself.
+    /// Arroyo's metrics are recorded either way; the context's callbacks run
+    /// after them.
     pub fn new_with_context(config: KafkaConfig, context: C) -> Result<Self, KafkaError> {
         let producer_name = producer_name_of(&config);
+        let context = MetricsContext {
+            producer_name: producer_name.clone(),
+            inner: context,
+        };
         let config_obj: ClientConfig = config.into();
         Ok(Self {
             producer: config_obj.create_with_context(context)?,
@@ -141,7 +188,7 @@ where
     }
 
     pub fn context(&self) -> &C {
-        self.producer.context().as_ref()
+        &self.producer.context().inner
     }
 
     pub fn in_flight_count(&self) -> i32 {
@@ -196,7 +243,7 @@ where
 }
 
 pub struct AsyncKafkaProducer {
-    producer: FutureProducer<ProducerContext>,
+    producer: FutureProducer<MetricsContext<NoopProducerContext>>,
     producer_name: String,
 }
 
@@ -204,7 +251,10 @@ impl AsyncKafkaProducer {
     /// Creates a producer
     pub fn new(config: KafkaConfig) -> Result<Self, KafkaError> {
         let producer_name = producer_name_of(&config);
-        let context = ProducerContext::new(producer_name.clone());
+        let context = MetricsContext {
+            producer_name: producer_name.clone(),
+            inner: NoopProducerContext,
+        };
         let config_obj: ClientConfig = config.into();
         Ok(Self {
             producer: config_obj.create_with_context(context)?,
@@ -316,7 +366,7 @@ impl ArroyoAsyncProducer<KafkaPayload> for AsyncKafkaProducer {
 
         Box::pin(async move {
             // FutureProducer completes its own delivery future rather than calling
-            // ProducerContext::delivery, so record the outcome here.
+            // MetricsContext::delivery, so record the outcome here.
             match future.await {
                 Ok(Ok(_)) => {
                     record_produced_bytes(&producer_name, &topic, size);
