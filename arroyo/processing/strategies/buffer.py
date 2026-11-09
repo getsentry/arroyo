@@ -152,7 +152,16 @@ class Buffer(
         assert not self.__closed
 
         if isinstance(message.payload, FilteredPayload):
-            self.__next_step.submit(cast(Message[TResult], message))
+            if self.__offsets:
+                # Messages submitted before this one are still waiting for a
+                # flush. Passing the offset on now would let a later step commit
+                # past them, so it goes out with the batch instead. This checks
+                # the held offsets and not the buffer's is_empty, because a
+                # buffer whose compute_batch_size returned 0 reports empty while
+                # it holds a message.
+                self.__offsets.update(message.committable)
+            else:
+                self.__next_step.submit(cast(Message[TResult], message))
             return
 
         self.__flush(force=False)
