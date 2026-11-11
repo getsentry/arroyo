@@ -188,6 +188,7 @@ class LocalConsumer(Consumer[TStrategyPayload]):
         if subscription.revocation_callback is not None:
             subscription.revocation_callback(partitions)
         self.__offsets = {}
+        self.__paused.clear()
 
     def subscribe(
         self,
