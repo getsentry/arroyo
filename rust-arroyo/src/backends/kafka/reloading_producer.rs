@@ -44,8 +44,9 @@ use tokio::sync::oneshot;
 use super::config::KafkaConfig;
 use super::config_blob::{ConfigBlob, ProducerSelector, ResolvedClientConfig};
 use super::producer::{producer_name_of, KafkaProducer, ProducerContext, UNNAMED_PRODUCER};
-use super::reload::{blob_error_reason, config_eq, superseded, ReloadState};
-pub use super::reload::{ReloadConfig, ReloadError, ReloadOutcome};
+use super::reload::{
+    blob_error_reason, config_eq, superseded, ReloadConfig, ReloadError, ReloadOutcome, ReloadState,
+};
 use super::types::{Headers, KafkaPayload};
 use crate::backends::{Producer as ArroyoProducer, ProducerError, ProducerFuture};
 use crate::metrics;

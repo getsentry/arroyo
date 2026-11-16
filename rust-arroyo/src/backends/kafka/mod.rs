@@ -31,7 +31,7 @@ pub mod config;
 pub mod config_blob;
 mod errors;
 pub mod producer;
-mod reload;
+pub mod reload;
 pub mod reloading_producer;
 pub mod types;
 
