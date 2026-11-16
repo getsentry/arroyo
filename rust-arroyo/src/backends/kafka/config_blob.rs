@@ -54,6 +54,10 @@ struct ClusterEntry {
     producer_config: HashMap<String, String>,
     #[serde(default)]
     producer_env_config: HashMap<String, String>,
+    #[serde(default)]
+    consumer_config: HashMap<String, String>,
+    #[serde(default)]
+    consumer_env_config: HashMap<String, String>,
 }
 
 /// Represents a logical topic, which maps to 1 physical topic.
@@ -67,6 +71,11 @@ struct LogicalTopicEntry {
     /// Per-application overrides, keyed by application name such as `relay`.
     #[serde(default)]
     producer_config_overrides: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
+    consumer_config: HashMap<String, String>,
+    /// Per-application overrides, keyed by application name such as `taskbroker`.
+    #[serde(default)]
+    consumer_config_overrides: HashMap<String, HashMap<String, String>>,
     /// The physical topic which this logical topic maps to.
     /// Since we only support a 1:1 relation for logical to physical topics,
     /// this cannot have more than one entry and is only a Vec to be forwards-compatible
@@ -163,6 +172,45 @@ impl ProducerSelector {
     }
 }
 
+/// Identifies which consumer config to pull out of a blob.
+#[derive(Debug, Clone)]
+pub struct ConsumerSelector {
+    topic: String,
+    app: String,
+    group_id: String,
+}
+
+impl ConsumerSelector {
+    /// Selects the consumer config for a logical topic, as seen by `app`.
+    ///
+    /// `app` decides which `consumer_config_overrides` entry applies. `group_id`
+    /// always wins over the blob, so a pushed config cannot move the consumer to
+    /// another group.
+    pub fn new(
+        topic: impl Into<String>,
+        app: impl Into<String>,
+        group_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            topic: topic.into(),
+            app: app.into(),
+            group_id: group_id.into(),
+        }
+    }
+
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    pub fn app(&self) -> &str {
+        &self.app
+    }
+
+    pub fn group_id(&self) -> &str {
+        &self.group_id
+    }
+}
+
 impl ConfigBlob {
     /// Parses a blob. The bytes come from the host application verbatim.
     pub fn parse(blob: &[u8]) -> Result<Self, ConfigBlobError> {
@@ -239,6 +287,69 @@ impl ConfigBlob {
             ),
         })
     }
+
+    /// Resolves the consumer config for one logical topic, reading secrets from the
+    /// process environment.
+    pub fn consumer_config(
+        &self,
+        selector: &ConsumerSelector,
+    ) -> Result<ResolvedClientConfig, ConfigBlobError> {
+        self.consumer_config_with_env(selector, &ProcessEnv)
+    }
+
+    /// Same as [`ConfigBlob::consumer_config`], with an explicit environment.
+    pub fn consumer_config_with_env(
+        &self,
+        selector: &ConsumerSelector,
+        env: &impl EnvSource,
+    ) -> Result<ResolvedClientConfig, ConfigBlobError> {
+        let topic_name = &selector.topic;
+        let topic = self
+            .topics
+            .get(topic_name)
+            .ok_or_else(|| ConfigBlobError::UnknownTopic {
+                topic: topic_name.clone(),
+            })?;
+        // Ignores `producer_physical_topic_override`, so producers can move to a
+        // new backend while consumers drain the old one.
+        let physical_topic = get_physical_topic(&topic.physical_topics)?;
+
+        // Same layering as producers, with the consumer sections.
+        let mut params = HashMap::new();
+        let cluster_name = &physical_topic.cluster;
+        let cluster =
+            self.clusters
+                .get(cluster_name)
+                .ok_or_else(|| ConfigBlobError::UnknownCluster {
+                    topic: topic_name.clone(),
+                    cluster: cluster_name.clone(),
+                })?;
+
+        params.extend(cluster.config.clone());
+        resolve_env_into(&mut params, &cluster.env_config, env)?;
+        params.extend(cluster.consumer_config.clone());
+        resolve_env_into(&mut params, &cluster.consumer_env_config, env)?;
+        params.extend(topic.consumer_config.clone());
+        if let Some(overrides) = topic.consumer_config_overrides.get(&selector.app) {
+            params.extend(overrides.clone());
+        }
+
+        // A different group has no committed offsets, so the blob must not change it.
+        params.insert("group.id".to_owned(), selector.group_id.clone());
+        params
+            .entry("client.id".to_owned())
+            .or_insert_with(|| format!("{}-{}", selector.app, cluster_name));
+
+        Ok(ResolvedClientConfig {
+            config: KafkaConfig::new_config(Vec::new(), Some(params)),
+            physical_topic: Topic::new(
+                physical_topic
+                    .topic_name_override
+                    .as_deref()
+                    .unwrap_or(topic_name),
+            ),
+        })
+    }
 }
 
 fn resolve_env_into(
@@ -268,7 +379,9 @@ mod tests {
             "events": {
                 "config": {"bootstrap.servers": "broker-1:9092"},
                 "env_config": {"sasl.username": "KAFKA_USERNAME"},
-                "producer_config": {"acks": "all"}
+                "producer_config": {"acks": "all"},
+                "consumer_config": {"session.timeout.ms": "45000"},
+                "consumer_env_config": {"sasl.password": "KAFKA_CONSUMER_PASSWORD"}
             },
             "events-2": {
                 "config": {"bootstrap.servers": "broker-2:9092"},
@@ -280,7 +393,15 @@ mod tests {
             "ingest-events": {
                 "physical_topics": [{"cluster": "events"}],
                 "producer_config": {"compression.type": "lz4"},
-                "producer_config_overrides": {"relay": {"acks": "1"}}
+                "producer_config_overrides": {"relay": {"acks": "1"}},
+                "consumer_config": {"fetch.min.bytes": "1000"},
+                "consumer_config_overrides": {
+                    "taskbroker": {"session.timeout.ms": "30000", "group.id": "from-blob"}
+                }
+            },
+            "ingest-moving": {
+                "physical_topics": [{"cluster": "events"}],
+                "producer_physical_topic_override": [{"cluster": "events-2", "topic_name_override": "ingest-moving-v2"}]
             },
             "ingest-spans": {
                 "physical_topics": [{"cluster": "events", "topic_name_override": "ingest-spans-v2"}]
@@ -293,7 +414,16 @@ mod tests {
     }"#;
 
     fn env() -> HashMap<String, String> {
-        HashMap::from([("KAFKA_USERNAME".to_string(), "ingest".to_string())])
+        HashMap::from([
+            ("KAFKA_USERNAME".to_string(), "ingest".to_string()),
+            ("KAFKA_CONSUMER_PASSWORD".to_string(), "secret".to_string()),
+        ])
+    }
+
+    fn resolve_consumer(topic: &str, app: &str) -> Result<ResolvedClientConfig, ConfigBlobError> {
+        ConfigBlob::parse(BLOB)
+            .unwrap()
+            .consumer_config_with_env(&ConsumerSelector::new(topic, app, "taskworker"), &env())
     }
 
     fn resolve(topic: &str, app: &str) -> Result<KafkaConfig, ConfigBlobError> {
@@ -441,5 +571,118 @@ mod tests {
 
         assert_eq!(client_id("relay"), Some("from-override".to_string()));
         assert_eq!(client_id("snuba"), Some("from-cluster".to_string()));
+    }
+
+    #[test]
+    fn test_consumer_layers_cluster_topic_and_app_config() {
+        let config = resolve_consumer("ingest-events", "taskbroker")
+            .unwrap()
+            .config;
+        let value = |key: &str| config.get_config_value(key).cloned();
+
+        assert_eq!(
+            value("bootstrap.servers"),
+            Some("broker-1:9092".to_string())
+        );
+        assert_eq!(value("sasl.username"), Some("ingest".to_string()));
+        assert_eq!(value("sasl.password"), Some("secret".to_string()));
+        assert_eq!(value("fetch.min.bytes"), Some("1000".to_string()));
+        // The per-app override beats the cluster's consumer config.
+        assert_eq!(value("session.timeout.ms"), Some("30000".to_string()));
+        // Producer sections never reach a consumer.
+        assert_eq!(value("acks"), None);
+        assert_eq!(value("compression.type"), None);
+    }
+
+    #[test]
+    fn test_consumer_app_without_override_keeps_cluster_value() {
+        let config = resolve_consumer("ingest-events", "snuba").unwrap().config;
+        assert_eq!(
+            config.get_config_value("session.timeout.ms"),
+            Some(&"45000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_producer_ignores_consumer_sections() {
+        let config = resolve("ingest-events", "relay").unwrap();
+        assert_eq!(config.get_config_value("sasl.password"), None);
+        assert_eq!(config.get_config_value("fetch.min.bytes"), None);
+        assert_eq!(config.get_config_value("group.id"), None);
+    }
+
+    #[test]
+    fn test_consumer_group_id_comes_from_the_selector() {
+        // The taskbroker override sets `group.id` too, and must lose.
+        let config = resolve_consumer("ingest-events", "taskbroker")
+            .unwrap()
+            .config;
+        assert_eq!(
+            config.get_config_value("group.id"),
+            Some(&"taskworker".to_string())
+        );
+    }
+
+    #[test]
+    fn test_consumer_ignores_producer_topic_override() {
+        let consumer = resolve_consumer("ingest-moving", "taskbroker").unwrap();
+        assert_eq!(consumer.physical_topic, Topic::new("ingest-moving"));
+        assert_eq!(
+            consumer.config.get_config_value("bootstrap.servers"),
+            Some(&"broker-1:9092".to_string())
+        );
+
+        let producer = resolve_full("ingest-moving", "relay").unwrap();
+        assert_eq!(producer.physical_topic, Topic::new("ingest-moving-v2"));
+        assert_eq!(
+            producer.config.get_config_value("bootstrap.servers"),
+            Some(&"broker-2:9092".to_string())
+        );
+    }
+
+    #[test]
+    fn test_consumer_uses_topic_name_override() {
+        let consumer = resolve_consumer("ingest-spans", "taskbroker").unwrap();
+        assert_eq!(consumer.physical_topic, Topic::new("ingest-spans-v2"));
+    }
+
+    #[test]
+    fn test_consumer_client_id_defaults_to_app_and_cluster() {
+        let config = resolve_consumer("ingest-events", "taskbroker")
+            .unwrap()
+            .config;
+        assert_eq!(
+            config.get_config_value("client.id"),
+            Some(&"taskbroker-events".to_string())
+        );
+    }
+
+    #[test]
+    fn test_consumer_missing_env_var_is_rejected() {
+        let env = HashMap::from([("KAFKA_USERNAME".to_string(), "ingest".to_string())]);
+        let result = ConfigBlob::parse(BLOB).unwrap().consumer_config_with_env(
+            &ConsumerSelector::new("ingest-events", "taskbroker", "taskworker"),
+            &env,
+        );
+        assert!(matches!(
+            result,
+            Err(ConfigBlobError::MissingEnvVar { variable, .. }) if variable == "KAFKA_CONSUMER_PASSWORD"
+        ));
+    }
+
+    #[test]
+    fn test_consumer_lookup_errors() {
+        assert!(matches!(
+            resolve_consumer("no-such-topic", "taskbroker"),
+            Err(ConfigBlobError::UnknownTopic { .. })
+        ));
+        assert!(matches!(
+            resolve_consumer("orphan-topic", "taskbroker"),
+            Err(ConfigBlobError::UnknownCluster { .. })
+        ));
+        assert!(matches!(
+            resolve_consumer("ingest-multiple", "taskbroker"),
+            Err(ConfigBlobError::InvalidPhysicalTopic { num_topics: 2 })
+        ));
     }
 }
