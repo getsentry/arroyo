@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
 use sentry_arroyo::backends::kafka::config_blob::ProducerSelector;
-use sentry_arroyo::backends::kafka::reloading_producer::{ReloadConfig, ReloadingKafkaProducer};
+use sentry_arroyo::backends::kafka::reload::ReloadConfig;
+use sentry_arroyo::backends::kafka::reloading_producer::ReloadingKafkaProducer;
 use sentry_arroyo::metrics::configure_scope;
 use sentry_arroyo::processing::dlq::BufferedMessages;
 use sentry_arroyo::processing::strategies::noop::Noop;

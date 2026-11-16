@@ -7,9 +7,8 @@ extern crate sentry_arroyo;
 use std::time::Duration;
 
 use sentry_arroyo::backends::kafka::config_blob::ProducerSelector;
-use sentry_arroyo::backends::kafka::reloading_producer::{
-    ReloadConfig, ReloadOutcome, ReloadingKafkaProducer,
-};
+use sentry_arroyo::backends::kafka::reload::{ReloadConfig, ReloadOutcome};
+use sentry_arroyo::backends::kafka::reloading_producer::ReloadingKafkaProducer;
 use sentry_arroyo::backends::kafka::types::KafkaPayload;
 use sentry_arroyo::backends::Producer;
 use sentry_arroyo::types::{Topic, TopicOrPartition};
