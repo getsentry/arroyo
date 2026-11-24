@@ -1,5 +1,11 @@
 # Changelog and versioning
 
+## Unreleased
+
+### Bug Fixes 🐛
+
+- (ReloadingProducer) Keep `in_flight_count()` accurate across producer reloads, including buffered messages and messages still draining on retired clients.
+
 ## 2.49.2
 
 ### New Features ✨
