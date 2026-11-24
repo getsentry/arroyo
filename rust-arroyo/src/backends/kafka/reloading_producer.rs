@@ -29,7 +29,7 @@
 //! can rely on that instead of on the produce call returning `Ok`.
 
 use std::error::Error;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -55,10 +55,31 @@ use crate::types::{Partition, Topic, TopicOrPartition};
 /// Receives the delivery report of one message.
 type DeliverySender = oneshot::Sender<Result<(), ProducerError>>;
 
-/// Where to report a message's delivery, if anyone is waiting for it.
-///
+/// Keeps a message counted through buffering, delivery, or rejection, even
+/// after the client that accepted it has been replaced.
+struct PendingDelivery {
+    sender: Option<DeliverySender>,
+    pending: Arc<AtomicUsize>,
+}
+
+impl PendingDelivery {
+    fn new(sender: Option<DeliverySender>, pending: &Arc<AtomicUsize>) -> Box<Self> {
+        pending.fetch_add(1, Ordering::SeqCst);
+        Box::new(Self {
+            sender,
+            pending: Arc::clone(pending),
+        })
+    }
+}
+
+impl Drop for PendingDelivery {
+    fn drop(&mut self) {
+        self.pending.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Boxed because rdkafka carries it through C as a pointer.
-type Delivery = Box<Option<DeliverySender>>;
+type Delivery = Box<PendingDelivery>;
 
 /// Reports an error to whoever waits for this message's delivery.
 fn fail_delivery(delivery: Option<DeliverySender>, error: ProducerError) {
@@ -108,10 +129,10 @@ where
 {
     type DeliveryOpaque = Delivery;
 
-    fn delivery(&self, delivery_result: &DeliveryResult<'_>, delivery: Delivery) {
+    fn delivery(&self, delivery_result: &DeliveryResult<'_>, mut delivery: Delivery) {
         self.inner.delivery(delivery_result, ());
 
-        if let Some(sender) = *delivery {
+        if let Some(sender) = delivery.sender.take() {
             let result = match delivery_result {
                 Ok(_) => Ok(()),
                 Err((error, _)) => Err(error.clone().into()),
@@ -202,6 +223,9 @@ where
     /// Read on every produce, taken for writing only to start buffering and
     /// to install.
     current: RwLock<Current<C>>,
+    /// Shared by every accepted message, including buffered messages and
+    /// those still owned by retired clients.
+    pending: Arc<AtomicUsize>,
     /// Cloned into every client this producer builds, so delivery callbacks
     /// and statistics survive a swap.
     context: C,
@@ -385,6 +409,7 @@ where
                 config,
                 buffer: None,
             }),
+            pending: Arc::new(AtomicUsize::new(0)),
             context,
             reload: Mutex::new(ReloadState {
                 desired: None,
@@ -503,7 +528,7 @@ where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        self.enqueue(record, Box::new(None))
+        self.enqueue(record, PendingDelivery::new(None, &self.inner.pending))
     }
 
     /// Enqueues a record like [`ReloadingKafkaProducer::produce_record`], and
@@ -519,7 +544,10 @@ where
         P: ToBytes + ?Sized,
     {
         let (sender, receiver) = oneshot::channel();
-        let enqueued = self.enqueue(record, Box::new(Some(sender)));
+        let enqueued = self.enqueue(
+            record,
+            PendingDelivery::new(Some(sender), &self.inner.pending),
+        );
 
         Box::pin(async move {
             enqueued?;
@@ -606,19 +634,14 @@ where
         current.producer.validate_topic(topic, timeout)
     }
 
-    /// Messages accepted but not yet delivered, including any held while a
-    /// reload drains the old client.
+    /// Messages awaiting delivery reports, including buffered messages and
+    /// messages on clients retired by a reload.
     pub fn in_flight_count(&self) -> i32 {
-        let current = self.inner.current.read();
-        let buffered = current
-            .buffer
-            .as_ref()
-            .map_or(0, |buffer| buffer.lock().len());
-
-        current
-            .producer
-            .in_flight_count()
-            .saturating_add(buffered.try_into().unwrap_or(i32::MAX))
+        self.inner
+            .pending
+            .load(Ordering::SeqCst)
+            .try_into()
+            .unwrap_or(i32::MAX)
     }
 }
 
@@ -1063,7 +1086,7 @@ where
 
             // The produce call that buffered this already returned Ok, so
             // only a caller waiting for delivery can still be told.
-            if let Err((error, record)) = current.producer.try_produce_record(record) {
+            if let Err((error, mut record)) = current.producer.try_produce_record(record) {
                 let error = ProducerError::from(error);
                 metrics::counter!(
                     "arroyo.producer.config_reload_replay_failed",
@@ -1076,7 +1099,7 @@ where
                     %error,
                     "could not replay a buffered message onto the new client"
                 );
-                fail_delivery(*record.delivery_opaque, error);
+                fail_delivery(record.delivery_opaque.sender.take(), error);
             }
         }
 
@@ -1199,6 +1222,67 @@ mod tests {
     use rdkafka::mocking::MockCluster;
     use rdkafka::{ClientContext, Message};
     use std::sync::mpsc;
+
+    #[test]
+    fn test_rejected_messages_do_not_increase_the_count() {
+        let small = String::from_utf8(blob("127.0.0.1:1", "all"))
+            .unwrap()
+            .replace(
+                "\"acks\": \"all\"",
+                "\"acks\": \"all\", \"message.max.bytes\": \"1000\"",
+            );
+        let producer = ReloadingKafkaProducer::new(
+            small.as_bytes(),
+            selector(),
+            ReloadConfig {
+                max_buffered_messages: 1,
+                ..settings()
+            },
+        )
+        .unwrap();
+        let large = vec![0u8; 5000];
+        assert!(producer
+            .produce_record(delivery_record().payload(large.as_slice()))
+            .is_err());
+        assert_eq!(producer.in_flight_count(), 0);
+
+        start_buffering(&producer);
+        producer.produce_record(delivery_record()).unwrap();
+        assert!(producer.produce_record(delivery_record()).is_err());
+        assert_eq!(producer.in_flight_count(), 1);
+    }
+
+    #[test]
+    fn test_in_flight_count_includes_the_retired_client() {
+        let old_cluster = MockCluster::new(1).unwrap();
+        old_cluster.broker_down(-1).unwrap();
+        let new_cluster = MockCluster::new(1).unwrap();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&old_cluster.bootstrap_servers(), "all"),
+            selector(),
+            ReloadConfig {
+                ignore_key_ordering: true,
+                drain_timeout: Duration::from_secs(15),
+                ..settings()
+            },
+            CountingContext::default(),
+        )
+        .unwrap();
+        producer.produce_record(delivery_record()).unwrap();
+        assert_eq!(producer.in_flight_count(), 1);
+
+        producer
+            .push_config(&blob(&new_cluster.bootstrap_servers(), "all"))
+            .unwrap();
+        await_generation(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 1);
+
+        old_cluster.broker_up(-1).unwrap();
+        await_rollout(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 1);
+        assert_eq!(producer.inner.purged_at_drop.load(Ordering::SeqCst), 0);
+    }
 
     fn blob(servers: &str, acks: &str) -> Vec<u8> {
         format!(
@@ -2452,6 +2536,9 @@ mod tests {
             ),
             "{result:?}"
         );
+
+        await_rollout(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
     }
 
     /// A message still queued on the old client when a timed-out drain drops
@@ -2478,6 +2565,7 @@ mod tests {
         let result = futures::executor::block_on(stuck);
         assert!(result.is_err(), "{result:?}");
         assert_eq!(producer.generation(), 1);
+        assert_eq!(producer.in_flight_count(), 0);
 
         // The new client delivers.
         futures::executor::block_on(producer.produce_record_with_delivery(delivery_record()))
