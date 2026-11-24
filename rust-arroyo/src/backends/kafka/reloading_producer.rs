@@ -635,6 +635,52 @@ where
             .try_into()
             .unwrap_or(i32::MAX)
     }
+
+    /// Blocks until no messages await delivery reports, including messages
+    /// buffered during a reload and those on retired clients.
+    ///
+    /// Delivery failures are reported through the context and delivery
+    /// futures; `Ok(())` only means no messages remain pending. Concurrent
+    /// produce calls can extend the wait, up to the same timeout.
+    ///
+    /// Returns [`KafkaError::Flush`] with [`RDKafkaErrorCode::OperationTimedOut`]
+    /// if messages are still pending when the timeout expires. This does not
+    /// purge them; reloads still follow their configured drain timeout.
+    pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            if self.in_flight_count() == 0 {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut));
+            }
+
+            if let Some(current) = self.inner.current.try_read_until(deadline) {
+                // The worker owns draining while buffering. Let it finish and
+                // replay before flushing the live client again.
+                if current.buffer.is_none() {
+                    // Keep the read lock for a short flush, then let reloads
+                    // proceed. Cloning the client instead could keep it alive
+                    // past a swap and deliver old messages after the replay.
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    match current
+                        .producer
+                        .flush_for(remaining.min(Duration::from_millis(10)))
+                    {
+                        Ok(()) | Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut)) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+
+            // Buffered and retired messages progress on the worker and the
+            // clients' polling threads. Wait without holding the reload lock.
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            std::thread::sleep(remaining.min(Duration::from_millis(1)));
+        }
+    }
 }
 
 impl<C> Inner<C>
@@ -1214,6 +1260,169 @@ mod tests {
     use rdkafka::mocking::MockCluster;
     use rdkafka::{ClientContext, Message};
     use std::sync::mpsc;
+
+    #[test]
+    fn test_flush_for_empty_producer_with_zero_timeout() {
+        let producer = producer("127.0.0.1:1");
+
+        assert_eq!(producer.flush_for(Duration::ZERO), Ok(()));
+    }
+
+    #[test]
+    fn test_flush_for_waits_for_delivery_reports() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &lingering_blob(&cluster.bootstrap_servers(), "all"),
+            selector(),
+            settings(),
+            CountingContext::default(),
+        )
+        .unwrap();
+        producer
+            .validate_topic(Topic::new("ingest-events"), Duration::from_secs(5))
+            .unwrap();
+
+        producer.produce_record(delivery_record()).unwrap();
+        let delivery = producer.produce_record_with_delivery(delivery_record());
+
+        producer.flush_for(Duration::from_secs(15)).unwrap();
+
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            futures::FutureExt::now_or_never(delivery),
+            Some(Ok(()))
+        ));
+    }
+
+    #[test]
+    fn test_flush_for_timeout_keeps_messages_queued() {
+        let cluster = MockCluster::new(1).unwrap();
+        cluster.broker_down(-1).unwrap();
+        let producer = producer(&cluster.bootstrap_servers());
+        let delivery = producer.produce_record_with_delivery(delivery_record());
+
+        assert_eq!(
+            producer.flush_for(Duration::ZERO),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        let timeout = Duration::from_millis(50);
+        let started = Instant::now();
+        assert_eq!(
+            producer.flush_for(timeout),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        assert!(started.elapsed() >= timeout);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(producer.in_flight_count(), 1);
+
+        cluster.broker_up(-1).unwrap();
+        producer.flush_for(Duration::from_secs(15)).unwrap();
+        assert!(matches!(
+            futures::FutureExt::now_or_never(delivery),
+            Some(Ok(()))
+        ));
+    }
+
+    #[test]
+    fn test_flush_for_waits_for_buffer_replay() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = producer(&servers);
+        let (release, gate) = mpsc::channel();
+        *producer.inner.swap_gate.lock() = Some(gate);
+        producer.push_config(&blob(&servers, "1")).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while producer.inner.swap_gate.lock().is_some() {
+            assert!(Instant::now() < deadline, "worker never reached the swap");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let delivery = producer.produce_record_with_delivery(delivery_record());
+        assert_eq!(producer.inner.current.read().producer.in_flight_count(), 0);
+        assert_eq!(
+            producer.flush_for(Duration::from_millis(50)),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        assert_eq!(producer.in_flight_count(), 1);
+
+        let (finished, result) = mpsc::channel();
+        let flushing = producer.clone();
+        let flush = std::thread::spawn(move || {
+            finished
+                .send(flushing.flush_for(Duration::from_secs(10)))
+                .unwrap();
+        });
+        assert!(matches!(
+            result.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).unwrap();
+        result
+            .recv_timeout(Duration::from_secs(15))
+            .unwrap()
+            .unwrap();
+        flush.join().unwrap();
+
+        await_generation(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
+        assert!(matches!(
+            futures::FutureExt::now_or_never(delivery),
+            Some(Ok(()))
+        ));
+    }
+
+    #[test]
+    fn test_flush_for_waits_for_retired_client() {
+        let old_cluster = MockCluster::new(1).unwrap();
+        old_cluster.broker_down(-1).unwrap();
+        let new_cluster = MockCluster::new(1).unwrap();
+        let producer = ReloadingKafkaProducer::new(
+            &blob(&old_cluster.bootstrap_servers(), "all"),
+            selector(),
+            ReloadConfig {
+                ignore_key_ordering: true,
+                drain_timeout: Duration::from_secs(15),
+                ..settings()
+            },
+        )
+        .unwrap();
+        let delivery = producer.produce_record_with_delivery(delivery_record());
+        producer
+            .push_config(&blob(&new_cluster.bootstrap_servers(), "all"))
+            .unwrap();
+        await_generation(&producer, 1);
+
+        assert_eq!(producer.inner.current.read().producer.in_flight_count(), 0);
+        assert_eq!(
+            producer.flush_for(Duration::from_millis(50)),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        assert_eq!(producer.in_flight_count(), 1);
+
+        old_cluster.broker_up(-1).unwrap();
+        producer.flush_for(Duration::from_secs(15)).unwrap();
+        assert!(matches!(
+            futures::FutureExt::now_or_never(delivery),
+            Some(Ok(()))
+        ));
+    }
+
+    #[test]
+    fn test_flush_for_timeout_includes_waiting_for_current_lock() {
+        let producer = producer("127.0.0.1:1");
+        start_buffering(&producer);
+        producer.produce_record(delivery_record()).unwrap();
+        let _current = producer.inner.current.write();
+
+        let started = Instant::now();
+        assert_eq!(
+            producer.flush_for(Duration::from_millis(50)),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(producer.in_flight_count(), 1);
+    }
 
     #[test]
     fn test_rejected_messages_do_not_increase_the_count() {
