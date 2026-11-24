@@ -29,7 +29,7 @@
 //! can rely on that instead of on the produce call returning `Ok`.
 
 use std::error::Error;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -59,22 +59,15 @@ type DeliverySender = oneshot::Sender<Result<(), ProducerError>>;
 /// after the client that accepted it has been replaced.
 struct PendingDelivery {
     sender: Option<DeliverySender>,
-    pending: Arc<AtomicUsize>,
+    _pending: Arc<()>,
 }
 
 impl PendingDelivery {
-    fn new(sender: Option<DeliverySender>, pending: &Arc<AtomicUsize>) -> Box<Self> {
-        pending.fetch_add(1, Ordering::SeqCst);
+    fn new(sender: Option<DeliverySender>, pending: &Arc<()>) -> Box<Self> {
         Box::new(Self {
             sender,
-            pending: Arc::clone(pending),
+            _pending: Arc::clone(pending),
         })
-    }
-}
-
-impl Drop for PendingDelivery {
-    fn drop(&mut self) {
-        self.pending.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -224,8 +217,9 @@ where
     /// to install.
     current: RwLock<Current<C>>,
     /// Shared by every accepted message, including buffered messages and
-    /// those still owned by retired clients.
-    pending: Arc<AtomicUsize>,
+    /// those still owned by retired clients. Only `PendingDelivery` clones
+    /// this token, so its strong count is one plus the pending message count.
+    pending: Arc<()>,
     /// Cloned into every client this producer builds, so delivery callbacks
     /// and statistics survive a swap.
     context: C,
@@ -409,7 +403,7 @@ where
                 config,
                 buffer: None,
             }),
-            pending: Arc::new(AtomicUsize::new(0)),
+            pending: Arc::new(()),
             context,
             reload: Mutex::new(ReloadState {
                 desired: None,
@@ -637,9 +631,7 @@ where
     /// Messages awaiting delivery reports, including buffered messages and
     /// messages on clients retired by a reload.
     pub fn in_flight_count(&self) -> i32 {
-        self.inner
-            .pending
-            .load(Ordering::SeqCst)
+        (Arc::strong_count(&self.inner.pending) - 1)
             .try_into()
             .unwrap_or(i32::MAX)
     }
