@@ -88,7 +88,7 @@ impl<TPayload: Send + Sync + 'static> ConsumerState<TPayload> {
         self.0 .0.store(paused, Ordering::Relaxed)
     }
 
-    fn locked_state(&self) -> MutexGuard<ConsumerStateInner<TPayload>> {
+    fn locked_state(&self) -> MutexGuard<'_, ConsumerStateInner<TPayload>> {
         self.0 .1.lock()
     }
 }

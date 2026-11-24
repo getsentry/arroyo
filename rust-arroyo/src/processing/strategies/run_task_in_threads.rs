@@ -245,7 +245,7 @@ where
 
         // Poll until there are no more messages or timeout is hit
         while self.message_carried_over.is_some() || !self.handles.is_empty() {
-            if deadline.map_or(false, |d| d.has_elapsed()) {
+            if deadline.is_some_and(|d| d.has_elapsed()) {
                 tracing::warn!(
                     %self.metric_strategy_name,
                     "Timeout reached while waiting for tasks to finish",

@@ -33,12 +33,10 @@ where
     N: ProcessingStrategy<TTransformed> + 'static,
 {
     fn poll(&mut self) -> Result<Option<CommitRequest>, StrategyError> {
-        match self.next_step.poll() {
-            Ok(commit_request) => {
-                self.commit_request_carried_over =
-                    merge_commit_request(self.commit_request_carried_over.take(), commit_request)
-            }
-            Err(invalid_message) => return Err(invalid_message),
+        {
+            let commit_request = self.next_step.poll()?;
+            self.commit_request_carried_over =
+                merge_commit_request(self.commit_request_carried_over.take(), commit_request)
         }
 
         if let Some(message) = self.message_carried_over.take() {

@@ -329,7 +329,7 @@ impl<TPayload: Send + Sync + 'static> DlqPolicyWrapper<TPayload> {
             tracing::info!("dlq policy missing, dropping message");
             return;
         };
-        for (_p, values) in inner.futures.iter_mut() {
+        for values in inner.futures.values_mut() {
             while !values.is_empty() {
                 let len = values.len();
                 let (_, future) = &mut values[0];

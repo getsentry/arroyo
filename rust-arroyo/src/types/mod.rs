@@ -57,7 +57,7 @@ impl Partition {
 
 impl fmt::Display for Partition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Partition({} topic={})", self.index, &self.topic)
+        write!(f, "Partition({} topic={})", self.index, self.topic)
     }
 }
 
@@ -283,7 +283,7 @@ impl<T> Message<T> {
     }
 
     /// Returns an iterator over this message's committable offsets.
-    pub fn committable(&self) -> Committable {
+    pub fn committable(&self) -> Committable<'_> {
         match &self.inner_message {
             InnerMessage::BrokerMessage(BrokerMessage {
                 partition, offset, ..
