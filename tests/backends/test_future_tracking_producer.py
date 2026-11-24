@@ -26,7 +26,10 @@ def make_broker_value() -> BrokerValue[KafkaPayload]:
 
 
 class ResultTrackingFuture(Future):  # type: ignore
-    """A Future that records how many times its result() has been awaited."""
+    """
+    A pending Future that records how many times its result() has been awaited.
+    Awaiting it completes it, standing in for a broker acknowledging the message.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -34,6 +37,8 @@ class ResultTrackingFuture(Future):  # type: ignore
 
     def result(self, timeout: float | None = None) -> Any:
         self.result_call_count += 1
+        if not self.done():
+            self.set_result(make_broker_value())
         return super().result(timeout)
 
 
@@ -60,7 +65,9 @@ class DummyProducer:
             future = ResultTrackingFuture()
         else:
             future = Future()
-        future.set_result(make_broker_value())
+        # Tracked futures stay pending so backpressure has something to wait on.
+        if not self.track_results:
+            future.set_result(make_broker_value())
         if self.produced_futures is not None:
             self.produced_futures.append(future)
         return future
@@ -224,6 +231,33 @@ def test_backpressure_queue_awaits_oldest_future_when_full() -> None:
     assert produced[0] not in producer._backpressure_queue
     assert len(producer._backpressure_queue) == 3
     assert list(producer._backpressure_queue) == produced[1:]
+
+
+def test_backpressure_queue_pops_completed_futures() -> None:
+    produced: list[ProducerFuture[BrokerValue[KafkaPayload]]] = []
+    producer = FutureTrackingProducer(
+        "test.producer",
+        partial(
+            get_dummy_producer,
+            use_simple_futures=False,
+            queue_max_messages=6,
+            produced_futures=produced,
+            track_results=True,
+        ),
+        should_backpressure=True,
+        queue_size_scale=0.5,
+    )
+
+    for _ in range(3):
+        producer.produce(Topic("test"), make_kafka_payload())
+    produced[0].set_result(make_broker_value())
+    produced[1].set_result(make_broker_value())
+
+    producer.produce(Topic("test"), make_kafka_payload())
+
+    # The completed futures are dropped, so the full queue never had to block.
+    assert list(producer._backpressure_queue) == produced[2:]
+    assert all(cast(ResultTrackingFuture, f).result_call_count == 0 for f in produced)
 
 
 def test_produce_synchronous_awaits_future() -> None:

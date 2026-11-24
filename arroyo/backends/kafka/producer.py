@@ -82,6 +82,8 @@ class FutureTrackingProducer:
         self._queue_size_scale = queue_size_scale
         # Used to ensure we don't instantiate duplicate producers when calling produce() from different threads.
         self._producer_lock = threading.Lock()
+        # Used to prevent race conditions when draining the backpressure queue
+        self._bp_drain_lock = threading.Lock()
         self._backpressure_queue: deque[
             ProducerFuture[BrokerValue[KafkaPayload]]
         ] = deque(maxlen=0)
@@ -138,6 +140,11 @@ class FutureTrackingProducer:
         if self._track_futures:
             _pending_futures[self.name].append(future)
         if self._backpressure:
+            # Pop all the oldest completed futures from the backpressure queue each iteration
+            # to keep memory use down
+            with self._bp_drain_lock:
+                while self._backpressure_queue and self._backpressure_queue[0].done():
+                    self._backpressure_queue.popleft()
             if len(self._backpressure_queue) == self._backpressure_queue.maxlen:
                 # Backpressure on the result of the oldest future in the backpressure queue
                 self._await_future(self._backpressure_queue[0])
