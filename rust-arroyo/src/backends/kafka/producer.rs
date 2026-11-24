@@ -13,7 +13,7 @@ use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 use rdkafka::message::{Header, Headers as _, ToBytes};
 use rdkafka::producer::{
     BaseRecord, DeliveryResult, FutureProducer, Producer as _,
-    ProducerContext as RdkafkaProducerContext, ThreadedProducer,
+    ProducerContext as RdkafkaProducerContext, PurgeConfig, ThreadedProducer,
 };
 use rdkafka::{Message, Statistics};
 use std::time::{Duration, Instant};
@@ -148,13 +148,21 @@ where
         self.producer.in_flight_count()
     }
 
+    /// Discards outstanding messages even if another owner keeps the client
+    /// alive. Delivery callbacks are still served by the polling thread.
+    pub(crate) fn purge(&self) {
+        self.producer
+            .purge(PurgeConfig::default().queue().inflight());
+    }
+
     /// Blocks until the queue is delivered and every delivery report has been
     /// handed to the context, or the timeout expires. Messages remain queued
     /// on timeout.
     ///
-    /// Retries against a wall-clock deadline because rdkafka before 0.38
-    /// budgets `flush` by poll count, so early-returning polls can exhaust its
-    /// timeout before the requested time passes.
+    /// Uses librdkafka's blocking flush directly. Rust-rdkafka polls between
+    /// zero-timeout native flushes, which can clear the flushing flag before
+    /// broker threads wake and fail to bypass `linger.ms`. The producer's
+    /// polling thread continues to serve delivery reports while this waits.
     ///
     /// Also waits for `in_flight_count` to reach zero: from 0.38, rdkafka's
     /// `flush` returns once the broker has the messages, while the polling
@@ -167,7 +175,20 @@ where
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match self.producer.flush(remaining) {
+            // SAFETY: the borrowed producer owns this client for the entire
+            // call. Its polling thread serves the delivery event queue, as
+            // required by librdkafka's blocking flush when using the event API.
+            let error = unsafe {
+                rdkafka::bindings::rd_kafka_flush(
+                    self.producer.client().native_ptr(),
+                    remaining.as_millis().min(i32::MAX as u128) as i32,
+                )
+            };
+            let result = match error {
+                rdkafka::bindings::rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR_NO_ERROR => Ok(()),
+                error => Err(KafkaError::Flush(error.into())),
+            };
+            match result {
                 Ok(()) if self.producer.in_flight_count() == 0 || remaining.is_zero() => {
                     return Ok(())
                 }

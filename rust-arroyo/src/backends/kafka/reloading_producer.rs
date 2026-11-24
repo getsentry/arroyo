@@ -16,20 +16,20 @@
 //! client immediately, and drains the old client in the background.
 //!
 //! The buffer is capped by [`ReloadConfig::max_buffered_messages`]. A timed-out
-//! drain drops messages left on the old client because rdkafka purges them when
-//! the client is dropped.
+//! drain purges messages left on the old client. Each purged message receives
+//! a delivery callback with the purge error.
 //!
 //! # Waiting for delivery
 //!
 //! Through [`AsyncProducer`](crate::backends::AsyncProducer), produce returns
 //! a future that resolves once the broker acknowledged the message, or with the reason
 //! it was not delivered. A message that was buffered during a swap resolves
-//! once it went out on the new client, and a message that was purged with the
+//! once it went out on the new client, and a message that was purged from the
 //! old client resolves with the purge error. Hosts that must not lose messages
 //! can rely on that instead of on the produce call returning `Ok`.
 
 use std::error::Error;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -55,10 +55,31 @@ use crate::types::{Partition, Topic, TopicOrPartition};
 /// Receives the delivery report of one message.
 type DeliverySender = oneshot::Sender<Result<(), ProducerError>>;
 
-/// Where to report a message's delivery, if anyone is waiting for it.
-///
+/// Keeps a message counted through buffering, delivery, or rejection, even
+/// after the client that accepted it has been replaced.
+struct PendingDelivery {
+    sender: Option<DeliverySender>,
+    pending: Arc<AtomicUsize>,
+}
+
+impl PendingDelivery {
+    fn new(sender: Option<DeliverySender>, pending: &Arc<AtomicUsize>) -> Box<Self> {
+        pending.fetch_add(1, Ordering::SeqCst);
+        Box::new(Self {
+            sender,
+            pending: Arc::clone(pending),
+        })
+    }
+}
+
+impl Drop for PendingDelivery {
+    fn drop(&mut self) {
+        self.pending.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Boxed because rdkafka carries it through C as a pointer.
-type Delivery = Box<Option<DeliverySender>>;
+type Delivery = Box<PendingDelivery>;
 
 /// Reports an error to whoever waits for this message's delivery.
 fn fail_delivery(delivery: Option<DeliverySender>, error: ProducerError) {
@@ -108,10 +129,10 @@ where
 {
     type DeliveryOpaque = Delivery;
 
-    fn delivery(&self, delivery_result: &DeliveryResult<'_>, delivery: Delivery) {
+    fn delivery(&self, delivery_result: &DeliveryResult<'_>, mut delivery: Delivery) {
         self.inner.delivery(delivery_result, ());
 
-        if let Some(sender) = *delivery {
+        if let Some(sender) = delivery.sender.take() {
             let result = match delivery_result {
                 Ok(_) => Ok(()),
                 Err((error, _)) => Err(error.clone().into()),
@@ -202,6 +223,9 @@ where
     /// Read on every produce, taken for writing only to start buffering and
     /// to install.
     current: RwLock<Current<C>>,
+    /// Shared by every accepted message, including buffered messages and
+    /// those still owned by retired clients.
+    pending: Arc<AtomicUsize>,
     /// Cloned into every client this producer builds, so delivery callbacks
     /// and statistics survive a swap.
     context: C,
@@ -218,7 +242,7 @@ where
     /// Test-only queue depth when the old client was swapped out.
     #[cfg(test)]
     queue_depth_at_swap: std::sync::atomic::AtomicI32,
-    /// Test-only messages purged when the retired client was dropped.
+    /// Test-only messages purged when the old client was retired.
     #[cfg(test)]
     purged_at_drop: AtomicU64,
     /// Test-only calls to `drain`.
@@ -385,6 +409,7 @@ where
                 config,
                 buffer: None,
             }),
+            pending: Arc::new(AtomicUsize::new(0)),
             context,
             reload: Mutex::new(ReloadState {
                 desired: None,
@@ -503,7 +528,7 @@ where
         K: ToBytes + ?Sized,
         P: ToBytes + ?Sized,
     {
-        self.enqueue(record, Box::new(None))
+        self.enqueue(record, PendingDelivery::new(None, &self.inner.pending))
     }
 
     /// Enqueues a record like [`ReloadingKafkaProducer::produce_record`], and
@@ -519,7 +544,10 @@ where
         P: ToBytes + ?Sized,
     {
         let (sender, receiver) = oneshot::channel();
-        let enqueued = self.enqueue(record, Box::new(Some(sender)));
+        let enqueued = self.enqueue(
+            record,
+            PendingDelivery::new(Some(sender), &self.inner.pending),
+        );
 
         Box::pin(async move {
             enqueued?;
@@ -606,19 +634,60 @@ where
         current.producer.validate_topic(topic, timeout)
     }
 
-    /// Messages accepted but not yet delivered, including any held while a
-    /// reload drains the old client.
+    /// Messages awaiting delivery reports, including buffered messages and
+    /// messages on clients retired by a reload.
     pub fn in_flight_count(&self) -> i32 {
-        let current = self.inner.current.read();
-        let buffered = current
-            .buffer
-            .as_ref()
-            .map_or(0, |buffer| buffer.lock().len());
+        self.inner
+            .pending
+            .load(Ordering::SeqCst)
+            .try_into()
+            .unwrap_or(i32::MAX)
+    }
 
-        current
-            .producer
-            .in_flight_count()
-            .saturating_add(buffered.try_into().unwrap_or(i32::MAX))
+    /// Blocks until all accepted messages have reported delivery or the
+    /// timeout expires, including messages buffered or draining during a
+    /// reload. The timeout is shared across all clients and reloads.
+    ///
+    /// A timeout leaves messages queued. Delivery failures, including purges
+    /// caused by a reload's drain timeout, are reported through the context
+    /// and delivery futures; successful flushing does not imply successful
+    /// delivery. Concurrent produce calls can extend the wait.
+    pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.in_flight_count() == 0 {
+                return Ok(());
+            }
+
+            // Never hold `current` while flushing: callbacks may re-enter
+            // the producer, and the worker needs to install and replay.
+            let producer = self
+                .inner
+                .current
+                .try_read_until(deadline)
+                .ok_or(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))?
+                .producer
+                .clone();
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let result = producer.flush_for(remaining.min(Duration::from_millis(10)));
+            drop(producer);
+
+            // The reload worker flushes retired clients. Refresh the live
+            // client between attempts so replayed messages are flushed too.
+            if let Err(error) = result {
+                if error != KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut) {
+                    return Err(error);
+                }
+            }
+            if self.in_flight_count() == 0 {
+                return Ok(());
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut));
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(1)));
+        }
     }
 }
 
@@ -907,20 +976,26 @@ where
         };
 
         // Only the unordered path still has a client to drain. On the ordered
-        // path it was drained before the install, and anything the drain did
-        // not get to has to be purged rather than delivered: the buffer has
-        // just gone out on the new client, so delivering older same-key
-        // messages now is the reorder this whole design exists to prevent.
+        // path it was drained and any leftovers purged before replay, so old
+        // same-key messages cannot arrive after the replayed messages.
         if self.settings.ignore_key_ordering {
             self.drain(&old, self.settings.drain_timeout);
+            self.purge_retired(&old);
         }
 
+        drop(old);
+    }
+
+    /// Purge explicitly: a concurrent public flush may still hold a client
+    /// reference, so dropping the worker's reference alone need not purge it.
+    fn purge_retired(&self, old: &Client<C>) {
         let purged = old.in_flight_count().max(0) as u64;
 
         #[cfg(test)]
         self.purged_at_drop.store(purged, Ordering::SeqCst);
 
         if purged > 0 {
+            old.purge();
             metrics::counter!(
                 "arroyo.producer.config_reload_purged_messages",
                 "topic" => self.selector.topic().to_owned(),
@@ -930,11 +1005,9 @@ where
             tracing::error!(
                 topic = %self.selector.topic(),
                 purged,
-                "dropping the old client with messages still queued, they are lost"
+                "purging the old client with messages still queued, they are lost"
             );
         }
-
-        drop(old);
     }
 
     /// Installs a drained client and returns the one it replaced, or `None` if
@@ -952,6 +1025,19 @@ where
         let superseded = superseded(&reload, config);
         let waited_for = reload.desired_since.map(|since| since.elapsed());
 
+        if !superseded {
+            let draining = self.current.read().producer.clone();
+            #[cfg(test)]
+            self.queue_depth_at_swap
+                .store(draining.in_flight_count(), Ordering::SeqCst);
+
+            if !self.settings.ignore_key_ordering {
+                // Purging may wait for broker threads. Leave buffering available
+                // to produce calls, and finish before replaying on the new client.
+                self.purge_retired(&draining);
+            }
+        }
+
         let (old, buffered) = {
             let mut current = self.current.write();
 
@@ -961,10 +1047,6 @@ where
             let buffer = current.buffer.take();
 
             let old = (!superseded).then(|| {
-                #[cfg(test)]
-                self.queue_depth_at_swap
-                    .store(current.producer.in_flight_count(), Ordering::SeqCst);
-
                 current.config = config.clone();
                 std::mem::replace(&mut current.producer, new_producer)
             });
@@ -1063,7 +1145,7 @@ where
 
             // The produce call that buffered this already returned Ok, so
             // only a caller waiting for delivery can still be told.
-            if let Err((error, record)) = current.producer.try_produce_record(record) {
+            if let Err((error, mut record)) = current.producer.try_produce_record(record) {
                 let error = ProducerError::from(error);
                 metrics::counter!(
                     "arroyo.producer.config_reload_replay_failed",
@@ -1076,7 +1158,7 @@ where
                     %error,
                     "could not replay a buffered message onto the new client"
                 );
-                fail_delivery(*record.delivery_opaque, error);
+                fail_delivery(record.delivery_opaque.sender.take(), error);
             }
         }
 
@@ -1118,7 +1200,7 @@ where
                     producer_name = %self.producer_name,
                     %error,
                     queued = producer.in_flight_count(),
-                    "old producer did not drain in time, its queued messages will be dropped"
+                    "old producer did not drain in time, its queued messages will be purged if it is retired"
                 );
             }
         }
@@ -1199,6 +1281,265 @@ mod tests {
     use rdkafka::mocking::MockCluster;
     use rdkafka::{ClientContext, Message};
     use std::sync::mpsc;
+
+    fn record<'a>() -> BaseRecord<'a, [u8], [u8]> {
+        BaseRecord::to("ingest-events")
+            .key(b"key".as_slice())
+            .payload(b"payload".as_slice())
+    }
+
+    fn long_linger_blob(servers: &str, acks: &str) -> Vec<u8> {
+        String::from_utf8(lingering_blob(servers, acks))
+            .unwrap()
+            .replace("\"linger.ms\": \"1000\"", "\"linger.ms\": \"60000\"")
+            .into_bytes()
+    }
+
+    #[test]
+    fn test_flush_empty_with_zero_timeout() {
+        let producer = producer("127.0.0.1:1");
+
+        assert_eq!(producer.flush_for(Duration::ZERO), Ok(()));
+    }
+
+    #[test]
+    fn test_flush_delivers_queued_messages_and_callbacks() {
+        let cluster = MockCluster::new(1).unwrap();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &long_linger_blob(&cluster.bootstrap_servers(), "all"),
+            selector(),
+            settings(),
+            CountingContext::default(),
+        )
+        .unwrap();
+
+        for _ in 0..3 {
+            producer.produce_record(record()).unwrap();
+        }
+        assert_eq!(producer.in_flight_count(), 3);
+
+        // The timeout is shorter than linger.ms: merely waiting for delivery
+        // without flushing the client cannot make this succeed.
+        producer.flush_for(Duration::from_secs(5)).unwrap();
+
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_flush_timeout_keeps_messages_queued() {
+        let producer = producer("127.0.0.1:1");
+        producer.produce_record(record()).unwrap();
+
+        assert_eq!(
+            producer.flush_for(Duration::ZERO),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        let timeout = Duration::from_millis(100);
+        let started = Instant::now();
+        assert_eq!(
+            producer.flush_for(timeout),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut))
+        );
+        assert!(started.elapsed() >= timeout);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(producer.in_flight_count(), 1);
+
+        start_buffering(&producer);
+        producer.produce_record(record()).unwrap();
+        producer.produce_record(record()).unwrap();
+        assert_eq!(producer.in_flight_count(), 3);
+    }
+
+    #[test]
+    fn test_rejected_messages_do_not_increase_the_count() {
+        let small = String::from_utf8(blob("127.0.0.1:1", "all"))
+            .unwrap()
+            .replace(
+                "\"acks\": \"all\"",
+                "\"acks\": \"all\", \"message.max.bytes\": \"1000\"",
+            );
+        let producer = ReloadingKafkaProducer::new(
+            small.as_bytes(),
+            selector(),
+            ReloadConfig {
+                max_buffered_messages: 1,
+                ..settings()
+            },
+        )
+        .unwrap();
+        let large = vec![0u8; 5000];
+        assert!(producer
+            .produce_record(record().payload(large.as_slice()))
+            .is_err());
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.flush_for(Duration::ZERO), Ok(()));
+
+        start_buffering(&producer);
+        producer.produce_record(record()).unwrap();
+        assert!(producer.produce_record(record()).is_err());
+        assert_eq!(producer.in_flight_count(), 1);
+    }
+
+    #[test]
+    fn test_timed_out_drain_reports_purged_messages_while_client_is_still_referenced() {
+        #[derive(Clone)]
+        struct ReportingContext(mpsc::Sender<Result<(), KafkaError>>);
+
+        impl ClientContext for ReportingContext {}
+
+        impl RdkafkaProducerContext for ReportingContext {
+            type DeliveryOpaque = ();
+
+            fn delivery(&self, result: &DeliveryResult<'_>, _: ()) {
+                self.0
+                    .send(
+                        result
+                            .as_ref()
+                            .map(|_| ())
+                            .map_err(|(error, _)| error.clone()),
+                    )
+                    .unwrap();
+            }
+        }
+
+        let cluster = MockCluster::new(1).unwrap();
+        for ignore_key_ordering in [false, true] {
+            let (reports, received) = mpsc::channel();
+            let producer = ReloadingKafkaProducer::new_with_context(
+                &blob("127.0.0.1:1", "all"),
+                selector(),
+                ReloadConfig {
+                    ignore_key_ordering,
+                    drain_timeout: Duration::from_millis(100),
+                    ..settings()
+                },
+                ReportingContext(reports),
+            )
+            .unwrap();
+            // A concurrent flush may retain this reference past retirement.
+            // Purging and callbacks must not depend on its eventual drop.
+            let retired = producer.inner.current.read().producer.clone();
+            let delivery = producer.produce_record_with_delivery(record());
+            producer.produce_record(record()).unwrap();
+            assert_eq!(producer.in_flight_count(), 2);
+
+            producer
+                .push_config(&blob(&cluster.bootstrap_servers(), "all"))
+                .unwrap();
+            await_rollout(&producer, 1);
+
+            for _ in 0..2 {
+                assert_eq!(
+                    received.recv_timeout(Duration::from_secs(5)).unwrap(),
+                    Err(KafkaError::MessageProduction(RDKafkaErrorCode::PurgeQueue))
+                );
+            }
+            assert!(matches!(
+                futures::executor::block_on(delivery),
+                Err(ProducerError::Kafka(KafkaError::MessageProduction(
+                    RDKafkaErrorCode::PurgeQueue
+                )))
+            ));
+            producer.flush_for(Duration::from_secs(5)).unwrap();
+            assert_eq!(producer.in_flight_count(), 0);
+            assert_eq!(producer.flush_for(Duration::ZERO), Ok(()));
+            drop(retired);
+            assert_eq!(received.try_recv(), Err(mpsc::TryRecvError::Empty));
+        }
+    }
+
+    #[test]
+    fn test_flush_and_count_include_the_retired_client() {
+        let old_cluster = MockCluster::new(1).unwrap();
+        old_cluster.broker_down(-1).unwrap();
+        let new_cluster = MockCluster::new(1).unwrap();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&old_cluster.bootstrap_servers(), "all"),
+            selector(),
+            ReloadConfig {
+                ignore_key_ordering: true,
+                drain_timeout: Duration::from_secs(15),
+                ..settings()
+            },
+            CountingContext::default(),
+        )
+        .unwrap();
+        producer.produce_record(record()).unwrap();
+
+        producer
+            .push_config(&long_linger_blob(&new_cluster.bootstrap_servers(), "all"))
+            .unwrap();
+        await_generation(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 1);
+
+        producer.produce_record(record()).unwrap();
+        assert_eq!(producer.in_flight_count(), 2);
+        assert_eq!(
+            producer.flush_for(Duration::from_millis(100)),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut)),
+            "the retired client's unreachable broker must prevent a successful flush"
+        );
+        assert!(producer.in_flight_count() >= 1);
+
+        old_cluster.broker_up(-1).unwrap();
+        producer.flush_for(Duration::from_secs(10)).unwrap();
+        await_rollout(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 2);
+        assert_eq!(producer.inner.purged_at_drop.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_flush_waits_for_buffer_replay_without_blocking_the_swap() {
+        let cluster = MockCluster::new(1).unwrap();
+        let servers = cluster.bootstrap_servers();
+        let producer = ReloadingKafkaProducer::new_with_context(
+            &blob(&servers, "all"),
+            selector(),
+            settings(),
+            CountingContext::default(),
+        )
+        .unwrap();
+        let (release, gate) = mpsc::channel();
+        *producer.inner.swap_gate.lock() = Some(gate);
+        producer.push_config(&blob(&servers, "1")).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while producer.inner.swap_gate.lock().is_some() {
+            assert!(Instant::now() < deadline, "worker never reached the swap");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        producer.produce_record(record()).unwrap();
+        producer.produce_record(record()).unwrap();
+        assert_eq!(producer.in_flight_count(), 2);
+        assert_eq!(
+            producer.flush_for(Duration::from_millis(50)),
+            Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut)),
+            "the live client's empty queue must not hide buffered messages"
+        );
+        assert_eq!(producer.in_flight_count(), 2);
+
+        let (finished, result) = mpsc::channel();
+        let flushing = {
+            let producer = producer.clone();
+            std::thread::spawn(move || {
+                let _ = finished.send(producer.flush_for(Duration::from_secs(5)));
+            })
+        };
+        assert_eq!(
+            result.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+
+        release.send(()).unwrap();
+        assert_eq!(result.recv_timeout(Duration::from_secs(6)).unwrap(), Ok(()));
+        flushing.join().unwrap();
+        await_rollout(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
+        assert_eq!(producer.context().delivered.load(Ordering::SeqCst), 2);
+    }
 
     fn blob(servers: &str, acks: &str) -> Vec<u8> {
         format!(
@@ -2452,6 +2793,9 @@ mod tests {
             ),
             "{result:?}"
         );
+
+        await_rollout(&producer, 1);
+        assert_eq!(producer.in_flight_count(), 0);
     }
 
     /// A message still queued on the old client when a timed-out drain drops
