@@ -1,5 +1,20 @@
 # Changelog and versioning
 
+## 2.50.0
+
+### Breaking Changes 🛠
+
+- (producer) Record metrics even with a custom context by @untitaker in [#597](https://github.com/getsentry/arroyo/pull/597)
+
+### Bug Fixes 🐛
+
+- (ReloadingProducer) Accurate in-flight count by @jjbayer and @codex in [#610](https://github.com/getsentry/arroyo/pull/610)
+
+### Internal Changes 🔧
+
+- (ReloadingProducer) Move reload pieces into a reload module by @lvthanh03 in [#605](https://github.com/getsentry/arroyo/pull/605)
+- Rust lints by @jjbayer in [#608](https://github.com/getsentry/arroyo/pull/608)
+
 ## 2.49.2
 
 ### New Features ✨
