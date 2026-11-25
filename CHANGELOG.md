@@ -1,5 +1,15 @@
 # Changelog and versioning
 
+## 2.50.1
+
+### New Features ✨
+
+- (ConfigBlob) Add consumer config resolution by @lvthanh03 in [#606](https://github.com/getsentry/arroyo/pull/606)
+
+### Bug Fixes 🐛
+
+- (FTP) Pop done futures from the backpressure queue by @bmckerry in [#611](https://github.com/getsentry/arroyo/pull/611)
+
 ## 2.50.0
 
 ### Breaking Changes 🛠
