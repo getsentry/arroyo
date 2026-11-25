@@ -55,6 +55,28 @@ class LocalStreamsTestMixin(StreamsTestMixin[int]):
     def test_pause_resume_rebalancing(self) -> None:
         return super().test_pause_resume_rebalancing()
 
+    def test_pause_cleared_on_unsubscribe(self) -> None:
+        payloads = self.get_payloads()
+
+        with self.get_topic() as topic, contextlib.closing(
+            self.get_consumer(enable_end_of_partition=False)
+        ) as consumer, contextlib.closing(self.get_producer()) as producer:
+            partition = Partition(topic, 0)
+
+            consumer.subscribe([topic])
+            assert consumer.poll() is None  # applies the assignment
+            consumer.pause([partition])
+            assert consumer.paused() == [partition]
+
+            consumer.unsubscribe()
+            assert consumer.poll() is None  # applies the revocation
+
+            consumer.subscribe([topic])
+            message = producer.produce(topic, next(payloads)).result()
+
+            assert consumer.paused() == []
+            assert consumer.poll() == message
+
     def test_storage(self) -> None:
         topic = Topic(uuid.uuid1().hex)
         partitions = 3
