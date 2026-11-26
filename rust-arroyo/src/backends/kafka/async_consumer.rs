@@ -33,8 +33,8 @@ pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
     fn on_assign(&self, queues: Vec<AsyncPartitionQueue>);
 
     /// Finish processing these partitions before returning; their queues are closed
-    /// immediately afterward. With `enable.auto.offset.store=false`, store their final
-    /// offsets with [`AsyncKafkaConsumer::store_offsets`] before returning.
+    /// immediately afterward. Store their final offsets with
+    /// [`AsyncKafkaConsumer::store_offsets`] before returning.
     /// Shutdown always commits stored offsets synchronously after this callback returns.
     fn on_revoke(&self, partitions: Vec<Partition>);
 
@@ -74,6 +74,10 @@ impl AsyncKafkaConsumer {
             queues: Mutex::default(),
         };
         let mut config: ClientConfig = config.into();
+        // Only offsets passed to `store_offsets` get committed, never unprocessed messages.
+        config.set("enable.auto.offset.store", "false");
+        // Stored offsets get committed in the background, not only on revoke and drop.
+        config.set("enable.auto.commit", "true");
         config.set_log_level(RDKafkaLogLevel::Warning);
         let consumer: BaseConsumer<AsyncConsumerContext> = config.create_with_context(context)?;
         let consumer = Arc::new(consumer);
@@ -103,8 +107,8 @@ impl AsyncKafkaConsumer {
         })
     }
 
-    /// Store processed offsets locally for a later commit. Requires
-    /// `enable.auto.offset.store=false` in the consumer configuration.
+    /// Store processed offsets locally. They are committed in the background, on revoke
+    /// and on drop.
     pub fn store_offsets(&self, offsets: HashMap<Partition, u64>) -> Result<(), KafkaError> {
         let mut tpl = TopicPartitionList::with_capacity(offsets.len());
         for (partition, offset) in offsets {
@@ -117,9 +121,8 @@ impl AsyncKafkaConsumer {
         self.consumer.store_offsets(&tpl)
     }
 
-    /// Synchronously commit the locally stored offsets for the current assignment to Kafka.
-    /// With `enable.auto.commit=false`, call this periodically to save progress and
-    /// before returning from [`AsyncAssignmentCallbacks::on_revoke`].
+    /// Synchronously commit the locally stored offsets for the current assignment to Kafka,
+    /// without waiting for the background commit.
     /// Use `spawn_blocking` when calling from an async task.
     pub fn commit_consumer_state(&self) -> Result<(), KafkaError> {
         self.consumer.commit_consumer_state(CommitMode::Sync)
@@ -325,7 +328,9 @@ mod tests {
     use std::collections::HashMap;
     use std::time::Duration;
 
+    use rdkafka::consumer::Consumer;
     use rdkafka::error::KafkaError;
+    use rdkafka::topic_partition_list::Offset;
     use tokio::runtime::Runtime;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
     use tokio::time::timeout;
@@ -364,16 +369,15 @@ mod tests {
 
     impl TestConsumer {
         fn new(topic: Topic, group_id: &str) -> Self {
+            // `new_consumer_config` turns auto-commit off and leaves the offset store on, the
+            // opposite of what AsyncKafkaConsumer needs, so every test relies on the forcing.
             let config = KafkaConfig::new_consumer_config(
                 vec![get_default_broker()],
                 group_id.to_owned(),
                 InitialOffset::Earliest,
                 false,
                 30_000,
-                Some(HashMap::from([
-                    ("enable.auto.commit".to_owned(), "true".to_owned()),
-                    ("enable.auto.offset.store".to_owned(), "false".to_owned()),
-                ])),
+                None,
             );
             let (assigned_sender, assigned) = unbounded_channel();
             let (revoked_sender, revoked) = unbounded_channel();
@@ -555,6 +559,40 @@ mod tests {
         let callbacks = ChannelCallbacks { assigned, revoked };
         let result = AsyncKafkaConsumer::new(config, &[Topic::new("test")], callbacks);
         assert!(matches!(result, Err(KafkaError::ClientCreation(_))));
+    }
+
+    #[test]
+    fn test_stored_offsets_are_committed_in_the_background() {
+        let topic = TestTopic::create("async-consumer-auto-commit");
+        let partition = Partition::new(topic.topic, 0);
+        produce(&[(partition, "0")]);
+
+        runtime().block_on(async {
+            let mut consumer = TestConsumer::new(topic.topic, &group_id());
+            let queues = consumer.assignment().await;
+            recv_payload(&queues[0]).await;
+            consumer
+                .consumer
+                .store_offsets(HashMap::from([(partition, 1)]))
+                .unwrap();
+
+            // The consumer is still running, so only the background commit can save this.
+            timeout(TIMEOUT, async {
+                loop {
+                    let committed = consumer.consumer.consumer.committed(TIMEOUT).unwrap();
+                    let offset = committed
+                        .find_partition(topic.topic.as_str(), 0)
+                        .map(|element| element.offset());
+                    if offset == Some(Offset::Offset(1)) {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            })
+            .await
+            .expect("stored offset was not committed in the background");
+            consumer.shutdown().await;
+        });
     }
 
     #[allow(dead_code)]
