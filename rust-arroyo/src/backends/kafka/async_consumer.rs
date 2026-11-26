@@ -81,7 +81,7 @@ impl AsyncKafkaConsumer {
             ("enable.auto.commit", "true"),
         ] {
             if let Some(ignored) = config.get(key).filter(|current| *current != value) {
-                tracing::error!(
+                tracing::warn!(
                     key,
                     ignored,
                     forced = value,
