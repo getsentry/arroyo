@@ -74,10 +74,22 @@ impl AsyncKafkaConsumer {
             queues: Mutex::default(),
         };
         let mut config: ClientConfig = config.into();
-        // Only offsets passed to `store_offsets` get committed, never unprocessed messages.
-        config.set("enable.auto.offset.store", "false");
-        // Stored offsets get committed in the background, not only on revoke and drop.
-        config.set("enable.auto.commit", "true");
+        for (key, value) in [
+            // Only offsets passed to `store_offsets` get committed, never unprocessed messages.
+            ("enable.auto.offset.store", "false"),
+            // Stored offsets get committed in the background, not only on revoke and drop.
+            ("enable.auto.commit", "true"),
+        ] {
+            if let Some(ignored) = config.get(key).filter(|current| *current != value) {
+                tracing::error!(
+                    key,
+                    ignored,
+                    forced = value,
+                    "AsyncKafkaConsumer overrides this setting"
+                );
+            }
+            config.set(key, value);
+        }
         config.set_log_level(RDKafkaLogLevel::Warning);
         let consumer: BaseConsumer<AsyncConsumerContext> = config.create_with_context(context)?;
         let consumer = Arc::new(consumer);
