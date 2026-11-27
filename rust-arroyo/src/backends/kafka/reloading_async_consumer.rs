@@ -25,8 +25,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::{Condvar, Mutex, RwLock};
-use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::error::{KafkaError, RDKafkaErrorCode};
 
 use super::async_consumer::{AsyncAssignmentCallbacks, AsyncKafkaConsumer};
@@ -35,7 +33,6 @@ use super::config_blob::{ConfigBlob, ConsumerSelector, ResolvedClientConfig};
 use super::reload::{
     blob_error_reason, config_eq, superseded, ReloadConfig, ReloadError, ReloadOutcome, ReloadState,
 };
-use super::validate_topic_metadata;
 use crate::metrics;
 use crate::types::{Partition, Topic};
 
@@ -323,37 +320,37 @@ impl Inner {
 
     /// Probes a config and swaps to it
     fn reload_to(&self, config: &ResolvedClientConfig) {
-        let probe: BaseConsumer = match ClientConfig::from(config.config.clone()).create() {
-            Ok(probe) => probe,
-            Err(error) => {
-                metrics::counter!(
-                    "arroyo.consumer.config_reload_rejected",
-                    "topic" => self.selector.topic().to_owned(),
-                    "consumer_group" => self.selector.group_id().to_owned(),
-                    "source" => "push",
-                    "reason" => "client_build",
-                )
-                .increment(1);
-                tracing::error!(
-                    topic = %self.selector.topic(),
-                    %error,
-                    "kafka rejected the new config, staying on the running one"
-                );
-                return;
-            }
-        };
+        // Built now but subscribed only once the old consumer has left, so a failure here
+        // leaves the old one running.
+        let candidate =
+            match AsyncKafkaConsumer::build(earliest_reset(&config.config), self.callbacks.clone())
+            {
+                Ok(candidate) => candidate,
+                Err(error) => {
+                    metrics::counter!(
+                        "arroyo.consumer.config_reload_rejected",
+                        "topic" => self.selector.topic().to_owned(),
+                        "consumer_group" => self.selector.group_id().to_owned(),
+                        "source" => "push",
+                        "reason" => "client_build",
+                    )
+                    .increment(1);
+                    tracing::error!(
+                        topic = %self.selector.topic(),
+                        %error,
+                        "kafka rejected the new config, staying on the running one"
+                    );
+                    return;
+                }
+            };
 
         loop {
             #[cfg(test)]
             self.probe_attempts.fetch_add(1, Ordering::SeqCst);
 
-            match validate_topic_metadata(
-                probe.client(),
-                config.physical_topic,
-                self.settings.probe_timeout,
-            ) {
+            match candidate.validate_topic(config.physical_topic, self.settings.probe_timeout) {
                 Ok(()) => {
-                    self.swap(config);
+                    self.swap(candidate, config);
                     return;
                 }
                 Err(error) => {
@@ -383,8 +380,8 @@ impl Inner {
         }
     }
 
-    /// Replaces the running consumer with one for an already-probed config.
-    fn swap(&self, config: &ResolvedClientConfig) {
+    /// Replaces the running consumer with an already-probed one that is not subscribed yet.
+    fn swap(&self, candidate: AsyncKafkaConsumer, config: &ResolvedClientConfig) {
         // Spread swaps across instances.
         if !self.settings.jitter.is_zero() {
             let jitter = rand::random::<f64>() * self.settings.jitter.as_secs_f64();
@@ -414,22 +411,23 @@ impl Inner {
         if reload.shutdown {
             return;
         }
-        let target = if superseded(&reload, config) {
-            current.config.clone()
+        let (target, started) = if superseded(&reload, config) {
+            drop(candidate);
+            let target = current.config.clone();
+            let started = AsyncKafkaConsumer::new(
+                earliest_reset(&target.config),
+                &[target.physical_topic],
+                self.callbacks.clone(),
+            );
+            (target, started)
         } else {
-            config.clone()
+            let started = candidate
+                .subscribe(&[config.physical_topic])
+                .map(|()| candidate);
+            (config.clone(), started)
         };
 
-        // Set offset reset to earliest to start from the beginning of the topic,
-        // if no commited offsets are available.
-        let mut params = target.config.config_map().clone();
-        params.insert("auto.offset.reset".to_owned(), "earliest".to_owned());
-
-        match AsyncKafkaConsumer::new(
-            KafkaConfig::new_config(Vec::new(), Some(params)),
-            &[target.physical_topic],
-            self.callbacks.clone(),
-        ) {
+        match started {
             Ok(consumer) => {
                 current.consumer = Some(Arc::new(consumer));
                 if config_eq(&target, &current.config) {
@@ -451,7 +449,8 @@ impl Inner {
                 );
             }
             Err(error) => {
-                // The probe built a client from this config already, so this is unlikely.
+                // The client already exists, or was just built from a running config, so this
+                // is unlikely.
                 tracing::error!(
                     topic = %self.selector.topic(),
                     %error,
@@ -461,6 +460,13 @@ impl Inner {
             }
         }
     }
+}
+
+/// Starts from the beginning of the topic when no committed offsets are available.
+fn earliest_reset(config: &KafkaConfig) -> KafkaConfig {
+    let mut params = config.config_map().clone();
+    params.insert("auto.offset.reset".to_owned(), "earliest".to_owned());
+    KafkaConfig::new_config(Vec::new(), Some(params))
 }
 
 #[cfg(test)]

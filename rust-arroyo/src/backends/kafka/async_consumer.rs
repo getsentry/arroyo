@@ -21,7 +21,7 @@ use super::config::KafkaConfig;
 use super::types::KafkaPayload;
 use super::{
     create_kafka_message, kafka_poll_error_is_recoverable, log_librdkafka, log_librdkafka_error,
-    record_consumer_stats,
+    record_consumer_stats, validate_topic_metadata,
 };
 use crate::types::{BrokerMessage, Partition, Topic};
 
@@ -73,6 +73,16 @@ impl AsyncKafkaConsumer {
         topics: &[Topic],
         callbacks: impl AsyncAssignmentCallbacks,
     ) -> Result<Self, KafkaError> {
+        let consumer = Self::build(config, callbacks)?;
+        consumer.subscribe(topics)?;
+        Ok(consumer)
+    }
+
+    /// Creates the client without subscribing or polling, so it does not join the group yet.
+    pub(super) fn build(
+        config: KafkaConfig,
+        callbacks: impl AsyncAssignmentCallbacks,
+    ) -> Result<Self, KafkaError> {
         // Strict reset needs missing offsets resolved before assignment, like KafkaConsumer does.
         if config
             .offset_reset_config()
@@ -110,15 +120,23 @@ impl AsyncKafkaConsumer {
         let consumer = Arc::new(consumer);
         let _ = consumer.context().consumer.set(Arc::downgrade(&consumer));
 
-        let topics: Vec<&str> = topics.iter().map(|topic| topic.as_str()).collect();
-        consumer.subscribe(&topics)?;
+        Ok(Self {
+            consumer,
+            shutdown: Arc::new(AtomicBool::new(false)),
+            poll_thread: Mutex::new(None),
+        })
+    }
 
-        let shutdown = Arc::new(AtomicBool::new(false));
+    /// Subscribes and starts polling a consumer from [`AsyncKafkaConsumer::build`]. Call once.
+    pub(super) fn subscribe(&self, topics: &[Topic]) -> Result<(), KafkaError> {
+        let topics: Vec<&str> = topics.iter().map(|topic| topic.as_str()).collect();
+        self.consumer.subscribe(&topics)?;
+
         let poll_thread = std::thread::Builder::new()
             .name("arroyo-consumer".to_owned())
             .spawn({
-                let consumer = consumer.clone();
-                let shutdown = shutdown.clone();
+                let consumer = self.consumer.clone();
+                let shutdown = self.shutdown.clone();
                 move || run_poll_thread(&consumer, &shutdown)
             })
             .map_err(|error| {
@@ -126,12 +144,13 @@ impl AsyncKafkaConsumer {
                     "failed to spawn the consumer poll thread: {error}"
                 ))
             })?;
+        *self.poll_thread.lock() = Some(poll_thread);
+        Ok(())
+    }
 
-        Ok(Self {
-            consumer,
-            shutdown,
-            poll_thread: Mutex::new(Some(poll_thread)),
-        })
+    /// See [`validate_topic_metadata`].
+    pub(super) fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        validate_topic_metadata(self.consumer.client(), topic, timeout)
     }
 
     /// Stops polling: revokes every partition through
