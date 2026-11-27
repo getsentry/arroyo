@@ -21,7 +21,7 @@ use super::config::KafkaConfig;
 use super::types::KafkaPayload;
 use super::{
     create_kafka_message, kafka_poll_error_is_recoverable, log_librdkafka, log_librdkafka_error,
-    record_consumer_stats,
+    record_consumer_stats, validate_topic_metadata,
 };
 use crate::types::{BrokerMessage, Partition, Topic};
 
@@ -42,6 +42,21 @@ pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
     fn on_error(&self, _error: KafkaError) {}
 }
 
+/// Lets one set of callbacks be shared, e.g. by every consumer a reloading consumer starts.
+impl<T: AsyncAssignmentCallbacks + ?Sized> AsyncAssignmentCallbacks for Arc<T> {
+    fn on_assign(&self, queues: Vec<AsyncPartitionQueue>) {
+        (**self).on_assign(queues);
+    }
+
+    fn on_revoke(&self, partitions: Vec<Partition>) {
+        (**self).on_revoke(partitions);
+    }
+
+    fn on_error(&self, error: KafkaError) {
+        (**self).on_error(error);
+    }
+}
+
 /// A Kafka consumer that gives each assigned partition its own [`AsyncPartitionQueue`]. Its
 /// own thread polls the consumer and serves rebalances through [`AsyncAssignmentCallbacks`].
 /// Dropping it blocks until revocation and the final commit finish: drop it in
@@ -49,13 +64,23 @@ pub trait AsyncAssignmentCallbacks: Send + Sync + 'static {
 pub struct AsyncKafkaConsumer {
     consumer: Arc<BaseConsumer<AsyncConsumerContext>>,
     shutdown: Arc<AtomicBool>,
-    poll_thread: Option<JoinHandle<()>>,
+    poll_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AsyncKafkaConsumer {
     pub fn new(
         config: KafkaConfig,
         topics: &[Topic],
+        callbacks: impl AsyncAssignmentCallbacks,
+    ) -> Result<Self, KafkaError> {
+        let consumer = Self::build(config, callbacks)?;
+        consumer.subscribe(topics)?;
+        Ok(consumer)
+    }
+
+    /// Creates the client without subscribing or polling, so it does not join the group yet.
+    pub(super) fn build(
+        config: KafkaConfig,
         callbacks: impl AsyncAssignmentCallbacks,
     ) -> Result<Self, KafkaError> {
         // Strict reset needs missing offsets resolved before assignment, like KafkaConsumer does.
@@ -95,15 +120,23 @@ impl AsyncKafkaConsumer {
         let consumer = Arc::new(consumer);
         let _ = consumer.context().consumer.set(Arc::downgrade(&consumer));
 
-        let topics: Vec<&str> = topics.iter().map(|topic| topic.as_str()).collect();
-        consumer.subscribe(&topics)?;
+        Ok(Self {
+            consumer,
+            shutdown: Arc::new(AtomicBool::new(false)),
+            poll_thread: Mutex::new(None),
+        })
+    }
 
-        let shutdown = Arc::new(AtomicBool::new(false));
+    /// Subscribes and starts polling a consumer from [`AsyncKafkaConsumer::build`]. Call once.
+    pub(super) fn subscribe(&self, topics: &[Topic]) -> Result<(), KafkaError> {
+        let topics: Vec<&str> = topics.iter().map(|topic| topic.as_str()).collect();
+        self.consumer.subscribe(&topics)?;
+
         let poll_thread = std::thread::Builder::new()
             .name("arroyo-consumer".to_owned())
             .spawn({
-                let consumer = consumer.clone();
-                let shutdown = shutdown.clone();
+                let consumer = self.consumer.clone();
+                let shutdown = self.shutdown.clone();
                 move || run_poll_thread(&consumer, &shutdown)
             })
             .map_err(|error| {
@@ -111,12 +144,25 @@ impl AsyncKafkaConsumer {
                     "failed to spawn the consumer poll thread: {error}"
                 ))
             })?;
+        *self.poll_thread.lock() = Some(poll_thread);
+        Ok(())
+    }
 
-        Ok(Self {
-            consumer,
-            shutdown,
-            poll_thread: Some(poll_thread),
-        })
+    /// See [`validate_topic_metadata`].
+    pub(super) fn validate_topic(&self, topic: Topic, timeout: Duration) -> Result<(), KafkaError> {
+        validate_topic_metadata(self.consumer.client(), topic, timeout)
+    }
+
+    /// Stops polling: revokes every partition through
+    /// [`AsyncAssignmentCallbacks::on_revoke`], then commits stored offsets.
+    /// The consumer stays in the group until dropped and cannot be restarted.
+    pub(super) fn stop(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        // Held while joining, so a second caller also waits for the final commit.
+        let mut poll_thread = self.poll_thread.lock();
+        if let Some(poll_thread) = poll_thread.take() {
+            let _ = poll_thread.join();
+        }
     }
 
     /// Store processed offsets locally. They are committed in the background, on revoke
@@ -143,10 +189,7 @@ impl AsyncKafkaConsumer {
 
 impl Drop for AsyncKafkaConsumer {
     fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::Relaxed);
-        if let Some(poll_thread) = self.poll_thread.take() {
-            let _ = poll_thread.join();
-        }
+        self.stop();
     }
 }
 

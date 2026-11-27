@@ -9,7 +9,7 @@ use crate::types::{BrokerMessage, Partition, Topic};
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use rdkafka::bindings::rd_kafka_memberid;
-use rdkafka::client::ClientContext;
+use rdkafka::client::{Client, ClientContext};
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::base_consumer::BaseConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext};
@@ -32,6 +32,7 @@ pub mod config_blob;
 mod errors;
 pub mod producer;
 pub mod reload;
+pub mod reloading_async_consumer;
 pub mod reloading_producer;
 pub mod types;
 
@@ -232,6 +233,27 @@ fn log_librdkafka_error(hub: &Arc<Hub>, error: KafkaError, reason: &str) {
         let error: &dyn std::error::Error = &error;
         tracing::error!(error, "librdkafka: {error}: {reason}");
     })
+}
+
+fn validate_topic_metadata<C: ClientContext>(
+    client: &Client<C>,
+    topic: Topic,
+    timeout: Duration,
+) -> Result<(), KafkaError> {
+    let metadata = client.fetch_metadata(Some(topic.as_str()), timeout)?;
+    let topic_metadata = metadata
+        .topics()
+        .iter()
+        .find(|metadata| metadata.name() == topic.as_str())
+        .ok_or(KafkaError::MetadataFetch(
+            RDKafkaErrorCode::UnknownTopicOrPartition,
+        ))?;
+
+    if let Some(error) = topic_metadata.error() {
+        return Err(KafkaError::MetadataFetch(error.into()));
+    }
+
+    Ok(())
 }
 
 fn record_consumer_stats(stats: Statistics) {
