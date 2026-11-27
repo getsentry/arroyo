@@ -258,8 +258,9 @@ impl Inner {
     fn set_desired(&self, config: ResolvedClientConfig) -> ReloadOutcome {
         let mut reload = self.reload.lock();
 
-        // Check if the config is the same as the current one
-        if config_eq(&config, &self.current.read().config) {
+        // Check if the config is the same as the current one and the consumer is running.
+        let current = self.current.read();
+        if current.consumer.is_some() && config_eq(&config, &current.config) {
             reload.desired = None;
             reload.desired_since = None;
             self.reload_wake.notify_all();
@@ -412,7 +413,6 @@ impl Inner {
             return;
         }
         let (target, started) = if superseded(&reload, config) {
-            drop(candidate);
             let target = current.config.clone();
             let started = AsyncKafkaConsumer::new(
                 earliest_reset(&target.config),
