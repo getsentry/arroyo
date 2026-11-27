@@ -643,43 +643,53 @@ where
     /// futures; `Ok(())` only means no messages remain pending. Concurrent
     /// produce calls can extend the wait, up to the same timeout.
     ///
+    /// Flushing the live client can delay a reload until the flush completes
+    /// or times out.
+    ///
     /// Returns [`KafkaError::Flush`] with [`RDKafkaErrorCode::OperationTimedOut`]
     /// if messages are still pending when the timeout expires. This does not
     /// purge them; reloads still follow their configured drain timeout.
     pub fn flush_for(&self, timeout: Duration) -> Result<(), KafkaError> {
         let deadline = Instant::now() + timeout;
 
-        loop {
-            if self.in_flight_count() == 0 {
-                return Ok(());
-            }
+        while self.in_flight_count() > 0 {
             if Instant::now() >= deadline {
                 return Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut));
             }
 
-            if let Some(current) = self.inner.current.try_read_until(deadline) {
-                // The worker owns draining while buffering. Let it finish and
-                // replay before flushing the live client again.
-                if current.buffer.is_none() {
-                    // Keep the read lock for a short flush, then let reloads
-                    // proceed. Cloning the client instead could keep it alive
-                    // past a swap and deliver old messages after the replay.
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    match current
-                        .producer
-                        .flush_for(remaining.min(Duration::from_millis(10)))
-                    {
-                        Ok(()) | Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut)) => {}
-                        Err(error) => return Err(error),
-                    }
-                }
+            let Some(read_lock) = self.inner.current.try_read_until(deadline) else {
+                return match self.in_flight_count() {
+                    0 => Ok(()),
+                    _ => Err(KafkaError::Flush(RDKafkaErrorCode::OperationTimedOut)),
+                };
+            };
+
+            // Acquiring the lock may have taken some time, compute the remaining time:
+            let remaining = deadline.saturating_duration_since(Instant::now());
+
+            // Only flush if there is no buffer installed. A buffer means that there is an order-sensitive swap in progress,
+            // in which case we wait for the swap to finish.
+            if read_lock.buffer.is_none() {
+                // Delegate to the current producer.
+                // NOTE: This delays reloads for the time of the flush because we are still holding the read lock.
+                read_lock.producer.flush_for(remaining)?;
+
+                // Only return if there are no pending deliveries, including those on retired clients.
+                if self.in_flight_count() == 0 {
+                    return Ok(());
+                };
             }
 
-            // Buffered and retired messages progress on the worker and the
-            // clients' polling threads. Wait without holding the reload lock.
+            // Release the read guard so the worker can install and replay.
+            drop(read_lock);
+
+            // Give the reload worker and delivery callbacks time to progress.
             let remaining = deadline.saturating_duration_since(Instant::now());
-            std::thread::sleep(remaining.min(Duration::from_millis(1)));
+            let sleep = Duration::from_millis(100).min(remaining);
+            std::thread::sleep(sleep);
         }
+
+        Ok(())
     }
 }
 
