@@ -1,16 +1,17 @@
 use crate::backends::kafka::config::KafkaConfig;
 use crate::backends::kafka::errors::get_error_name;
 use crate::backends::kafka::types::{Headers, KafkaPayload};
+use crate::backends::kafka::validate_topic_metadata;
 use crate::backends::ProducerError;
 use crate::backends::{
     AsyncProducer as ArroyoAsyncProducer, Producer as ArroyoProducer, ProducerFuture,
 };
 use crate::metrics;
 use crate::types::{Topic, TopicOrPartition};
-use rdkafka::client::{Client, ClientContext, OAuthToken};
+use rdkafka::client::{ClientContext, OAuthToken};
 use rdkafka::config::ClientConfig;
 use rdkafka::config::RDKafkaLogLevel;
-use rdkafka::error::{KafkaError, RDKafkaErrorCode};
+use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers as _, ToBytes};
 use rdkafka::producer::{
     BaseRecord, DeliveryResult, FutureProducer, Producer as _,
@@ -270,27 +271,6 @@ impl AsyncKafkaProducer {
     pub fn in_flight_count(&self) -> i32 {
         self.producer.in_flight_count()
     }
-}
-
-fn validate_topic_metadata<C: ClientContext>(
-    client: &Client<C>,
-    topic: Topic,
-    timeout: Duration,
-) -> Result<(), KafkaError> {
-    let metadata = client.fetch_metadata(Some(topic.as_str()), timeout)?;
-    let topic_metadata = metadata
-        .topics()
-        .iter()
-        .find(|metadata| metadata.name() == topic.as_str())
-        .ok_or(KafkaError::MetadataFetch(
-            RDKafkaErrorCode::UnknownTopicOrPartition,
-        ))?;
-
-    if let Some(error) = topic_metadata.error() {
-        return Err(KafkaError::MetadataFetch(error.into()));
-    }
-
-    Ok(())
 }
 
 /// Producer name in metric tags when `client.id` is not set.
